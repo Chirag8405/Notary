@@ -115,11 +115,16 @@ The oracle reports I1-I6 as `InvariantResult` (`id`: `I1`..`I6`, `passed`, `deta
 
 ## Event contract
 
-WebSocket events are the contract between server and web: `run_started`, `value_labeled`, `call_proposed`, `decision_made`, `endorsement_requested`, `effect_executed`, `oracle_updated`, `run_finished`.
+Server -> client events: `run_started`, `value_labeled`, `call_proposed`, `decision_made`, `endorsement_requested`, `effect_executed`, `oracle_updated`, `run_finished`. Every event carries `run_id`, `lane` (`undefended` | `classifier` | `notary`) and `seq`. `run_started` carries the Intent Contract (and the classifier name on the classifier lane); `value_labeled` carries the label, decision unit and a text preview; `decision_made` carries the ordered reasons with codes and, for ESCALATE, the diff card; `oracle_updated` carries I1-I6 plus the attacker-goal and user-goal lights.
 
-- Defined in Pydantic: [`packages/core/src/notary_core/models/events.py`](../packages/core/src/notary_core/models/events.py)
+Client -> server commands: `endorsement_decision` (approve/reject), `hijacked_tool_call`, `poison_world`, `arena_start`.
+
+- Defined in Pydantic: [`events.py`](../packages/core/src/notary_core/models/events.py), [`commands.py`](../packages/core/src/notary_core/models/commands.py)
 - Generated JSON Schema: [`packages/schema/json/`](../packages/schema/json)
 - Generated TS types and Zod: [`packages/schema/src/generated/`](../packages/schema/src/generated)
-- Validated on receipt in `packages/client` (`streamRun`); invalid events throw `EventValidationError`.
+- Validated on receipt in `packages/client` (`streamRun`); invalid events throw `EventValidationError`. Commands are validated before sending (`encodeCommand`).
+- Golden streams for every lane: [`packages/world/fixtures/streams/`](../packages/world/fixtures/streams); command examples: [`packages/world/fixtures/commands/`](../packages/world/fixtures/commands).
+
+Other frozen interfaces (stubs until their phase): `decide()` in [`monitor.py`](../packages/core/src/notary_core/monitor.py), the pure Gateway and Value Store in [`gateway.py`](../packages/core/src/notary_core/gateway.py), and the `AgentRunner` hooks in [`runner.py`](../packages/core/src/notary_core/runner.py). Tagged `contracts-v1`.
 
 Never hand-edit generated files; change the Pydantic model and run `pnpm schema:generate`.

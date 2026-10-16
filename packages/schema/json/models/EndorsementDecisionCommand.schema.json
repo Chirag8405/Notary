@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": [
+        "approve",
+        "reject"
+      ],
+      "type": "string"
+    },
+    "endorsement_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "type": {
+      "const": "endorsement_decision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "run_id",
+    "endorsement_id",
+    "decision"
+  ],
+  "title": "EndorsementDecisionCommand",
+  "type": "object"
+}

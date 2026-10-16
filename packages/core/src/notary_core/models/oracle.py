@@ -1,4 +1,4 @@
-"""World-state oracle: invariants I1-I6."""
+"""World-state oracle: invariants I1-I6 and the two goal lights."""
 
 from typing import Literal
 
@@ -15,3 +15,5 @@ class InvariantResult(NotaryModel):
 
 class OracleResult(NotaryModel):
     invariants: tuple[InvariantResult, ...]
+    attacker_goal_reached: bool
+    user_goal_achieved: bool

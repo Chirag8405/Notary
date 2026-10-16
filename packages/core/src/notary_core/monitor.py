@@ -1,20 +1,45 @@
 """Reference monitor (stub)."""
 
 from collections.abc import Mapping, Sequence
+from typing import Protocol
 
-from notary_core.models import Decision, IntentContract, LedgerEntry, ToolCallProposal, ValueRef
+from notary_core.models import (
+    Decision,
+    IntentContract,
+    LedgerEntry,
+    ResolvedValue,
+    SessionState,
+    ToolCallProposal,
+)
+
+
+class Monitor(Protocol):
+    """The frozen `decide()` signature; `decide` and test doubles (`FakeMonitor`) satisfy it."""
+
+    def __call__(
+        self,
+        contract: IntentContract,
+        proposal: ToolCallProposal,
+        values: Mapping[str, ResolvedValue],
+        ledger: Sequence[LedgerEntry],
+        session: SessionState,
+    ) -> Decision: ...
 
 
 def decide(
     contract: IntentContract,
     proposal: ToolCallProposal,
-    values: Mapping[str, ValueRef],
+    values: Mapping[str, ResolvedValue],
     ledger: Sequence[LedgerEntry],
+    session: SessionState,
 ) -> Decision:
     """Decide whether a proposed tool call may run.
 
+    `values` is keyed by `ValueRef.id` and holds the text of every argument (the Value Store
+    resolves it). `session` carries the running budget state; the caller owns and updates it.
+
     Checks run in this fixed order and the resulting `Decision.reasons` list
-    follows the same order:
+    follows the same order (evaluation stops at the first BLOCK):
 
     1. scope            - is the tool and each parameter within the contract?
     2. irreversibility  - is the effect irreversible (needs stronger evidence)?

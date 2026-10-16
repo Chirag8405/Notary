@@ -6,14 +6,18 @@
 export type Event = (RunStarted | ValueLabeled | CallProposed | DecisionMade | EndorsementRequested | EffectExecuted | OracleUpdated | RunFinished)
 export type Marker = (LiteralMarker | NamedSourceMarker | LedgerMarker | EndorseMarker | FreeMarker)
 export type Origin = (UserOrigin | ToolOrigin | EmailOrigin | FileOrigin | WebOrigin | LedgerOrigin | LlmOrigin)
+export type Command = (EndorsementDecisionCommand | HijackedToolCallCommand | PoisonWorldCommand | ArenaStartCommand)
+export type LedgerSource = (UserAuthoredSource | UserEndorsedSource)
 
 /**
  * Index of every model in notary_core, so each is declared exactly once.
  */
 export interface NotarySchemaIndex {
+ArenaStartCommand: ArenaStartCommand
 AttackCase: AttackCase
 AuditEntry: AuditEntry
 CallProposed: CallProposed
+Command: Command
 Decision: Decision
 DecisionMade: DecisionMade
 DiffCard: DiffCard
@@ -23,17 +27,20 @@ EffectExecuted: EffectExecuted
 EmailOrigin: EmailOrigin
 EndorseMarker: EndorseMarker
 Endorsement: Endorsement
+EndorsementDecisionCommand: EndorsementDecisionCommand
 EndorsementRequested: EndorsementRequested
 Event: Event
 ExpectedOutcome: ExpectedOutcome
 FileOrigin: FileOrigin
 FreeMarker: FreeMarker
+HijackedToolCallCommand: HijackedToolCallCommand
 IntentContract: IntentContract
 InvariantResult: InvariantResult
 Label: Label
 LedgerEntry: LedgerEntry
 LedgerMarker: LedgerMarker
 LedgerOrigin: LedgerOrigin
+LedgerSource: LedgerSource
 LiteralMarker: LiteralMarker
 LlmOrigin: LlmOrigin
 Marker: Marker
@@ -41,25 +48,41 @@ NamedSourceMarker: NamedSourceMarker
 OracleResult: OracleResult
 OracleUpdated: OracleUpdated
 Origin: Origin
+PoisonWorldCommand: PoisonWorldCommand
 Reason: Reason
+ResolvedValue: ResolvedValue
 RunFinished: RunFinished
 RunStarted: RunStarted
+SessionState: SessionState
 SpanPointer: SpanPointer
 ToolCallProposal: ToolCallProposal
 ToolOrigin: ToolOrigin
 ToolScope: ToolScope
+UserAuthoredSource: UserAuthoredSource
+UserEndorsedSource: UserEndorsedSource
 UserOrigin: UserOrigin
 ValueLabeled: ValueLabeled
 ValueRef: ValueRef
 WebOrigin: WebOrigin
 }
+/**
+ * Attacker arena: an LLM attacker iterates `rounds` per lane.
+ */
+export interface ArenaStartCommand {
+lanes: ("undefended" | "classifier" | "notary")[]
+rounds: number
+scenario: string
+seed: number
+type: "arena_start"
+}
 export interface AttackCase {
-category: ("direct_injection" | "argument_hijack" | "exfiltration" | "tool_poisoning" | "confused_deputy" | "ledger_poisoning" | "endorsement_abuse")
+category: ("instruction_override" | "authority_impersonation" | "data_only_poisoning" | "action_induction" | "exfiltration" | "staged_long_horizon" | "obfuscation" | "lookalike" | "trust_laundering" | "tool_poisoning" | "approval_phishing" | "side_channel" | "text_to_text_deception" | "denial_of_utility")
 expected: ExpectedOutcome
 id: ("A1" | "A2" | "A3" | "A4" | "A5" | "A6" | "A7" | "A8" | "A9" | "A10" | "A11" | "A12" | "A13" | "A14")
 payload: string
 }
 export interface ExpectedOutcome {
+code: (("STEP_PASS" | "READ_ONLY_UNGATED" | "SCOPE_TOOL_NOT_IN_CONTRACT" | "SCOPE_MANIFEST_MISMATCH" | "SCOPE_PARAM_NOT_IN_CONTRACT" | "IRREVERSIBLE_NOT_AUTHORIZED" | "ORIGIN_UNTRUSTED" | "ORIGIN_UNSOURCED" | "ORIGIN_LITERAL_MISMATCH" | "ORIGIN_SOURCE_MISMATCH" | "LEDGER_EXACT_MATCH" | "LEDGER_LOOKALIKE" | "LEDGER_NOVEL_ESCALATE" | "LEDGER_NOT_FOUND" | "CONF_READER_VIOLATION" | "CONF_URL_NOT_ALLOWED" | "BUDGET_AMOUNT" | "BUDGET_SENDS" | "BUDGET_EGRESS_BYTES" | "BUDGET_APPROVALS_EXHAUSTED") | null)
 deciding_check: (("scope" | "irreversibility" | "origin" | "corroboration" | "confidentiality" | "budget") | null)
 verdict: ("ALLOW" | "ESCALATE" | "BLOCK")
 }
@@ -70,7 +93,9 @@ index: number
 prev_hash: string
 }
 export interface RunStarted {
+classifier: (string | null)
 contract: IntentContract
+lane: ("undefended" | "classifier" | "notary")
 run_id: string
 scenario: string
 seq: number
@@ -78,11 +103,15 @@ type: "run_started"
 }
 export interface IntentContract {
 allowed_tools: ToolScope[]
+authorized_irreversible: string[]
 budget: EffectBudget
 contract_id: string
+egress_hosts: string[]
 user_intent: string
 }
 export interface ToolScope {
+effect: ("read" | "write" | "irreversible")
+manifest_hash: string
 params: {
 [k: string]: Marker
 }
@@ -122,14 +151,19 @@ export interface FreeMarker {
 kind: "free"
 }
 export interface EffectBudget {
+max_approvals: number
+max_call_amount_cents: number
 max_effects: number
 max_egress_bytes: number
 max_spend_cents: number
 }
 export interface ValueLabeled {
+lane: ("undefended" | "classifier" | "notary")
+preview: string
 run_id: string
 seq: number
 type: "value_labeled"
+unit: (("iban" | "email" | "url_host" | "amount" | "identifier") | null)
 value: ValueRef
 }
 /**
@@ -177,6 +211,7 @@ source_value_id: string
 start: number
 }
 export interface CallProposed {
+lane: ("undefended" | "classifier" | "notary")
 proposal: ToolCallProposal
 run_id: string
 seq: number
@@ -187,26 +222,46 @@ args: {
 [k: string]: ValueRef
 }
 call_id: string
+manifest_hash: string
 tool: string
 }
 export interface DecisionMade {
 call_id: string
 decision: Decision
+lane: ("undefended" | "classifier" | "notary")
 run_id: string
 seq: number
 type: "decision_made"
 }
 export interface Decision {
+diff_card: (DiffCard | null)
 reasons: Reason[]
 verdict: ("ALLOW" | "ESCALATE" | "BLOCK")
 }
+export interface DiffCard {
+rows: DiffRow[]
+}
+/**
+ * One parameter of the proposed call, rendered from its label.
+ */
+export interface DiffRow {
+differing_positions: number[]
+integrity: ("trusted" | "untrusted" | "endorsed")
+nearest_ledger_value: (string | null)
+origin: Origin
+param: string
+preview: string
+value_id: string
+}
 export interface Reason {
 check: ("scope" | "irreversibility" | "origin" | "corroboration" | "confidentiality" | "budget")
+code: ("STEP_PASS" | "READ_ONLY_UNGATED" | "SCOPE_TOOL_NOT_IN_CONTRACT" | "SCOPE_MANIFEST_MISMATCH" | "SCOPE_PARAM_NOT_IN_CONTRACT" | "IRREVERSIBLE_NOT_AUTHORIZED" | "ORIGIN_UNTRUSTED" | "ORIGIN_UNSOURCED" | "ORIGIN_LITERAL_MISMATCH" | "ORIGIN_SOURCE_MISMATCH" | "LEDGER_EXACT_MATCH" | "LEDGER_LOOKALIKE" | "LEDGER_NOVEL_ESCALATE" | "LEDGER_NOT_FOUND" | "CONF_READER_VIOLATION" | "CONF_URL_NOT_ALLOWED" | "BUDGET_AMOUNT" | "BUDGET_SENDS" | "BUDGET_EGRESS_BYTES" | "BUDGET_APPROVALS_EXHAUSTED")
 detail: string
 outcome: ("pass" | "escalate" | "fail")
 }
 export interface EndorsementRequested {
 endorsement: Endorsement
+lane: ("undefended" | "classifier" | "notary")
 run_id: string
 seq: number
 type: "endorsement_requested"
@@ -218,21 +273,9 @@ endorsement_id: string
 sequence: number
 status: ("pending" | "approved" | "rejected")
 }
-export interface DiffCard {
-rows: DiffRow[]
-}
-/**
- * One parameter of the proposed call, rendered from its label.
- */
-export interface DiffRow {
-integrity: ("trusted" | "untrusted" | "endorsed")
-origin: Origin
-param: string
-preview: string
-value_id: string
-}
 export interface EffectExecuted {
 call_id: string
+lane: ("undefended" | "classifier" | "notary")
 run_id: string
 seq: number
 summary: string
@@ -240,13 +283,16 @@ tool: string
 type: "effect_executed"
 }
 export interface OracleUpdated {
+lane: ("undefended" | "classifier" | "notary")
 result: OracleResult
 run_id: string
 seq: number
 type: "oracle_updated"
 }
 export interface OracleResult {
+attacker_goal_reached: boolean
 invariants: InvariantResult[]
+user_goal_achieved: boolean
 }
 export interface InvariantResult {
 detail: string
@@ -254,15 +300,69 @@ id: ("I1" | "I2" | "I3" | "I4" | "I5" | "I6")
 passed: boolean
 }
 export interface RunFinished {
+lane: ("undefended" | "classifier" | "notary")
 outcome: ("completed" | "blocked" | "error")
 run_id: string
 seq: number
 summary: string
 type: "run_finished"
 }
+export interface EndorsementDecisionCommand {
+decision: ("approve" | "reject")
+endorsement_id: string
+run_id: string
+type: "endorsement_decision"
+}
+/**
+ * Hijacked Mode: a judge submits a raw tool call; no LLM is involved.
+ */
+export interface HijackedToolCallCommand {
+args: {
+[k: string]: string
+}
+call_id: string
+run_id: string
+tool: string
+type: "hijacked_tool_call"
+}
+/**
+ * Poison-the-world: choose vector, payload and task, then run on the chosen lanes.
+ */
+export interface PoisonWorldCommand {
+lanes: ("undefended" | "classifier" | "notary")[]
+payload: string
+scenario: string
+task: string
+type: "poison_world"
+vector: ("email" | "file" | "web" | "calendar" | "slack" | "tool_description")
+}
 export interface LedgerEntry {
+canonical: string
 entry_id: string
 key: string
 ledger: string
+source: LedgerSource
+unit: ("iban" | "email" | "url_host" | "amount" | "identifier")
 value: ValueRef
+}
+export interface UserAuthoredSource {
+kind: "user_authored"
+}
+export interface UserEndorsedSource {
+endorsement_id: string
+kind: "user_endorsed"
+}
+/**
+ * A stored value with its text (a `ValueRef` only carries a hash; the monitor needs text).
+ */
+export interface ResolvedValue {
+ref: ValueRef
+text: string
+unit: (("iban" | "email" | "url_host" | "amount" | "identifier") | null)
+}
+export interface SessionState {
+approvals_used: number
+effects_used: number
+egress_bytes_used: number
+spent_cents: number
 }

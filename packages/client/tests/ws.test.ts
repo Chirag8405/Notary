@@ -1,13 +1,19 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { EventValidationError, StreamClosedError, runStreamUrl, streamRun } from "../src";
+import {
+  EventValidationError,
+  StreamClosedError,
+  encodeCommand,
+  runStreamUrl,
+  streamRun,
+} from "../src";
 
-const fixtures = resolve(import.meta.dirname, "../../world/fixtures/events");
-const validMessages = readdirSync(fixtures)
-  .sort()
-  .map((name) => readFileSync(resolve(fixtures, name), "utf8"));
+const streams = resolve(import.meta.dirname, "../../world/fixtures/streams");
+const validMessages = (
+  JSON.parse(readFileSync(resolve(streams, "poisoned_bill.notary.json"), "utf8")) as unknown[]
+).map((event) => JSON.stringify(event));
 
 /** Minimal in-memory WebSocket: replays scripted messages, then closes. */
 class FakeSocket extends EventTarget {
@@ -68,5 +74,23 @@ describe("streamRun", () => {
       "ws://localhost:8000/ws/runs/poisoned_bill",
     );
     expect(runStreamUrl("https://x.example", "a b")).toBe("wss://x.example/ws/runs/a%20b");
+  });
+});
+
+describe("encodeCommand", () => {
+  it("validates with Zod and encodes JSON", () => {
+    const json = encodeCommand({
+      type: "endorsement_decision",
+      run_id: "r",
+      endorsement_id: "e",
+      decision: "approve",
+    });
+    expect(JSON.parse(json)).toMatchObject({ type: "endorsement_decision", decision: "approve" });
+  });
+
+  it("rejects an invalid command", () => {
+    expect(() =>
+      encodeCommand({ type: "arena_start", scenario: "s", rounds: 0, lanes: [], seed: 1 }),
+    ).toThrow();
   });
 });

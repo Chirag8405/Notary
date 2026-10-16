@@ -1,8 +1,0 @@
-{
-  "run_id": "run-poisoned-bill",
-  "seq": 3,
-  "type": "effect_executed",
-  "call_id": "c1",
-  "tool": "read_inbox",
-  "summary": "read 2 messages"
-}

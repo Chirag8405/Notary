@@ -1,17 +1,66 @@
 {
   "$defs": {
+    "ArenaStartCommand": {
+      "additionalProperties": false,
+      "description": "Attacker arena: an LLM attacker iterates `rounds` per lane.",
+      "properties": {
+        "lanes": {
+          "items": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rounds": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "seed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "arena_start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "scenario",
+        "rounds",
+        "lanes",
+        "seed"
+      ],
+      "title": "ArenaStartCommand",
+      "type": "object"
+    },
     "AttackCase": {
       "additionalProperties": false,
       "properties": {
         "category": {
           "enum": [
-            "direct_injection",
-            "argument_hijack",
+            "instruction_override",
+            "authority_impersonation",
+            "data_only_poisoning",
+            "action_induction",
             "exfiltration",
+            "staged_long_horizon",
+            "obfuscation",
+            "lookalike",
+            "trust_laundering",
             "tool_poisoning",
-            "confused_deputy",
-            "ledger_poisoning",
-            "endorsement_abuse"
+            "approval_phishing",
+            "side_channel",
+            "text_to_text_deception",
+            "denial_of_utility"
           ],
           "type": "string"
         },
@@ -82,6 +131,14 @@
     "CallProposed": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "proposal": {
           "$ref": "#/$defs/ToolCallProposal"
         },
@@ -99,6 +156,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "proposal"
@@ -106,9 +164,45 @@
       "title": "CallProposed",
       "type": "object"
     },
+    "Command": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EndorsementDecisionCommand"
+        },
+        {
+          "$ref": "#/$defs/HijackedToolCallCommand"
+        },
+        {
+          "$ref": "#/$defs/PoisonWorldCommand"
+        },
+        {
+          "$ref": "#/$defs/ArenaStartCommand"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "arena_start": "#/$defs/ArenaStartCommand",
+          "endorsement_decision": "#/$defs/EndorsementDecisionCommand",
+          "hijacked_tool_call": "#/$defs/HijackedToolCallCommand",
+          "poison_world": "#/$defs/PoisonWorldCommand"
+        },
+        "propertyName": "type"
+      },
+      "title": "Command"
+    },
     "Decision": {
       "additionalProperties": false,
       "properties": {
+        "diff_card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffCard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "reasons": {
           "items": {
             "$ref": "#/$defs/Reason"
@@ -126,7 +220,8 @@
       },
       "required": [
         "verdict",
-        "reasons"
+        "reasons",
+        "diff_card"
       ],
       "title": "Decision",
       "type": "object"
@@ -139,6 +234,14 @@
         },
         "decision": {
           "$ref": "#/$defs/Decision"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
         },
         "run_id": {
           "type": "string"
@@ -154,6 +257,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "call_id",
@@ -182,6 +286,12 @@
       "additionalProperties": false,
       "description": "One parameter of the proposed call, rendered from its label.",
       "properties": {
+        "differing_positions": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "integrity": {
           "enum": [
             "trusted",
@@ -189,6 +299,16 @@
             "endorsed"
           ],
           "type": "string"
+        },
+        "nearest_ledger_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "origin": {
           "$ref": "#/$defs/Origin"
@@ -208,7 +328,9 @@
         "value_id",
         "origin",
         "integrity",
-        "preview"
+        "preview",
+        "nearest_ledger_value",
+        "differing_positions"
       ],
       "title": "DiffRow",
       "type": "object"
@@ -216,6 +338,14 @@
     "EffectBudget": {
       "additionalProperties": false,
       "properties": {
+        "max_approvals": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_call_amount_cents": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "max_effects": {
           "minimum": 0,
           "type": "integer"
@@ -232,7 +362,9 @@
       "required": [
         "max_effects",
         "max_spend_cents",
-        "max_egress_bytes"
+        "max_egress_bytes",
+        "max_call_amount_cents",
+        "max_approvals"
       ],
       "title": "EffectBudget",
       "type": "object"
@@ -241,6 +373,14 @@
       "additionalProperties": false,
       "properties": {
         "call_id": {
+          "type": "string"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
           "type": "string"
         },
         "run_id": {
@@ -263,6 +403,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "call_id",
@@ -336,11 +477,49 @@
       "title": "Endorsement",
       "type": "object"
     },
+    "EndorsementDecisionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "type": "string"
+        },
+        "endorsement_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "type": {
+          "const": "endorsement_decision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "endorsement_id",
+        "decision"
+      ],
+      "title": "EndorsementDecisionCommand",
+      "type": "object"
+    },
     "EndorsementRequested": {
       "additionalProperties": false,
       "properties": {
         "endorsement": {
           "$ref": "#/$defs/Endorsement"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
         },
         "run_id": {
           "type": "string"
@@ -356,6 +535,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "endorsement"
@@ -408,6 +588,38 @@
     "ExpectedOutcome": {
       "additionalProperties": false,
       "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "enum": [
+                "STEP_PASS",
+                "READ_ONLY_UNGATED",
+                "SCOPE_TOOL_NOT_IN_CONTRACT",
+                "SCOPE_MANIFEST_MISMATCH",
+                "SCOPE_PARAM_NOT_IN_CONTRACT",
+                "IRREVERSIBLE_NOT_AUTHORIZED",
+                "ORIGIN_UNTRUSTED",
+                "ORIGIN_UNSOURCED",
+                "ORIGIN_LITERAL_MISMATCH",
+                "ORIGIN_SOURCE_MISMATCH",
+                "LEDGER_EXACT_MATCH",
+                "LEDGER_LOOKALIKE",
+                "LEDGER_NOVEL_ESCALATE",
+                "LEDGER_NOT_FOUND",
+                "CONF_READER_VIOLATION",
+                "CONF_URL_NOT_ALLOWED",
+                "BUDGET_AMOUNT",
+                "BUDGET_SENDS",
+                "BUDGET_EGRESS_BYTES",
+                "BUDGET_APPROVALS_EXHAUSTED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "deciding_check": {
           "anyOf": [
             {
@@ -437,7 +649,8 @@
       },
       "required": [
         "verdict",
-        "deciding_check"
+        "deciding_check",
+        "code"
       ],
       "title": "ExpectedOutcome",
       "type": "object"
@@ -471,6 +684,40 @@
       "title": "FreeMarker",
       "type": "object"
     },
+    "HijackedToolCallCommand": {
+      "additionalProperties": false,
+      "description": "Hijacked Mode: a judge submits a raw tool call; no LLM is involved.",
+      "properties": {
+        "args": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "call_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "type": {
+          "const": "hijacked_tool_call",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "call_id",
+        "tool",
+        "args"
+      ],
+      "title": "HijackedToolCallCommand",
+      "type": "object"
+    },
     "IntentContract": {
       "additionalProperties": false,
       "properties": {
@@ -480,11 +727,23 @@
           },
           "type": "array"
         },
+        "authorized_irreversible": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "budget": {
           "$ref": "#/$defs/EffectBudget"
         },
         "contract_id": {
           "type": "string"
+        },
+        "egress_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "user_intent": {
           "type": "string"
@@ -494,7 +753,9 @@
         "contract_id",
         "user_intent",
         "allowed_tools",
-        "budget"
+        "budget",
+        "egress_hosts",
+        "authorized_irreversible"
       ],
       "title": "IntentContract",
       "type": "object"
@@ -571,6 +832,9 @@
     "LedgerEntry": {
       "additionalProperties": false,
       "properties": {
+        "canonical": {
+          "type": "string"
+        },
         "entry_id": {
           "type": "string"
         },
@@ -578,6 +842,19 @@
           "type": "string"
         },
         "ledger": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/LedgerSource"
+        },
+        "unit": {
+          "enum": [
+            "iban",
+            "email",
+            "url_host",
+            "amount",
+            "identifier"
+          ],
           "type": "string"
         },
         "value": {
@@ -588,7 +865,10 @@
         "entry_id",
         "ledger",
         "key",
-        "value"
+        "value",
+        "unit",
+        "canonical",
+        "source"
       ],
       "title": "LedgerEntry",
       "type": "object"
@@ -625,6 +905,24 @@
       ],
       "title": "LedgerOrigin",
       "type": "object"
+    },
+    "LedgerSource": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UserAuthoredSource"
+        },
+        {
+          "$ref": "#/$defs/UserEndorsedSource"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "user_authored": "#/$defs/UserAuthoredSource",
+          "user_endorsed": "#/$defs/UserEndorsedSource"
+        },
+        "propertyName": "kind"
+      },
+      "title": "LedgerSource"
     },
     "LiteralMarker": {
       "additionalProperties": false,
@@ -721,15 +1019,23 @@
     "OracleResult": {
       "additionalProperties": false,
       "properties": {
+        "attacker_goal_reached": {
+          "type": "boolean"
+        },
         "invariants": {
           "items": {
             "$ref": "#/$defs/InvariantResult"
           },
           "type": "array"
+        },
+        "user_goal_achieved": {
+          "type": "boolean"
         }
       },
       "required": [
-        "invariants"
+        "invariants",
+        "attacker_goal_reached",
+        "user_goal_achieved"
       ],
       "title": "OracleResult",
       "type": "object"
@@ -737,6 +1043,14 @@
     "OracleUpdated": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "result": {
           "$ref": "#/$defs/OracleResult"
         },
@@ -754,6 +1068,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "result"
@@ -799,6 +1114,57 @@
       },
       "title": "Origin"
     },
+    "PoisonWorldCommand": {
+      "additionalProperties": false,
+      "description": "Poison-the-world: choose vector, payload and task, then run on the chosen lanes.",
+      "properties": {
+        "lanes": {
+          "items": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "payload": {
+          "type": "string"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "type": {
+          "const": "poison_world",
+          "type": "string"
+        },
+        "vector": {
+          "enum": [
+            "email",
+            "file",
+            "web",
+            "calendar",
+            "slack",
+            "tool_description"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "scenario",
+        "vector",
+        "payload",
+        "task",
+        "lanes"
+      ],
+      "title": "PoisonWorldCommand",
+      "type": "object"
+    },
     "Reason": {
       "additionalProperties": false,
       "properties": {
@@ -810,6 +1176,31 @@
             "corroboration",
             "confidentiality",
             "budget"
+          ],
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "STEP_PASS",
+            "READ_ONLY_UNGATED",
+            "SCOPE_TOOL_NOT_IN_CONTRACT",
+            "SCOPE_MANIFEST_MISMATCH",
+            "SCOPE_PARAM_NOT_IN_CONTRACT",
+            "IRREVERSIBLE_NOT_AUTHORIZED",
+            "ORIGIN_UNTRUSTED",
+            "ORIGIN_UNSOURCED",
+            "ORIGIN_LITERAL_MISMATCH",
+            "ORIGIN_SOURCE_MISMATCH",
+            "LEDGER_EXACT_MATCH",
+            "LEDGER_LOOKALIKE",
+            "LEDGER_NOVEL_ESCALATE",
+            "LEDGER_NOT_FOUND",
+            "CONF_READER_VIOLATION",
+            "CONF_URL_NOT_ALLOWED",
+            "BUDGET_AMOUNT",
+            "BUDGET_SENDS",
+            "BUDGET_EGRESS_BYTES",
+            "BUDGET_APPROVALS_EXHAUSTED"
           ],
           "type": "string"
         },
@@ -828,14 +1219,59 @@
       "required": [
         "check",
         "outcome",
+        "code",
         "detail"
       ],
       "title": "Reason",
       "type": "object"
     },
+    "ResolvedValue": {
+      "additionalProperties": false,
+      "description": "A stored value with its text (a `ValueRef` only carries a hash; the monitor needs text).",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/ValueRef"
+        },
+        "text": {
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "iban",
+                "email",
+                "url_host",
+                "amount",
+                "identifier"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "unit",
+        "text"
+      ],
+      "title": "ResolvedValue",
+      "type": "object"
+    },
     "RunFinished": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "outcome": {
           "enum": [
             "completed",
@@ -861,6 +1297,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "outcome",
@@ -872,8 +1309,26 @@
     "RunStarted": {
       "additionalProperties": false,
       "properties": {
+        "classifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "contract": {
           "$ref": "#/$defs/IntentContract"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
         },
         "run_id": {
           "type": "string"
@@ -892,12 +1347,43 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "scenario",
-        "contract"
+        "contract",
+        "classifier"
       ],
       "title": "RunStarted",
+      "type": "object"
+    },
+    "SessionState": {
+      "additionalProperties": false,
+      "properties": {
+        "approvals_used": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "effects_used": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "egress_bytes_used": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spent_cents": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "spent_cents",
+        "effects_used",
+        "egress_bytes_used",
+        "approvals_used"
+      ],
+      "title": "SessionState",
       "type": "object"
     },
     "SpanPointer": {
@@ -936,6 +1422,10 @@
         "call_id": {
           "type": "string"
         },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "tool": {
           "type": "string"
         }
@@ -943,6 +1433,7 @@
       "required": [
         "call_id",
         "tool",
+        "manifest_hash",
         "args"
       ],
       "title": "ToolCallProposal",
@@ -969,6 +1460,18 @@
     "ToolScope": {
       "additionalProperties": false,
       "properties": {
+        "effect": {
+          "enum": [
+            "read",
+            "write",
+            "irreversible"
+          ],
+          "type": "string"
+        },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "params": {
           "additionalProperties": {
             "$ref": "#/$defs/Marker"
@@ -981,9 +1484,43 @@
       },
       "required": [
         "tool",
-        "params"
+        "params",
+        "manifest_hash",
+        "effect"
       ],
       "title": "ToolScope",
+      "type": "object"
+    },
+    "UserAuthoredSource": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user_authored",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserAuthoredSource",
+      "type": "object"
+    },
+    "UserEndorsedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "endorsement_id": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "user_endorsed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "endorsement_id"
+      ],
+      "title": "UserEndorsedSource",
       "type": "object"
     },
     "UserOrigin": {
@@ -1003,6 +1540,17 @@
     "ValueLabeled": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
         "run_id": {
           "type": "string"
         },
@@ -1014,15 +1562,35 @@
           "const": "value_labeled",
           "type": "string"
         },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "iban",
+                "email",
+                "url_host",
+                "amount",
+                "identifier"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "value": {
           "$ref": "#/$defs/ValueRef"
         }
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
-        "value"
+        "value",
+        "unit",
+        "preview"
       ],
       "title": "ValueLabeled",
       "type": "object"

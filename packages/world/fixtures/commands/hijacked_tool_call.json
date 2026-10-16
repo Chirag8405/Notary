@@ -1,0 +1,10 @@
+{
+  "type": "hijacked_tool_call",
+  "run_id": "run-hijacked",
+  "call_id": "h1",
+  "tool": "pay_bill",
+  "args": {
+    "payee": "DE00ATTACKER0000000001",
+    "amount": "120.00"
+  }
+}

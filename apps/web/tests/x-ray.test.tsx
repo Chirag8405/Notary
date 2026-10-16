@@ -1,15 +1,18 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { XRayView } from "@/components/x-ray-view";
 import { cn } from "@/lib/utils";
 
-const dir = resolve(import.meta.dirname, "../../../packages/world/fixtures/events");
-const messages = readdirSync(dir)
-  .sort()
-  .map((name) => readFileSync(resolve(dir, name), "utf8"));
+const file = resolve(
+  import.meta.dirname,
+  "../../../packages/world/fixtures/streams/poisoned_bill.notary.json",
+);
+const messages = (JSON.parse(readFileSync(file, "utf8")) as unknown[]).map((event) =>
+  JSON.stringify(event),
+);
 
 class FakeSocket extends EventTarget {
   constructor() {
@@ -40,7 +43,7 @@ describe("web", () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText(/BLOCK for c2/)).toBeTruthy();
+      expect(screen.getByText(/ESCALATE for c2/)).toBeTruthy();
     });
     expect(screen.getByLabelText("Intent contract")).toBeTruthy();
   });

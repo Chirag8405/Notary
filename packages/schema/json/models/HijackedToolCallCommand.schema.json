@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Hijacked Mode: a judge submits a raw tool call; no LLM is involved.",
+  "properties": {
+    "args": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "call_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "type": {
+      "const": "hijacked_tool_call",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "run_id",
+    "call_id",
+    "tool",
+    "args"
+  ],
+  "title": "HijackedToolCallCommand",
+  "type": "object"
+}

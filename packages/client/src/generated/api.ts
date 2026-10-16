@@ -65,7 +65,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "direct_injection" | "argument_hijack" | "exfiltration" | "tool_poisoning" | "confused_deputy" | "ledger_poisoning" | "endorsement_abuse";
+            category: "instruction_override" | "authority_impersonation" | "data_only_poisoning" | "action_induction" | "exfiltration" | "staged_long_horizon" | "obfuscation" | "lookalike" | "trust_laundering" | "tool_poisoning" | "approval_phishing" | "side_channel" | "text_to_text_deception" | "denial_of_utility";
             expected: components["schemas"]["ExpectedOutcome"];
             /**
              * Id
@@ -79,6 +79,8 @@ export interface components {
         };
         /** ExpectedOutcome */
         ExpectedOutcome: {
+            /** Code */
+            code: ("STEP_PASS" | "READ_ONLY_UNGATED" | "SCOPE_TOOL_NOT_IN_CONTRACT" | "SCOPE_MANIFEST_MISMATCH" | "SCOPE_PARAM_NOT_IN_CONTRACT" | "IRREVERSIBLE_NOT_AUTHORIZED" | "ORIGIN_UNTRUSTED" | "ORIGIN_UNSOURCED" | "ORIGIN_LITERAL_MISMATCH" | "ORIGIN_SOURCE_MISMATCH" | "LEDGER_EXACT_MATCH" | "LEDGER_LOOKALIKE" | "LEDGER_NOVEL_ESCALATE" | "LEDGER_NOT_FOUND" | "CONF_READER_VIOLATION" | "CONF_URL_NOT_ALLOWED" | "BUDGET_AMOUNT" | "BUDGET_SENDS" | "BUDGET_EGRESS_BYTES" | "BUDGET_APPROVALS_EXHAUSTED") | null;
             /** Deciding Check */
             deciding_check: ("scope" | "irreversibility" | "origin" | "corroboration" | "confidentiality" | "budget") | null;
             /**

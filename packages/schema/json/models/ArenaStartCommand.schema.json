@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Attacker arena: an LLM attacker iterates `rounds` per lane.",
+  "properties": {
+    "lanes": {
+      "items": {
+        "enum": [
+          "undefended",
+          "classifier",
+          "notary"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rounds": {
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "seed": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "const": "arena_start",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "scenario",
+    "rounds",
+    "lanes",
+    "seed"
+  ],
+  "title": "ArenaStartCommand",
+  "type": "object"
+}

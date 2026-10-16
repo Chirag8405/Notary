@@ -3,6 +3,14 @@
     "CallProposed": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "proposal": {
           "$ref": "#/$defs/ToolCallProposal"
         },
@@ -20,6 +28,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "proposal"
@@ -30,6 +39,16 @@
     "Decision": {
       "additionalProperties": false,
       "properties": {
+        "diff_card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffCard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "reasons": {
           "items": {
             "$ref": "#/$defs/Reason"
@@ -47,7 +66,8 @@
       },
       "required": [
         "verdict",
-        "reasons"
+        "reasons",
+        "diff_card"
       ],
       "title": "Decision",
       "type": "object"
@@ -60,6 +80,14 @@
         },
         "decision": {
           "$ref": "#/$defs/Decision"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
         },
         "run_id": {
           "type": "string"
@@ -75,6 +103,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "call_id",
@@ -103,6 +132,12 @@
       "additionalProperties": false,
       "description": "One parameter of the proposed call, rendered from its label.",
       "properties": {
+        "differing_positions": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "integrity": {
           "enum": [
             "trusted",
@@ -110,6 +145,16 @@
             "endorsed"
           ],
           "type": "string"
+        },
+        "nearest_ledger_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "origin": {
           "$ref": "#/$defs/Origin"
@@ -129,7 +174,9 @@
         "value_id",
         "origin",
         "integrity",
-        "preview"
+        "preview",
+        "nearest_ledger_value",
+        "differing_positions"
       ],
       "title": "DiffRow",
       "type": "object"
@@ -137,6 +184,14 @@
     "EffectBudget": {
       "additionalProperties": false,
       "properties": {
+        "max_approvals": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_call_amount_cents": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "max_effects": {
           "minimum": 0,
           "type": "integer"
@@ -153,7 +208,9 @@
       "required": [
         "max_effects",
         "max_spend_cents",
-        "max_egress_bytes"
+        "max_egress_bytes",
+        "max_call_amount_cents",
+        "max_approvals"
       ],
       "title": "EffectBudget",
       "type": "object"
@@ -162,6 +219,14 @@
       "additionalProperties": false,
       "properties": {
         "call_id": {
+          "type": "string"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
           "type": "string"
         },
         "run_id": {
@@ -184,6 +249,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "call_id",
@@ -263,6 +329,14 @@
         "endorsement": {
           "$ref": "#/$defs/Endorsement"
         },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "run_id": {
           "type": "string"
         },
@@ -277,6 +351,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "endorsement"
@@ -364,11 +439,23 @@
           },
           "type": "array"
         },
+        "authorized_irreversible": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "budget": {
           "$ref": "#/$defs/EffectBudget"
         },
         "contract_id": {
           "type": "string"
+        },
+        "egress_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "user_intent": {
           "type": "string"
@@ -378,7 +465,9 @@
         "contract_id",
         "user_intent",
         "allowed_tools",
-        "budget"
+        "budget",
+        "egress_hosts",
+        "authorized_irreversible"
       ],
       "title": "IntentContract",
       "type": "object"
@@ -580,15 +669,23 @@
     "OracleResult": {
       "additionalProperties": false,
       "properties": {
+        "attacker_goal_reached": {
+          "type": "boolean"
+        },
         "invariants": {
           "items": {
             "$ref": "#/$defs/InvariantResult"
           },
           "type": "array"
+        },
+        "user_goal_achieved": {
+          "type": "boolean"
         }
       },
       "required": [
-        "invariants"
+        "invariants",
+        "attacker_goal_reached",
+        "user_goal_achieved"
       ],
       "title": "OracleResult",
       "type": "object"
@@ -596,6 +693,14 @@
     "OracleUpdated": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "result": {
           "$ref": "#/$defs/OracleResult"
         },
@@ -613,6 +718,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "result"
@@ -672,6 +778,31 @@
           ],
           "type": "string"
         },
+        "code": {
+          "enum": [
+            "STEP_PASS",
+            "READ_ONLY_UNGATED",
+            "SCOPE_TOOL_NOT_IN_CONTRACT",
+            "SCOPE_MANIFEST_MISMATCH",
+            "SCOPE_PARAM_NOT_IN_CONTRACT",
+            "IRREVERSIBLE_NOT_AUTHORIZED",
+            "ORIGIN_UNTRUSTED",
+            "ORIGIN_UNSOURCED",
+            "ORIGIN_LITERAL_MISMATCH",
+            "ORIGIN_SOURCE_MISMATCH",
+            "LEDGER_EXACT_MATCH",
+            "LEDGER_LOOKALIKE",
+            "LEDGER_NOVEL_ESCALATE",
+            "LEDGER_NOT_FOUND",
+            "CONF_READER_VIOLATION",
+            "CONF_URL_NOT_ALLOWED",
+            "BUDGET_AMOUNT",
+            "BUDGET_SENDS",
+            "BUDGET_EGRESS_BYTES",
+            "BUDGET_APPROVALS_EXHAUSTED"
+          ],
+          "type": "string"
+        },
         "detail": {
           "type": "string"
         },
@@ -687,6 +818,7 @@
       "required": [
         "check",
         "outcome",
+        "code",
         "detail"
       ],
       "title": "Reason",
@@ -695,6 +827,14 @@
     "RunFinished": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
         "outcome": {
           "enum": [
             "completed",
@@ -720,6 +860,7 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "outcome",
@@ -731,8 +872,26 @@
     "RunStarted": {
       "additionalProperties": false,
       "properties": {
+        "classifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "contract": {
           "$ref": "#/$defs/IntentContract"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
         },
         "run_id": {
           "type": "string"
@@ -751,10 +910,12 @@
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
         "scenario",
-        "contract"
+        "contract",
+        "classifier"
       ],
       "title": "RunStarted",
       "type": "object"
@@ -795,6 +956,10 @@
         "call_id": {
           "type": "string"
         },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "tool": {
           "type": "string"
         }
@@ -802,6 +967,7 @@
       "required": [
         "call_id",
         "tool",
+        "manifest_hash",
         "args"
       ],
       "title": "ToolCallProposal",
@@ -828,6 +994,18 @@
     "ToolScope": {
       "additionalProperties": false,
       "properties": {
+        "effect": {
+          "enum": [
+            "read",
+            "write",
+            "irreversible"
+          ],
+          "type": "string"
+        },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "params": {
           "additionalProperties": {
             "$ref": "#/$defs/Marker"
@@ -840,7 +1018,9 @@
       },
       "required": [
         "tool",
-        "params"
+        "params",
+        "manifest_hash",
+        "effect"
       ],
       "title": "ToolScope",
       "type": "object"
@@ -862,6 +1042,17 @@
     "ValueLabeled": {
       "additionalProperties": false,
       "properties": {
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
         "run_id": {
           "type": "string"
         },
@@ -873,15 +1064,35 @@
           "const": "value_labeled",
           "type": "string"
         },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "iban",
+                "email",
+                "url_host",
+                "amount",
+                "identifier"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "value": {
           "$ref": "#/$defs/ValueRef"
         }
       },
       "required": [
         "run_id",
+        "lane",
         "seq",
         "type",
-        "value"
+        "value",
+        "unit",
+        "preview"
       ],
       "title": "ValueLabeled",
       "type": "object"

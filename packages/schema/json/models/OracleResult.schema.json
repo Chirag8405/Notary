@@ -33,15 +33,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "attacker_goal_reached": {
+      "type": "boolean"
+    },
     "invariants": {
       "items": {
         "$ref": "#/$defs/InvariantResult"
       },
       "type": "array"
+    },
+    "user_goal_achieved": {
+      "type": "boolean"
     }
   },
   "required": [
-    "invariants"
+    "invariants",
+    "attacker_goal_reached",
+    "user_goal_achieved"
   ],
   "title": "OracleResult",
   "type": "object"

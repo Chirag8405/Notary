@@ -231,6 +231,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
+    },
+    "preview": {
+      "type": "string"
+    },
     "run_id": {
       "type": "string"
     },
@@ -242,15 +253,35 @@
       "const": "value_labeled",
       "type": "string"
     },
+    "unit": {
+      "anyOf": [
+        {
+          "enum": [
+            "iban",
+            "email",
+            "url_host",
+            "amount",
+            "identifier"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "value": {
       "$ref": "#/$defs/ValueRef"
     }
   },
   "required": [
     "run_id",
+    "lane",
     "seq",
     "type",
-    "value"
+    "value",
+    "unit",
+    "preview"
   ],
   "title": "ValueLabeled",
   "type": "object"

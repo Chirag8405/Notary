@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approvals_used": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "effects_used": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "egress_bytes_used": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "spent_cents": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "spent_cents",
+    "effects_used",
+    "egress_bytes_used",
+    "approvals_used"
+  ],
+  "title": "SessionState",
+  "type": "object"
+}

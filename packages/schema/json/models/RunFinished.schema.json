@@ -2,6 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
+    },
     "outcome": {
       "enum": [
         "completed",
@@ -27,6 +35,7 @@
   },
   "required": [
     "run_id",
+    "lane",
     "seq",
     "type",
     "outcome",

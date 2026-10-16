@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "endorsement_id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "user_endorsed",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "endorsement_id"
+  ],
+  "title": "UserEndorsedSource",
+  "type": "object"
+}

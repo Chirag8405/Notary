@@ -5,11 +5,11 @@ from typer.testing import CliRunner
 from notary_cli.main import app
 
 runner = CliRunner()
-EVENTS = Path(__file__).resolve().parents[2] / "world" / "fixtures" / "events"
+EVENTS = Path(__file__).resolve().parents[2] / "world" / "fixtures" / "streams"
 
 
 def test_replay_prints_typed_events() -> None:
-    result = runner.invoke(app, ["replay", str(EVENTS / "00_run_started.json")])
+    result = runner.invoke(app, ["replay", str(EVENTS / "poisoned_bill.notary.json")])
     assert result.exit_code == 0
     assert "run_started" in result.output
 

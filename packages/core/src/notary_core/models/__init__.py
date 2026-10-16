@@ -1,7 +1,17 @@
 """All NOTARY domain models. Pydantic is the single source of truth for types."""
 
+from notary_core.models.attack import (
+    ATTACK_CATEGORY as ATTACK_CATEGORY_IDS,
+)
 from notary_core.models.attack import AttackCase, AttackCategory, AttackId, ExpectedOutcome
 from notary_core.models.audit import AuditEntry, verify_chain
+from notary_core.models.commands import (
+    ArenaStartCommand,
+    Command,
+    EndorsementDecisionCommand,
+    HijackedToolCallCommand,
+    PoisonWorldCommand,
+)
 from notary_core.models.contract import (
     EffectBudget,
     EndorseMarker,
@@ -11,6 +21,7 @@ from notary_core.models.contract import (
     LiteralMarker,
     Marker,
     NamedSourceMarker,
+    ToolEffect,
     ToolScope,
 )
 from notary_core.models.decision import (
@@ -19,6 +30,7 @@ from notary_core.models.decision import (
     CheckOutcome,
     Decision,
     Reason,
+    ReasonCode,
     ToolCallProposal,
     Verdict,
 )
@@ -39,6 +51,7 @@ from notary_core.models.labels import (
     FileOrigin,
     Integrity,
     Label,
+    Lane,
     LedgerOrigin,
     LlmOrigin,
     NotaryModel,
@@ -56,11 +69,18 @@ from notary_core.models.ledger import (
     Endorsement,
     EndorsementStatus,
     LedgerEntry,
+    LedgerSource,
+    UserAuthoredSource,
+    UserEndorsedSource,
 )
 from notary_core.models.oracle import InvariantId, InvariantResult, OracleResult
+from notary_core.models.session import SessionState
+from notary_core.models.values import DecisionUnit, ResolvedValue
 
 __all__ = [
+    "ATTACK_CATEGORY_IDS",
     "CHECK_ORDER",
+    "ArenaStartCommand",
     "AttackCase",
     "AttackCategory",
     "AttackId",
@@ -68,8 +88,10 @@ __all__ = [
     "CallProposed",
     "CheckName",
     "CheckOutcome",
+    "Command",
     "Decision",
     "DecisionMade",
+    "DecisionUnit",
     "DiffCard",
     "DiffRow",
     "EffectBudget",
@@ -77,6 +99,7 @@ __all__ = [
     "EmailOrigin",
     "EndorseMarker",
     "Endorsement",
+    "EndorsementDecisionCommand",
     "EndorsementRequested",
     "EndorsementStatus",
     "Event",
@@ -84,14 +107,17 @@ __all__ = [
     "ExpectedOutcome",
     "FileOrigin",
     "FreeMarker",
+    "HijackedToolCallCommand",
     "Integrity",
     "IntentContract",
     "InvariantId",
     "InvariantResult",
     "Label",
+    "Lane",
     "LedgerEntry",
     "LedgerMarker",
     "LedgerOrigin",
+    "LedgerSource",
     "LiteralMarker",
     "LlmOrigin",
     "Marker",
@@ -100,14 +126,21 @@ __all__ = [
     "OracleResult",
     "OracleUpdated",
     "Origin",
+    "PoisonWorldCommand",
     "Reason",
+    "ReasonCode",
+    "ResolvedValue",
     "RunFinished",
     "RunStarted",
+    "SessionState",
     "Sha256Hex",
     "SpanPointer",
     "ToolCallProposal",
+    "ToolEffect",
     "ToolOrigin",
     "ToolScope",
+    "UserAuthoredSource",
+    "UserEndorsedSource",
     "UserOrigin",
     "ValueLabeled",
     "ValueRef",

@@ -1,0 +1,6 @@
+{
+  "type": "endorsement_decision",
+  "run_id": "run-poisoned_bill-notary",
+  "endorsement_id": "e1",
+  "decision": "reject"
+}

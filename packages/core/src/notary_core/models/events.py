@@ -6,13 +6,15 @@ from pydantic import Field
 
 from notary_core.models.contract import IntentContract
 from notary_core.models.decision import Decision, ToolCallProposal
-from notary_core.models.labels import NotaryModel, ValueRef
+from notary_core.models.labels import Lane, NotaryModel, ValueRef
 from notary_core.models.ledger import Endorsement
 from notary_core.models.oracle import OracleResult
+from notary_core.models.values import DecisionUnit
 
 
 class EventBase(NotaryModel):
     run_id: str
+    lane: Lane
     seq: Annotated[int, Field(ge=0)]
 
 
@@ -20,11 +22,16 @@ class RunStarted(EventBase):
     type: Literal["run_started"]
     scenario: str
     contract: IntentContract
+    classifier: str | None
+    """Classifier name on the classifier lane (label it a stand-in if it is); None otherwise."""
 
 
 class ValueLabeled(EventBase):
     type: Literal["value_labeled"]
     value: ValueRef
+    unit: DecisionUnit | None
+    preview: str
+    """Short text excerpt for the UI (the ValueRef itself only carries a hash)."""
 
 
 class CallProposed(EventBase):

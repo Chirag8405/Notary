@@ -70,7 +70,7 @@ def test_stubs_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         verify_chain([])
     with pytest.raises(NotImplementedError):
-        decide(None, None, {}, ())  # pyright: ignore[reportArgumentType]
+        decide(None, None, {}, (), None)  # pyright: ignore[reportArgumentType]
 
 
 def test_decision_type_exported() -> None:

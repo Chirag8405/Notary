@@ -13,6 +13,31 @@
       ],
       "type": "string"
     },
+    "code": {
+      "enum": [
+        "STEP_PASS",
+        "READ_ONLY_UNGATED",
+        "SCOPE_TOOL_NOT_IN_CONTRACT",
+        "SCOPE_MANIFEST_MISMATCH",
+        "SCOPE_PARAM_NOT_IN_CONTRACT",
+        "IRREVERSIBLE_NOT_AUTHORIZED",
+        "ORIGIN_UNTRUSTED",
+        "ORIGIN_UNSOURCED",
+        "ORIGIN_LITERAL_MISMATCH",
+        "ORIGIN_SOURCE_MISMATCH",
+        "LEDGER_EXACT_MATCH",
+        "LEDGER_LOOKALIKE",
+        "LEDGER_NOVEL_ESCALATE",
+        "LEDGER_NOT_FOUND",
+        "CONF_READER_VIOLATION",
+        "CONF_URL_NOT_ALLOWED",
+        "BUDGET_AMOUNT",
+        "BUDGET_SENDS",
+        "BUDGET_EGRESS_BYTES",
+        "BUDGET_APPROVALS_EXHAUSTED"
+      ],
+      "type": "string"
+    },
     "detail": {
       "type": "string"
     },
@@ -28,6 +53,7 @@
   "required": [
     "check",
     "outcome",
+    "code",
     "detail"
   ],
   "title": "Reason",

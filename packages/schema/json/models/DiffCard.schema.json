@@ -4,6 +4,12 @@
       "additionalProperties": false,
       "description": "One parameter of the proposed call, rendered from its label.",
       "properties": {
+        "differing_positions": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "integrity": {
           "enum": [
             "trusted",
@@ -11,6 +17,16 @@
             "endorsed"
           ],
           "type": "string"
+        },
+        "nearest_ledger_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "origin": {
           "$ref": "#/$defs/Origin"
@@ -30,7 +46,9 @@
         "value_id",
         "origin",
         "integrity",
-        "preview"
+        "preview",
+        "nearest_ledger_value",
+        "differing_positions"
       ],
       "title": "DiffRow",
       "type": "object"
