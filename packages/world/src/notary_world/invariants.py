@@ -11,19 +11,31 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 from notary_core.audit import verify_chain
+from notary_core.ledger import find_exact
 from notary_core.models import (
     DecisionMade,
     EffectExecuted,
     Event,
     InvariantId,
     InvariantResult,
+    LedgerEntry,
+    Marker,
+    ResolvedValue,
 )
+from notary_core.policy.sensitive_params import (
+    ParamPolicy,
+    PolicyTable,
+    effective_marker,
+    param_policy,
+)
+from notary_core.steps.origin import literal_text, origin_matches_source
+from notary_core.units import canonicalize
 from notary_world.executor import RunRecord, judged_tool_args
 from notary_world.state import (
     diff,
     state_hash,
 )
-from notary_world.tools import call, get_tool
+from notary_world.tools import call, get_tool, world_policy
 
 INVARIANT_DEFINITIONS: Mapping[InvariantId, str] = MappingProxyType(
     {
@@ -190,3 +202,51 @@ def check_i1(run: RunRecord) -> InvariantResult:
     if not _replay_matches(run):
         return _fail("I1", I1_REPLAY_MISMATCH)
     return _ok("I1")
+
+
+# I2
+
+
+def _admitted(
+    marker: Marker, policy: ParamPolicy, value: ResolvedValue, ledger: Sequence[LedgerEntry]
+) -> bool:
+    """Whether the stored value satisfies its guard; `endorsed` integrity never admits alone."""
+    label = value.ref.label
+    if marker.kind in ("ledger", "endorse"):
+        if label.integrity == "trusted":
+            return True
+        unit = policy.unit or "identifier"
+        name = marker.ledger if marker.kind == "ledger" else None
+        return find_exact(ledger, unit, canonicalize(unit, value.text).value, name) is not None
+    if marker.kind == "literal":
+        expected = literal_text(marker.value)
+        if policy.unit is None:
+            return value.text == expected
+        return (
+            canonicalize(policy.unit, value.text).value == canonicalize(policy.unit, expected).value
+        )
+    if marker.kind == "named_source":
+        return origin_matches_source(label.origin, marker.source) and label.integrity == "trusted"
+    return True
+
+
+def check_i2(run: RunRecord, policy: PolicyTable | None = None) -> InvariantResult:
+    """Integrity of guarded parameters, from what the monitor was given (not the record's copy)."""
+    table = world_policy() if policy is None else policy
+    for record in run.calls:
+        if record.status != "executed" or _is_read(record.tool):
+            continue
+        proposal = record.inputs.proposal
+        scope = next(
+            (s for s in record.inputs.contract.allowed_tools if s.tool == proposal.tool), None
+        )
+        stored = {v.ref.id: v for v in record.inputs.values}
+        for param, ref in sorted(proposal.args.items()):
+            value = stored.get(ref.id)
+            proposed = None if scope is None else scope.params.get(param)
+            marker = effective_marker(table, proposal.tool, param, proposed)
+            guard = param_policy(table, proposal.tool, param)
+            if value is None or not _admitted(marker, guard, value, record.inputs.ledger):
+                detail = I2_UNGUARDED.format(call_id=_safe(record.call_id), param=_safe(param))
+                return _fail("I2", detail)
+    return _ok("I2")
