@@ -91,7 +91,7 @@ _ENDORSED_IDENTIFIER_PARAMS: Mapping[str, DecisionUnit] = {
     "email": "email",
 }
 _PAYMENT = {
-    "payee": _destination("iban", "payees"),
+    "payee": ParamPolicy(unit="iban", floor=_ENDORSE, kind="destination"),
     "amount": ParamPolicy(unit="amount", floor=_FREE, kind="amount"),
     "reference": _PAYLOAD,
 }

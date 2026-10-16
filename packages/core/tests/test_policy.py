@@ -1,20 +1,30 @@
 """Policy machinery (#52): floors cannot be relaxed, unknown tools and params fail closed."""
 
+from collections.abc import Callable
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from notary_core.models import (
+    Decision,
     DecisionUnit,
     EndorseMarker,
     FreeMarker,
+    IntentContract,
+    LedgerEntry,
     LedgerMarker,
     LiteralMarker,
     Marker,
     NamedSourceMarker,
+    ResolvedValue,
+    SessionState,
+    ToolCallProposal,
     ToolEffect,
+    ToolScope,
 )
+from notary_core.monitor import decide
 from notary_core.policy.sensitive_params import (
     DEFAULT_POLICY,
     EFFECT_STRICTNESS,
@@ -207,12 +217,115 @@ def _manifests_for(table: PolicyTable) -> list[ManifestInfo]:
 
 
 @pytest.mark.invariant("I2")
-def test_default_policy_marks_payee_as_ledger_floor() -> None:
+def test_default_policy_marks_payee_as_endorse_floor() -> None:
     floor = param_policy(DEFAULT_POLICY, "send_money", "payee").floor
-    assert floor == LedgerMarker(kind="ledger", ledger="payees")
+    assert floor == EndorseMarker(kind="endorse")
     assert param_policy(DEFAULT_POLICY, "pay_bill", "payee") == param_policy(
         DEFAULT_POLICY, "send_money", "payee"
     )
+
+
+PAYEE_LEDGER = LedgerMarker(kind="ledger", ledger="payees")
+PAYEE_ENDORSE = EndorseMarker(kind="endorse")
+ACME = "DE00ACME00000000000001"
+ACME_LOOKALIKE = "DE00ACME00000000000002"
+STRANGER = "DE00OTHER0000000000009"
+
+
+def _pay_decision(
+    payee: str,
+    marker: Marker,
+    make_value: Callable[..., ResolvedValue],
+    make_scope: Callable[..., ToolScope],
+    make_contract: Callable[..., IntentContract],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_ledger_entry: Callable[..., LedgerEntry],
+    make_session: Callable[..., SessionState],
+) -> Decision:
+    """`decide` with the default table on a `pay_bill` whose payee came from an untrusted email."""
+    payee_value = make_value("v-payee", payee, unit="iban", origin="email", integrity="untrusted")
+    amount = make_value("v-amount", "120.00", unit="amount")
+    known = make_value("v-known", ACME, unit="iban", origin="ledger", integrity="trusted")
+    scope = make_scope(
+        "pay_bill",
+        effect="irreversible",
+        params={"payee": marker, "amount": FreeMarker(kind="free")},
+    )
+    return decide(
+        make_contract(tools=(scope,), authorized_irreversible=("pay_bill",)),
+        make_proposal("pay_bill", payee=payee_value, amount=amount),
+        {payee_value.ref.id: payee_value, amount.ref.id: amount},
+        (make_ledger_entry(known, "iban", ACME),),
+        make_session(),
+    )
+
+
+@pytest.mark.attack("A3")
+@pytest.mark.invariant("I2")
+def test_payee_floor_lets_the_contract_endorse_but_not_relax_further() -> None:
+    assert effective_marker(DEFAULT_POLICY, "pay_bill", "payee", PAYEE_ENDORSE) == PAYEE_ENDORSE
+    assert effective_marker(DEFAULT_POLICY, "send_money", "payee", PAYEE_LEDGER) == PAYEE_LEDGER
+    assert effective_marker(DEFAULT_POLICY, "pay_bill", "payee", FreeMarker(kind="free")) == (
+        PAYEE_ENDORSE
+    )
+    assert effective_marker(DEFAULT_POLICY, "pay_bill", "payee", None) == PAYEE_ENDORSE
+
+
+@pytest.mark.attack("A3")
+@pytest.mark.invariant("I2")
+def test_novel_payee_escalates_under_an_endorse_marker(
+    make_value: Callable[..., ResolvedValue],
+    make_scope: Callable[..., ToolScope],
+    make_contract: Callable[..., IntentContract],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_ledger_entry: Callable[..., LedgerEntry],
+    make_session: Callable[..., SessionState],
+) -> None:
+    args = (make_value, make_scope, make_contract, make_proposal, make_ledger_entry, make_session)
+    novel = _pay_decision(STRANGER, PAYEE_ENDORSE, *args)
+    assert novel.verdict == "ESCALATE"
+    assert novel.diff_card is not None
+    assert [(r.check, r.code) for r in novel.reasons if r.outcome == "escalate"] == [
+        ("corroboration", "LEDGER_NOVEL_ESCALATE")
+    ]
+    known = _pay_decision(ACME, PAYEE_ENDORSE, *args)
+    assert known.verdict == "ALLOW"
+    assert any(r.code == "LEDGER_EXACT_MATCH" for r in known.reasons)
+
+
+@pytest.mark.attack("A8")
+@pytest.mark.invariant("I2")
+def test_lookalike_payee_is_still_blocked_under_an_endorse_marker(
+    make_value: Callable[..., ResolvedValue],
+    make_scope: Callable[..., ToolScope],
+    make_contract: Callable[..., IntentContract],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_ledger_entry: Callable[..., LedgerEntry],
+    make_session: Callable[..., SessionState],
+) -> None:
+    args = (make_value, make_scope, make_contract, make_proposal, make_ledger_entry, make_session)
+    decision = _pay_decision(ACME_LOOKALIKE, PAYEE_ENDORSE, *args)
+    assert decision.verdict == "BLOCK"
+    assert (decision.reasons[-1].check, decision.reasons[-1].code) == (
+        "corroboration",
+        "LEDGER_LOOKALIKE",
+    )
+
+
+@pytest.mark.attack("A3")
+@pytest.mark.invariant("I2")
+def test_a_ledger_marker_still_blocks_a_novel_payee(
+    make_value: Callable[..., ResolvedValue],
+    make_scope: Callable[..., ToolScope],
+    make_contract: Callable[..., IntentContract],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_ledger_entry: Callable[..., LedgerEntry],
+    make_session: Callable[..., SessionState],
+) -> None:
+    args = (make_value, make_scope, make_contract, make_proposal, make_ledger_entry, make_session)
+    decision = _pay_decision(STRANGER, PAYEE_LEDGER, *args)
+    assert decision.verdict == "BLOCK"
+    assert decision.reasons[-1].code == "LEDGER_NOT_FOUND"
 
 
 @pytest.mark.invariant("I2")
@@ -294,7 +407,7 @@ def test_render_markdown_is_deterministic_and_sorted() -> None:
     rows = [tuple(cell.strip() for cell in line.strip("|").split("|")) for line in lines[2:]]
     assert rows == sorted(rows, key=lambda row: (row[0], row[2]))
     assert len(rows) == sum(len(tool.params) for tool in DEFAULT_POLICY.values())
-    assert ("send_money", "irreversible", "payee", "iban", "ledger(payees)", "destination") in rows
+    assert ("send_money", "irreversible", "payee", "iban", "endorse", "destination") in rows
     assert ("send_email", "write", "body", "None", "free", "payload") in rows
 
 

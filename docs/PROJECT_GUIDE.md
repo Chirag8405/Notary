@@ -123,7 +123,7 @@ Tool **effect classes**: `read` (no side effect and no outbound channel), `write
 
 `policy/sensitive_params.py`, `DEFAULT_POLICY`. Hand-written and reviewed. For every tool it lists each parameter with a **floor marker**, a **decision unit** and a **kind** (`destination | payload | amount | identifier | other`). Examples:
 
-- `pay_bill.payee`: unit `iban`, floor `ledger(payees)`, kind destination.
+- `pay_bill.payee` / `send_money.payee`: unit `iban`, floor `endorse`, kind destination (a contract may tighten it to `ledger(payees)`; with `endorse` a novel payee ESCALATEs with a diff card).
 - `send_email.to` / `cc`: unit `email`, floor `ledger(contacts)`.
 - `delete_email.message_id`, `add_contact.*`: floor `endorse`.
 - `body`, `subject`, `text`, `amount`: floor `free` (payload / amount).
