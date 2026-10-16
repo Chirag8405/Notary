@@ -6,6 +6,7 @@ from notary_core.pipeline import Step, StepInput
 from notary_core.steps.budget import check_budget
 from notary_core.steps.confidentiality import check_confidentiality
 from notary_core.steps.irreversibility import check_irreversibility
+from notary_core.steps.origin import check_origin
 from notary_core.steps.scope import check_scope
 
 
@@ -17,7 +18,7 @@ def not_implemented_step(inp: StepInput) -> StepOutcome | None:
 STEPS: tuple[tuple[CheckName, Step], ...] = (
     ("scope", check_scope),
     ("irreversibility", check_irreversibility),
-    ("origin", not_implemented_step),
+    ("origin", check_origin),
     ("corroboration", not_implemented_step),
     ("confidentiality", check_confidentiality),
     ("budget", check_budget),
