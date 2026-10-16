@@ -85,7 +85,7 @@ Each reported per bucket: fully-specified, parameter-open, action-open.
 
 ### Invariant fuzzing
 
-Hypothesis feeds the monitor thousands of random tool-call sequences from a fully adversarial "LLM" against seeded worlds and asserts I1-I5 after every step. Zero violations is the repeatable proof artifact (`notary fuzz`).
+Hypothesis (harness in `packages/world`) feeds the monitor thousands of random tool-call sequences from a fully adversarial "LLM" against seeded worlds and asserts I1-I5 after every step. Zero violations is the repeatable proof artifact (`notary fuzz`).
 
 ### Where to run
 
@@ -95,19 +95,21 @@ Organizer sandbox first; AgentDojo banking and Slack suites if allowed (`package
 
 Every A and I ID maps to a test or package. "planned" means the test does not exist yet.
 
-| ID                        | Covered by                                                      | Path                                                                                            | Status                     |
-| ------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------- |
-| I1                        | gateway mediation test; fuzz after each step                    | `packages/mcp-proxy/tests/` , `packages/core/tests/test_invariants_fuzz.py`                     | planned                    |
-| I2                        | fuzz + monitor unit tests (steps 3-4)                           | `packages/core/tests/test_invariants_fuzz.py`, `packages/core/tests/test_monitor.py`            | planned                    |
-| I3                        | fuzz + monitor unit tests (step 5)                              | same as I2                                                                                      | planned                    |
-| I4                        | ledger write-path tests                                         | `packages/core/tests/test_ledger.py`                                                            | planned                    |
-| I5                        | contract immutability: frozen models; widening attempts in fuzz | `packages/core/tests/test_models.py` (frozen check exists); fuzz planned                        | partial                    |
-| I6                        | Hijacked Mode runner + fuzz over arbitrary sequences            | `packages/world/tests/`, `packages/cli/tests/`                                                  | planned                    |
-| Core purity (supports I6) | static scan of `notary_core` imports                            | `packages/core/tests/test_core_purity.py`                                                       | exists                     |
-| Event contract            | Python -> JSON -> Zod round trip                                | `packages/schema/tests/roundtrip.test.ts`, `packages/world/tests/test_fixtures.py`              | exists                     |
-| A1-A14                    | one replayed attack per ID against the monitor                  | `packages/world/fixtures/attacks.json` (data), `packages/world/tests/test_attacks.py` (planned) | data exists; tests planned |
-| A10                       | pin drift rejection                                             | `packages/mcp-proxy/tests/`                                                                     | planned                    |
-| A13                       | Output Guard sentence labels                                    | `packages/core/tests/test_output_guard.py`                                                      | planned                    |
+| ID                        | Covered by                                                       | Path                                                                                                       | Status                     |
+| ------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------- |
+| I1                        | gateway mediation test; fuzz after each step                     | `packages/mcp-proxy/tests/test_gateway_mediation.py`, `packages/world/tests/test_invariants_fuzz.py`       | planned                    |
+| I2                        | fuzz + monitor unit tests (steps 3-4)                            | `packages/world/tests/test_invariants_fuzz.py`, `packages/core/tests/test_monitor.py`                      | planned                    |
+| I3                        | fuzz + monitor unit tests (step 5)                               | same as I2                                                                                                 | planned                    |
+| I4                        | ledger closure tests; endorsement flow                           | `packages/core/tests/test_ledger.py`, `apps/server/tests/test_endorsement.py`                              | planned                    |
+| I5                        | contract immutability: frozen models; widening attempts in fuzz  | `packages/core/tests/test_models.py` (frozen check exists); `packages/world/tests/test_invariants_fuzz.py` | partial; fuzz planned      |
+| I6                        | Hijacked Mode runner + fuzz over arbitrary sequences             | `packages/world/tests/`, `packages/cli/tests/`                                                             | planned                    |
+| Oracle (I1-I6 predicates) | oracle diffs world state; attacker-goal and user-goal predicates | `packages/world/tests/test_oracle.py`                                                                      | planned                    |
+| Audit chain               | hash chain verifies and detects tampering                        | `packages/core/tests/test_audit.py`                                                                        | planned                    |
+| Core purity (supports I6) | static scan of `notary_core` imports                             | `packages/core/tests/test_core_purity.py`                                                                  | exists                     |
+| Event contract            | Python -> JSON -> Zod round trip                                 | `packages/schema/tests/roundtrip.test.ts`, `packages/world/tests/test_fixtures.py`                         | exists                     |
+| A1-A14                    | one replayed attack per ID against the monitor                   | `packages/world/fixtures/attacks.json` (data), `packages/world/tests/test_attacks.py`                      | data exists; tests planned |
+| A10                       | pin drift rejection                                              | `packages/mcp-proxy/tests/test_pinning.py`                                                                 | planned                    |
+| A13                       | Output Guard sentence labels (pure logic in `core`)              | `packages/core/tests/test_output_guard.py`                                                                 | planned                    |
 
 ## Honest limitations
 

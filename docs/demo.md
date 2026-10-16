@@ -21,6 +21,14 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 | Right  | decision stream: one row per decision with argument origin chips, verdict, reason, hash link                                                                                                                                              |
 | Bottom | world state + oracle: before/after diff and two lights, user goal achieved and attacker goal achieved                                                                                                                                     |
 
+Lanes are configurations of one agent runner ([architecture.md](architecture.md#components)):
+
+| Lane            | Configuration                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Undefended      | no hooks                                                                                                                                       |
+| Classifier-only | pre-filter `ClassifierFilter`; classifier: TBD, see [phase.md P0b](phase.md#p0b-contract-freeze--stubs). Labeled in the UI if it is a stand-in |
+| NOTARY          | Gateway + monitor                                                                                                                              |
+
 Supporting views: Content Inspector; three-lane split (Undefended / Classifier-only / NOTARY); Endorsement card (value, source span, nearest ledger entry with differing chars highlighted, remaining approval budget); Replay scrubber.
 
 ## Judge playground
@@ -57,8 +65,10 @@ Timestamps are approximate; rehearse and adjust.
 - [ ] Stage run replays byte-identically (cassette hash matches)
 - [ ] `pnpm turbo run lint typecheck test build` and `pnpm schema:check` green on the demo commit
 - [ ] `notary fuzz` result for the commit saved
-- [ ] Docker images built offline; compose starts with no network
-- [ ] Deployed instance reachable; offline fallback tested
+- [ ] Offline `docker compose up` works with no network
+- [ ] Recorded-run video and screenshots present
+- [ ] Public deploy reachable
+- [ ] Each lane labeled in the UI (including any stand-in classifier)
 - [ ] Browser zoom, projector resolution and font sizes checked
 - [ ] Hijacked Mode objective cards verified against the oracle
 - [ ] Evaluation numbers on the slides match the latest eval export

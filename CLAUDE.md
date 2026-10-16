@@ -66,7 +66,7 @@ Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherw
 - `docs/architecture.md` — components, monitor decision order, invariants I1-I6, event contract
 - `docs/threat-model.md` — attacks A1-A14, prior art, verification plan, limitations
 - `docs/demo.md` — determinism, Trust X-ray, judge playground, stage script
-- `docs/phase.md` — build phases P0-P7, cut line, risks
+- `docs/phase.md` — build phases P0, P0b, P1, P2, P3a-P3d, P4-P7, cut line, risks
 - `docs/decisions.md` — tool/design choices and conventions
 
 When behavior, invariants, event types or package boundaries change, update the relevant doc in the same commit.

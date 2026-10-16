@@ -11,7 +11,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P0    | Foundations                                                                                | all            | -                                                   | -                                     | TBD  | done              |
 | P0b   | Contract freeze + stubs                                                                    | all (A drafts) | P0                                                  | -                                     | TBD  | next (first hour) |
 | P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | TBD  | after P0b         |
-| P2    | World, attacks, oracle, fuzz, Hijacked Mode, Classifier-only baseline, CLI                 | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | TBD  | not started       |
+| P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | TBD  | not started       |
 | P3a   | Deterministic pipeline: pure Gateway logic, Value Store, gateway I/O adapter, Output Guard | A              | P0b (Gateway/Value Store interfaces), P1 models     | P1 monitor, P3b (CP2)                 | TBD  | not started       |
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | TBD  | not started       |
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | TBD  | not started       |
@@ -25,7 +25,7 @@ Start immediately after P0b, in parallel: P1, P2 (fixtures, oracle, fuzz harness
 
 **Critical path:** the monitor (P1) is the only critical-path item for correctness. Everything else runs in parallel behind the frozen contracts and rejoins at the checkpoints below.
 
-**Cut line** (drop first, in order): attacker arena (P5) -> Output Guard polish (P3a) and Quarantined Extractor (P3b) -> replay scrubber (P5) -> AgentDojo suites beyond banking (P6) -> MCP proxy clip (P6) -> second non-Claude model (P7). Never cut: monitor, fuzz harness, Hijacked Mode, X-ray decision stream, oracle lights, baseline lanes (stage-script steps 1-2 depend on them).
+**Cut line** (drop first, in order): attacker arena (P5) -> Output Guard polish (P3a, first thing cut) and Quarantined Extractor (P3b) -> replay scrubber (P5) -> AgentDojo suites beyond banking (P6) -> MCP proxy clip (P6) -> second non-Claude model (P7). Never cut: monitor, fuzz harness, Hijacked Mode, X-ray decision stream, oracle lights, baseline lanes (stage-script steps 1-2 depend on them).
 
 ## Workstreams
 
@@ -64,7 +64,8 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
   - [ ] Intent Contract and value labels carried in events (`run_started`, `value_labeled`), so UI panels need no other source
   - [ ] Client -> server command messages: endorsement approve/reject, Hijacked Mode raw tool call, Poison-the-world config, attacker-arena start
   - [ ] Pure Gateway and Value Store interfaces: label the fields of a tool result into value refs; store/lookup API
-  - [ ] Attack-case and fixture format; cassette format
+  - [ ] `AgentRunner` interface with two hook points: (a) a pre-filter applied to tool results before the agent sees them; (b) the Gateway/monitor hook. Lanes are configurations of one runner: Undefended = no hooks; Classifier-only = `ClassifierFilter` (supplied by lane B); NOTARY = Gateway + monitor
+  - [ ] Attack-case and fixture format; cassette format, with the lane as part of the cassette key (each lane has its own recordings)
 - [ ] `FakeMonitor` returning each fixture's expected verdict; test-support only, lives in `packages/world`, never imported by `core`
 - [ ] `FakeGateway` stub (test-support, lives in `packages/world`, never imported by `core`)
 - [ ] Name the classifier used for the Classifier-only baseline; document it in `docs/demo.md` and here. If a stand-in, label it in the UI
@@ -95,11 +96,11 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [ ] Oracle in `packages/world`: I1-I6 plus attacker-goal and user-goal predicates; it diffs world state, `core` stays pure and only holds the `OracleResult` model
 - [ ] Hypothesis fuzz harness asserting I1-I5 after every step (runs against `FakeMonitor` until CP1)
 - [ ] Hijacked Mode runner (raw tool calls, no LLM)
-- [ ] **Classifier-only** baseline lane (lane B owns the evals that compare lanes). Classifier: see P0b. Built on the cassette format until P3b's runner lands
+- [ ] **Classifier-only** baseline: lane B owns the `ClassifierFilter` (a pure function from content to filtered content plus flags; classifier: see P0b) and its eval wrapper. It plugs into lane C's runner through the frozen pre-filter hook and needs no agent loop of its own
 - [ ] `notary replay`, `notary fuzz`, `notary attack` implemented (`bench` may stay stubbed)
 - Accept: `cd packages/world && uv run pytest`; `uv run notary attack --list` prints A1-A14; after CP1, `uv run notary fuzz` reports zero violations
-- Accept (baseline): the Classifier-only lane reproduces the swapped-IBAN loss
-- Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the baseline lands.
+- Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
+- Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.
 
 ## P3a Deterministic pipeline (lane A)
 
@@ -107,7 +108,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [ ] Gateway: pure labeling and field-splitting logic
 - [ ] Value Store
 - [ ] Gateway I/O adapter in `packages/mcp-proxy` (calls the pure logic in `core`), after the pure logic; lane C consumes it
-- [ ] Output Guard (A13); pure sentence-provenance logic in `core`
+- [ ] Output Guard (A13); pure sentence-provenance logic in `core`. Last: after CP2; not needed for stage-script steps 1-5; first thing cut
 - Needs P0b interfaces and P1 models.
 - Accept: unit tests citing I/A IDs; a test that no value reaches the monitor unlabeled; a gateway test proving no effect occurs outside the adapter (I1)
 - Demo-able: terminal-level poisoned-bill run through the real Gateway and monitor.
@@ -117,10 +118,10 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Packages: `apps/server`
 - [ ] Intent Compiler
 - [ ] Quarantined Extractor (optional)
-- [ ] Agent runner on the Anthropic SDK, hand-written tool loop; tool calls go through the P3a adapter once it lands
+- [ ] Agent runner on the Anthropic SDK, hand-written tool loop; implements the `AgentRunner` hooks (pre-filter, Gateway/monitor) so all three lanes run on it; tool calls go through the P3a adapter once it lands
 - [ ] Cassette record/replay keyed by prompt hash
 - [ ] **Undefended** baseline agent (the Classifier-only baseline is in P2)
-- Needs P0b only (incl. `FakeMonitor`, `FakeGateway`); uses them until P1 and P3a land.
+- Needs P0b only (incl. `FakeMonitor`, `FakeGateway`, `AgentRunner` hooks); uses the fakes until P1 and P3a land.
 - Accept: cassette replay twice gives byte-identical event streams; the Undefended lane reproduces the swapped-IBAN loss
 - Demo-able: stage-script step 1.
 
