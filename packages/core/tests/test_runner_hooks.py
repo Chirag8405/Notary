@@ -1,6 +1,6 @@
 import pytest
 
-from notary_core.gateway import ToolResult, label_tool_result
+from notary_core.gateway import ToolResult
 from notary_core.monitor import decide
 from notary_core.runner import FilteredResult, hooks_for_lane
 
@@ -37,8 +37,3 @@ def test_notary_lane_needs_a_gate_and_no_pre_filter() -> None:
         hooks_for_lane("notary")
     with pytest.raises(ValueError, match="lane"):
         hooks_for_lane("notary", gate=decide, classifier_filter=_filter)
-
-
-def test_gateway_labeling_is_a_stub_until_p3a() -> None:
-    with pytest.raises(NotImplementedError):
-        label_tool_result(ToolResult(tool="t", record_id="r", fields=()), readers=())
