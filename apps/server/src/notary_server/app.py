@@ -1,16 +1,18 @@
 """FastAPI application: REST for metadata, WebSocket for the typed event stream."""
 
+import json
 from collections.abc import Mapping
-from typing import Literal
+from typing import Annotated, Literal
 
 import anyio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import ValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BeforeValidator, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnected
 
-from notary_core.models import AttackCase, NotaryModel
+from notary_core.models import AttackCase, NotaryModel, PoisonWorldCommand
 from notary_server.commands import (
     CLOSE_BAD_REQUEST,
     CLOSE_MODE_UNAVAILABLE,
@@ -18,6 +20,13 @@ from notary_server.commands import (
     CommandContext,
     CommandRejected,
     CommandRouter,
+)
+from notary_server.playground import (
+    AttackRunResponse,
+    LaneRunner,
+    PlaygroundError,
+    PlaygroundService,
+    PoisonResponse,
 )
 from notary_server.runner import scenario_names
 from notary_server.sources import RunMode, RunRequest, RunSource, default_sources
@@ -33,6 +42,20 @@ class Health(NotaryModel):
 
 class ScenarioList(NotaryModel):
     scenarios: tuple[str, ...]
+
+
+def _command_from_json(value: object) -> object:
+    """Validate a decoded JSON body the way the socket does (JSON mode), not as Python objects.
+
+    The command models are strict, and strict Python-mode validation rejects a JSON array for
+    a tuple field such as `lanes`. Re-encoding keeps the contract's own rules and its 422.
+    """
+    if isinstance(value, dict):
+        return PoisonWorldCommand.model_validate_json(json.dumps(value))
+    return value
+
+
+PoisonBody = Annotated[PoisonWorldCommand, BeforeValidator(_command_from_json)]
 
 
 class ModeList(NotaryModel):
@@ -93,14 +116,16 @@ def create_app(
     event_delay: float = EVENT_DELAY_SECONDS,
     sources: Mapping[RunMode, RunSource] | None = None,
     router: CommandRouter | None = None,
+    lane_runner: LaneRunner | None = None,
 ) -> FastAPI:
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
+    playground = PlaygroundService(lane_runner)
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -119,6 +144,18 @@ def create_app(
     @app.get("/runs/modes", operation_id="listRunModes")
     def run_modes() -> ModeList:
         return ModeList(modes=tuple(sorted(run_sources)))
+
+    @app.exception_handler(PlaygroundError)
+    def playground_error(_request: Request, error: PlaygroundError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.post("/playground/poison", operation_id="poisonWorld")
+    def poison_world(command: PoisonBody) -> PoisonResponse:
+        return playground.poison(command)
+
+    @app.post("/playground/attacks/{attack_id}/run", operation_id="runAttack")
+    def run_attack(attack_id: str) -> AttackRunResponse:
+        return playground.run_attack(attack_id)
 
     @app.websocket("/ws/runs/{scenario}")
     async def run_stream(

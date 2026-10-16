@@ -134,6 +134,12 @@ Run socket: `WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<go
 
 Command checks run in this order: valid command (4400), run started (4409), supported type and handler (4422), same run (4409).
 
+Playground endpoints (synchronous REST, `notary_server.playground`; CORS allows `GET` and `POST` from the web app):
+
+- `POST /playground/poison` [`poisonWorld`]: body is a `PoisonWorldCommand`. Validation order: payload over 2000 characters, empty or repeated `lanes`, a `PoisonError` from the world (for example `unsupported vector: web`), then `501 lane runner not configured` when no `LaneRunner` was injected into `create_app`. Each lane runs in the order given on a scenario rebuilt per request (seed 0) and the response carries the events and the goal lights of the last `oracle_updated` per lane. A runner exception is not caught.
+- `POST /playground/attacks/{attack_id}/run` [`runAttack`]: `A1`-`A14` or `B1`-`B4` (case-insensitive) replayed through the real monitor with the oracle; unknown id is `404 unknown attack id`. `ok` and `checks` report what the monitor did, so a mismatch is never hidden.
+- Errors are `{"detail": ...}`; a malformed body is FastAPI's own 422.
+
 - Defined in Pydantic: [`events.py`](../packages/core/src/notary_core/models/events.py), [`commands.py`](../packages/core/src/notary_core/models/commands.py)
 - Generated JSON Schema: [`packages/schema/json/`](../packages/schema/json)
 - Generated TS types and Zod: [`packages/schema/src/generated/`](../packages/schema/src/generated)

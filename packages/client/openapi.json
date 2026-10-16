@@ -66,6 +66,566 @@
         "title": "AttackCase",
         "type": "object"
       },
+      "AttackRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attack_id": {
+            "title": "Attack Id",
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckSummary"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "deferred": {
+            "title": "Deferred",
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "call_proposed": "#/components/schemas/CallProposed",
+                  "decision_made": "#/components/schemas/DecisionMade",
+                  "effect_executed": "#/components/schemas/EffectExecuted",
+                  "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "oracle_updated": "#/components/schemas/OracleUpdated",
+                  "run_finished": "#/components/schemas/RunFinished",
+                  "run_started": "#/components/schemas/RunStarted",
+                  "value_labeled": "#/components/schemas/ValueLabeled"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RunStarted"
+                },
+                {
+                  "$ref": "#/components/schemas/ValueLabeled"
+                },
+                {
+                  "$ref": "#/components/schemas/CallProposed"
+                },
+                {
+                  "$ref": "#/components/schemas/DecisionMade"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EffectExecuted"
+                },
+                {
+                  "$ref": "#/components/schemas/OracleUpdated"
+                },
+                {
+                  "$ref": "#/components/schemas/RunFinished"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "oracle": {
+            "$ref": "#/components/schemas/OracleResult"
+          }
+        },
+        "required": [
+          "attack_id",
+          "name",
+          "ok",
+          "deferred",
+          "checks",
+          "oracle",
+          "events"
+        ],
+        "title": "AttackRunResponse",
+        "type": "object"
+      },
+      "CallProposed": {
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ToolCallProposal"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "call_proposed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "proposal"
+        ],
+        "title": "CallProposed",
+        "type": "object"
+      },
+      "CheckSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpectedOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/ExpectedOutcome"
+          },
+          "matches": {
+            "title": "Matches",
+            "type": "boolean"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "tool",
+          "expected",
+          "actual",
+          "matches"
+        ],
+        "title": "CheckSummary",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "properties": {
+          "diff_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiffCard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "ESCALATE",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "reasons",
+          "diff_card"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionMade": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "decision_made",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "call_id",
+          "decision"
+        ],
+        "title": "DecisionMade",
+        "type": "object"
+      },
+      "DiffCard": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DiffRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "DiffCard",
+        "type": "object"
+      },
+      "DiffRow": {
+        "additionalProperties": false,
+        "description": "One parameter of the proposed call, rendered from its label.",
+        "properties": {
+          "differing_positions": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Differing Positions",
+            "type": "array"
+          },
+          "integrity": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "endorsed"
+            ],
+            "title": "Integrity",
+            "type": "string"
+          },
+          "nearest_ledger_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Ledger Value"
+          },
+          "origin": {
+            "discriminator": {
+              "mapping": {
+                "email": "#/components/schemas/EmailOrigin",
+                "file": "#/components/schemas/FileOrigin",
+                "ledger": "#/components/schemas/LedgerOrigin",
+                "llm": "#/components/schemas/LlmOrigin",
+                "tool": "#/components/schemas/ToolOrigin",
+                "user": "#/components/schemas/UserOrigin",
+                "web": "#/components/schemas/WebOrigin"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/ToolOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/EmailOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/FileOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/WebOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/LedgerOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOrigin"
+              }
+            ],
+            "title": "Origin"
+          },
+          "param": {
+            "title": "Param",
+            "type": "string"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          },
+          "value_id": {
+            "title": "Value Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "param",
+          "value_id",
+          "origin",
+          "integrity",
+          "preview",
+          "nearest_ledger_value",
+          "differing_positions"
+        ],
+        "title": "DiffRow",
+        "type": "object"
+      },
+      "EffectBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "max_approvals": {
+            "minimum": 0.0,
+            "title": "Max Approvals",
+            "type": "integer"
+          },
+          "max_call_amount_cents": {
+            "minimum": 0.0,
+            "title": "Max Call Amount Cents",
+            "type": "integer"
+          },
+          "max_effects": {
+            "minimum": 0.0,
+            "title": "Max Effects",
+            "type": "integer"
+          },
+          "max_egress_bytes": {
+            "minimum": 0.0,
+            "title": "Max Egress Bytes",
+            "type": "integer"
+          },
+          "max_spend_cents": {
+            "minimum": 0.0,
+            "title": "Max Spend Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_effects",
+          "max_spend_cents",
+          "max_egress_bytes",
+          "max_call_amount_cents",
+          "max_approvals"
+        ],
+        "title": "EffectBudget",
+        "type": "object"
+      },
+      "EffectExecuted": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "type": {
+            "const": "effect_executed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "call_id",
+          "tool",
+          "summary"
+        ],
+        "title": "EffectExecuted",
+        "type": "object"
+      },
+      "EmailOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "email",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EmailOrigin",
+        "type": "object"
+      },
+      "EndorseMarker": {
+        "additionalProperties": false,
+        "description": "Parameter may be untrusted but only after explicit human endorsement.",
+        "properties": {
+          "kind": {
+            "const": "endorse",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EndorseMarker",
+        "type": "object"
+      },
+      "Endorsement": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/DiffCard"
+          },
+          "endorsement_id": {
+            "title": "Endorsement Id",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endorsement_id",
+          "call_id",
+          "card",
+          "status",
+          "sequence"
+        ],
+        "title": "Endorsement",
+        "type": "object"
+      },
+      "EndorsementRequested": {
+        "additionalProperties": false,
+        "properties": {
+          "endorsement": {
+            "$ref": "#/components/schemas/Endorsement"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "endorsement_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "endorsement"
+        ],
+        "title": "EndorsementRequested",
+        "type": "object"
+      },
       "ExpectedOutcome": {
         "additionalProperties": false,
         "properties": {
@@ -139,6 +699,50 @@
         "title": "ExpectedOutcome",
         "type": "object"
       },
+      "FileOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "file",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FileOrigin",
+        "type": "object"
+      },
+      "FreeMarker": {
+        "additionalProperties": false,
+        "description": "Parameter is unconstrained by the contract.",
+        "properties": {
+          "kind": {
+            "const": "free",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FreeMarker",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "Health": {
         "additionalProperties": false,
         "properties": {
@@ -152,6 +756,338 @@
           "status"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "IntentContract": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolScope"
+            },
+            "title": "Allowed Tools",
+            "type": "array"
+          },
+          "authorized_irreversible": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authorized Irreversible",
+            "type": "array"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/EffectBudget"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "egress_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Egress Hosts",
+            "type": "array"
+          },
+          "user_intent": {
+            "title": "User Intent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "user_intent",
+          "allowed_tools",
+          "budget",
+          "egress_hosts",
+          "authorized_irreversible"
+        ],
+        "title": "IntentContract",
+        "type": "object"
+      },
+      "InvariantResult": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "I1",
+              "I2",
+              "I3",
+              "I4",
+              "I5",
+              "I6"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "passed",
+          "detail"
+        ],
+        "title": "InvariantResult",
+        "type": "object"
+      },
+      "Label": {
+        "additionalProperties": false,
+        "properties": {
+          "integrity": {
+            "enum": [
+              "trusted",
+              "untrusted",
+              "endorsed"
+            ],
+            "title": "Integrity",
+            "type": "string"
+          },
+          "origin": {
+            "discriminator": {
+              "mapping": {
+                "email": "#/components/schemas/EmailOrigin",
+                "file": "#/components/schemas/FileOrigin",
+                "ledger": "#/components/schemas/LedgerOrigin",
+                "llm": "#/components/schemas/LlmOrigin",
+                "tool": "#/components/schemas/ToolOrigin",
+                "user": "#/components/schemas/UserOrigin",
+                "web": "#/components/schemas/WebOrigin"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/ToolOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/EmailOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/FileOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/WebOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/LedgerOrigin"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOrigin"
+              }
+            ],
+            "title": "Origin"
+          },
+          "readers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readers",
+            "type": "array"
+          },
+          "span_pointer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpanPointer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "origin",
+          "integrity",
+          "readers",
+          "span_pointer"
+        ],
+        "title": "Label",
+        "type": "object"
+      },
+      "LaneRun": {
+        "additionalProperties": false,
+        "properties": {
+          "attacker_goal_reached": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attacker Goal Reached"
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "call_proposed": "#/components/schemas/CallProposed",
+                  "decision_made": "#/components/schemas/DecisionMade",
+                  "effect_executed": "#/components/schemas/EffectExecuted",
+                  "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "oracle_updated": "#/components/schemas/OracleUpdated",
+                  "run_finished": "#/components/schemas/RunFinished",
+                  "run_started": "#/components/schemas/RunStarted",
+                  "value_labeled": "#/components/schemas/ValueLabeled"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RunStarted"
+                },
+                {
+                  "$ref": "#/components/schemas/ValueLabeled"
+                },
+                {
+                  "$ref": "#/components/schemas/CallProposed"
+                },
+                {
+                  "$ref": "#/components/schemas/DecisionMade"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EffectExecuted"
+                },
+                {
+                  "$ref": "#/components/schemas/OracleUpdated"
+                },
+                {
+                  "$ref": "#/components/schemas/RunFinished"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "user_goal_achieved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Goal Achieved"
+          }
+        },
+        "required": [
+          "lane",
+          "run_id",
+          "events",
+          "attacker_goal_reached",
+          "user_goal_achieved"
+        ],
+        "title": "LaneRun",
+        "type": "object"
+      },
+      "LedgerMarker": {
+        "additionalProperties": false,
+        "description": "Parameter must resolve to an entry of the named ledger.",
+        "properties": {
+          "kind": {
+            "const": "ledger",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger": {
+            "title": "Ledger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ledger"
+        ],
+        "title": "LedgerMarker",
+        "type": "object"
+      },
+      "LedgerOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "ledger",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "LedgerOrigin",
+        "type": "object"
+      },
+      "LiteralMarker": {
+        "additionalProperties": false,
+        "description": "Parameter must equal this exact value.",
+        "properties": {
+          "kind": {
+            "const": "literal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "LiteralMarker",
+        "type": "object"
+      },
+      "LlmOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "llm",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "LlmOrigin",
         "type": "object"
       },
       "ModeList": {
@@ -176,6 +1112,345 @@
         "title": "ModeList",
         "type": "object"
       },
+      "NamedSourceMarker": {
+        "additionalProperties": false,
+        "description": "Parameter must come from a named source (e.g. a contact book entry).",
+        "properties": {
+          "kind": {
+            "const": "named_source",
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source"
+        ],
+        "title": "NamedSourceMarker",
+        "type": "object"
+      },
+      "OracleResult": {
+        "additionalProperties": false,
+        "properties": {
+          "attacker_goal_reached": {
+            "title": "Attacker Goal Reached",
+            "type": "boolean"
+          },
+          "invariants": {
+            "items": {
+              "$ref": "#/components/schemas/InvariantResult"
+            },
+            "title": "Invariants",
+            "type": "array"
+          },
+          "user_goal_achieved": {
+            "title": "User Goal Achieved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "invariants",
+          "attacker_goal_reached",
+          "user_goal_achieved"
+        ],
+        "title": "OracleResult",
+        "type": "object"
+      },
+      "OracleUpdated": {
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/OracleResult"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "oracle_updated",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "result"
+        ],
+        "title": "OracleUpdated",
+        "type": "object"
+      },
+      "PoisonResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/LaneRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "runs"
+        ],
+        "title": "PoisonResponse",
+        "type": "object"
+      },
+      "PoisonWorldCommand": {
+        "additionalProperties": false,
+        "description": "Poison-the-world: choose vector, payload and task, then run on the chosen lanes.",
+        "properties": {
+          "lanes": {
+            "items": {
+              "enum": [
+                "undefended",
+                "classifier",
+                "notary"
+              ],
+              "type": "string"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "payload": {
+            "title": "Payload",
+            "type": "string"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "type": {
+            "const": "poison_world",
+            "title": "Type",
+            "type": "string"
+          },
+          "vector": {
+            "enum": [
+              "email",
+              "file",
+              "web",
+              "calendar",
+              "slack",
+              "tool_description"
+            ],
+            "title": "Vector",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "scenario",
+          "vector",
+          "payload",
+          "task",
+          "lanes"
+        ],
+        "title": "PoisonWorldCommand",
+        "type": "object"
+      },
+      "Reason": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "enum": [
+              "scope",
+              "irreversibility",
+              "origin",
+              "corroboration",
+              "confidentiality",
+              "budget"
+            ],
+            "title": "Check",
+            "type": "string"
+          },
+          "code": {
+            "enum": [
+              "STEP_PASS",
+              "READ_ONLY_UNGATED",
+              "SCOPE_TOOL_NOT_IN_CONTRACT",
+              "SCOPE_MANIFEST_MISMATCH",
+              "SCOPE_PARAM_NOT_IN_CONTRACT",
+              "IRREVERSIBLE_NOT_AUTHORIZED",
+              "ORIGIN_UNTRUSTED",
+              "ORIGIN_UNSOURCED",
+              "ORIGIN_LITERAL_MISMATCH",
+              "ORIGIN_SOURCE_MISMATCH",
+              "LEDGER_EXACT_MATCH",
+              "LEDGER_LOOKALIKE",
+              "LEDGER_NOVEL_ESCALATE",
+              "LEDGER_NOT_FOUND",
+              "CONF_READER_VIOLATION",
+              "CONF_URL_NOT_ALLOWED",
+              "BUDGET_AMOUNT",
+              "BUDGET_SENDS",
+              "BUDGET_EGRESS_BYTES",
+              "BUDGET_APPROVALS_EXHAUSTED"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "pass",
+              "escalate",
+              "fail"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "outcome",
+          "code",
+          "detail"
+        ],
+        "title": "Reason",
+        "type": "object"
+      },
+      "RunFinished": {
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "blocked",
+              "error"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "type": {
+            "const": "run_finished",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "outcome",
+          "summary"
+        ],
+        "title": "RunFinished",
+        "type": "object"
+      },
+      "RunStarted": {
+        "additionalProperties": false,
+        "properties": {
+          "classifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classifier"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/IntentContract"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "run_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "scenario",
+          "contract",
+          "classifier"
+        ],
+        "title": "RunStarted",
+        "type": "object"
+      },
       "ScenarioList": {
         "additionalProperties": false,
         "properties": {
@@ -191,6 +1466,309 @@
           "scenarios"
         ],
         "title": "ScenarioList",
+        "type": "object"
+      },
+      "SpanPointer": {
+        "additionalProperties": false,
+        "description": "Points at the span of a source value that a derived value was taken from.",
+        "properties": {
+          "end": {
+            "minimum": 0.0,
+            "title": "End",
+            "type": "integer"
+          },
+          "source_value_id": {
+            "title": "Source Value Id",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_value_id",
+          "start",
+          "end"
+        ],
+        "title": "SpanPointer",
+        "type": "object"
+      },
+      "ToolCallProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ValueRef"
+            },
+            "title": "Args",
+            "type": "object"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "tool",
+          "manifest_hash",
+          "args"
+        ],
+        "title": "ToolCallProposal",
+        "type": "object"
+      },
+      "ToolOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "tool",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "ToolOrigin",
+        "type": "object"
+      },
+      "ToolScope": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "enum": [
+              "read",
+              "write",
+              "irreversible"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "discriminator": {
+                "mapping": {
+                  "endorse": "#/components/schemas/EndorseMarker",
+                  "free": "#/components/schemas/FreeMarker",
+                  "ledger": "#/components/schemas/LedgerMarker",
+                  "literal": "#/components/schemas/LiteralMarker",
+                  "named_source": "#/components/schemas/NamedSourceMarker"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LiteralMarker"
+                },
+                {
+                  "$ref": "#/components/schemas/NamedSourceMarker"
+                },
+                {
+                  "$ref": "#/components/schemas/LedgerMarker"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorseMarker"
+                },
+                {
+                  "$ref": "#/components/schemas/FreeMarker"
+                }
+              ]
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "params",
+          "manifest_hash",
+          "effect"
+        ],
+        "title": "ToolScope",
+        "type": "object"
+      },
+      "UserOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "user",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "UserOrigin",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValueLabeled": {
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "value_labeled",
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "iban",
+                  "email",
+                  "url_host",
+                  "amount",
+                  "identifier"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ValueRef"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "value",
+          "unit",
+          "preview"
+        ],
+        "title": "ValueLabeled",
+        "type": "object"
+      },
+      "ValueRef": {
+        "additionalProperties": false,
+        "description": "A labeled handle to a value. Raw content never travels through the monitor.",
+        "properties": {
+          "content_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "$ref": "#/components/schemas/Label"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "content_hash"
+        ],
+        "title": "ValueRef",
+        "type": "object"
+      },
+      "WebOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "web",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "WebOrigin",
         "type": "object"
       }
     }
@@ -239,6 +1817,83 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/playground/attacks/{attack_id}/run": {
+      "post": {
+        "operationId": "runAttack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attack_id",
+            "required": true,
+            "schema": {
+              "title": "Attack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttackRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Attack"
+      }
+    },
+    "/playground/poison": {
+      "post": {
+        "operationId": "poisonWorld",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoisonWorldCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoisonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poison World"
       }
     },
     "/runs/modes": {
