@@ -394,11 +394,15 @@ name = "notary-world"
 version = "0.0.0"
 source = { editable = "packages/world" }
 dependencies = [
+    { name = "hypothesis" },
     { name = "notary-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "notary-core", editable = "packages/core" }]
+requires-dist = [
+    { name = "hypothesis", specifier = ">=6.170" },
+    { name = "notary-core", editable = "packages/core" },
+]
 
 [[package]]
 name = "opentelemetry-api"

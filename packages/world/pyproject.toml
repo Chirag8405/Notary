@@ -3,7 +3,7 @@ name = "notary-world"
 version = "0.0.0"
 description = "NOTARY world: seeded deterministic fixtures, attack library and LLM cassettes"
 requires-python = ">=3.12,<3.13"
-dependencies = ["notary-core"]
+dependencies = ["notary-core", "hypothesis>=6.170"]
 
 [build-system]
 requires = ["hatchling"]
