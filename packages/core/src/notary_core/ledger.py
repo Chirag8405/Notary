@@ -11,7 +11,14 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from notary_core.models import DecisionUnit, LedgerEntry, NotaryModel
+from notary_core.models import (
+    DecisionUnit,
+    LedgerEntry,
+    NotaryModel,
+    UserAuthoredSource,
+    UserEndorsedSource,
+)
+from notary_core.units import canonicalize
 
 Ledger = tuple[LedgerEntry, ...]
 
@@ -73,3 +80,44 @@ def find_exact(
         if e.canonical == canonical:
             return e
     return None
+
+
+def _source_matches(
+    entry: LedgerEntry, authority: UserAuthoredAuthority | UserEndorsedAuthority
+) -> bool:
+    source = entry.source
+    if isinstance(authority, UserAuthoredAuthority):
+        return isinstance(source, UserAuthoredSource)
+    if not isinstance(source, UserEndorsedSource):
+        return False
+    # Empty ids never match, and ids are compared as plain strings.
+    return authority.endorsement_id != "" and authority.endorsement_id == source.endorsement_id
+
+
+def with_entry(
+    ledger: Sequence[LedgerEntry], entry: LedgerEntry, authority: WriteAuthority
+) -> Ledger:
+    """Append `entry` to the ledger if user authority backs it; never mutates `ledger`.
+
+    Rules run in a fixed order, which is a security property: authority first (an
+    allowlist, so anything unknown fails closed, even for an entry that already
+    exists), then source consistency, canonical form, entry_id reuse and finally
+    the trust-on-first-use duplicate check. A write of an existing
+    (ledger, unit, canonical) returns the ledger unchanged: the first write wins,
+    even if the later entry has different metadata such as another entry_id.
+    """
+    if not isinstance(authority, (UserAuthoredAuthority, UserEndorsedAuthority)):
+        raise LedgerClosureError(ERR_AUTHORITY)
+    if not _source_matches(entry, authority):
+        raise LedgerClosureError(ERR_SOURCE_MISMATCH)
+    # Only the canonical value is compared; `.valid` is informational.
+    if canonicalize(entry.unit, entry.canonical).value != entry.canonical:
+        raise LedgerClosureError(ERR_NOT_CANONICAL)
+    if any(e.entry_id == entry.entry_id and e != entry for e in ledger):
+        raise LedgerClosureError(ERR_ENTRY_ID_USED)
+    if any(
+        e.ledger == entry.ledger and e.unit == entry.unit and e.canonical == entry.canonical
+        for e in ledger
+    ):
+        return tuple(ledger)
+    return (*ledger, entry)
