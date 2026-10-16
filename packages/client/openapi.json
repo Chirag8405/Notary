@@ -154,6 +154,28 @@
         "title": "Health",
         "type": "object"
       },
+      "ModeList": {
+        "additionalProperties": false,
+        "properties": {
+          "modes": {
+            "items": {
+              "enum": [
+                "golden",
+                "cassette",
+                "live"
+              ],
+              "type": "string"
+            },
+            "title": "Modes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modes"
+        ],
+        "title": "ModeList",
+        "type": "object"
+      },
       "ScenarioList": {
         "additionalProperties": false,
         "properties": {
@@ -217,6 +239,24 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/runs/modes": {
+      "get": {
+        "operationId": "listRunModes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Modes"
       }
     },
     "/scenarios": {

@@ -381,6 +381,7 @@ version = "0.0.0"
 source = { editable = "apps/server" }
 dependencies = [
     { name = "anthropic" },
+    { name = "anyio" },
     { name = "fastapi" },
     { name = "notary-core" },
     { name = "notary-mcp-proxy" },
@@ -392,6 +393,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=1.15" },
+    { name = "anyio", specifier = ">=4.15" },
     { name = "fastapi", specifier = ">=0.143" },
     { name = "notary-core", editable = "packages/core" },
     { name = "notary-mcp-proxy", editable = "packages/mcp-proxy" },
