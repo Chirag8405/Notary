@@ -8,20 +8,27 @@ fixtures consume. Every operation is a pure function of an immutable `RunEngine`
 from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Protocol
 
+from notary_core.canon import sha256_hex
 from notary_core.models import (
     AuditEntry,
     Decision,
     DecisionUnit,
     Event,
     IntentContract,
+    Label,
     Lane,
     LedgerEntry,
+    LlmOrigin,
     NotaryModel,
     OracleResult,
     ResolvedValue,
     SessionState,
+    SpanPointer,
     ToolCallProposal,
+    ValueRef,
 )
+from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_readers
+from notary_core.units import canonicalize
 from notary_world.state import WorldDiff, WorldState
 from notary_world.tools import (
     EffectRecord,
@@ -159,3 +166,71 @@ class RunRecord(NotaryModel):
 
 
 OracleFn = Callable[[RunRecord], OracleResult]
+
+
+def _rank(value: ResolvedValue) -> tuple[int, str]:
+    """Lowest integrity first, then the smallest id."""
+    return (INTEGRITY_ORDER.index(value.ref.label.integrity), value.ref.id)
+
+
+def _same_value(value: ResolvedValue, raw: str, unit: DecisionUnit | None) -> bool:
+    if value.text.strip() == raw.strip():
+        return True
+    return (
+        unit is not None and canonicalize(unit, value.text).value == canonicalize(unit, raw).value
+    )
+
+
+class DefaultArgResolver:
+    """Stand-in for the P3a Gateway argument labeling; same call signature as `ArgResolver`.
+
+    Rule 1 reuses a stored value with the same text or canonical form, Rule 2 labels a span of a
+    stored value with that value's label, Rule 3 labels anything else as model-authored text.
+    Known limit: a secret is detected only when it is quoted whole or when the raw text is a
+    substring of one stored value; encoded or mixed text gets public readers. The real Gateway
+    replaces this behind the same protocol.
+    """
+
+    def __call__(
+        self,
+        *,
+        call_id: str,
+        tool: str,
+        param: str,
+        raw: str,
+        unit: DecisionUnit | None,
+        store: Mapping[str, ResolvedValue],
+    ) -> ResolvedValue:
+        values = sorted(store.values(), key=lambda v: v.ref.id)
+        same = [v for v in values if _same_value(v, raw, unit)]
+        if same:
+            return min(same, key=_rank)
+        value_id = f"{call_id}.arg.{param}"
+        text = raw.strip()
+        if len(text) >= MIN_MATCH_LEN:
+            containing = [v for v in values if text in v.text]
+            if containing:
+                source = min(containing, key=_rank)
+                start = source.text.index(text)
+                label = Label(
+                    origin=source.ref.label.origin,
+                    integrity=source.ref.label.integrity,
+                    readers=source.ref.label.readers,
+                    span_pointer=SpanPointer(
+                        source_value_id=source.ref.id, start=start, end=start + len(text)
+                    ),
+                )
+                ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(text))
+                return ResolvedValue(ref=ref, unit=unit, text=text)
+        readers = normalize_readers(
+            join_all_readers(
+                v.ref.label.readers
+                for v in values
+                if len(v.text.strip()) >= MIN_MATCH_LEN and v.text.strip() in raw
+            )
+        )
+        label = Label(
+            origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=readers, span_pointer=None
+        )
+        ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(raw))
+        return ResolvedValue(ref=ref, unit=unit, text=raw)
