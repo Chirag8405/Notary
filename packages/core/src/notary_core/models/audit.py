@@ -1,6 +1,5 @@
 """Tamper-evident audit hash chain."""
 
-from collections.abc import Sequence
 from typing import Annotated
 
 from pydantic import Field
@@ -14,11 +13,3 @@ class AuditEntry(NotaryModel):
     prev_hash: Sha256Hex
     hash: Sha256Hex
     event: Event
-
-
-def verify_chain(entries: Sequence[AuditEntry]) -> bool:
-    """Return True iff every entry's `prev_hash` and `hash` link correctly.
-
-    Stub: hashing is not implemented yet.
-    """
-    raise NotImplementedError
