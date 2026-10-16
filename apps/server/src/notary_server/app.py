@@ -12,7 +12,7 @@ from pydantic import BeforeValidator, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnected
 
-from notary_core.models import AttackCase, NotaryModel, PoisonWorldCommand
+from notary_core.models import AttackCase, HijackedToolCallCommand, NotaryModel, PoisonWorldCommand
 from notary_server.commands import (
     CLOSE_BAD_REQUEST,
     CLOSE_MODE_UNAVAILABLE,
@@ -20,6 +20,14 @@ from notary_server.commands import (
     CommandContext,
     CommandRejected,
     CommandRouter,
+)
+from notary_server.hijacked import (
+    HijackedError,
+    HijackedSession,
+    HijackedSessions,
+    HijackedStart,
+    HijackedState,
+    HijackedStep,
 )
 from notary_server.playground import (
     AttackRunResponse,
@@ -117,10 +125,12 @@ def create_app(
     sources: Mapping[RunMode, RunSource] | None = None,
     router: CommandRouter | None = None,
     lane_runner: LaneRunner | None = None,
+    hijacked: HijackedSessions | None = None,
 ) -> FastAPI:
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
     playground = PlaygroundService(lane_runner)
+    hijacked_sessions = HijackedSessions() if hijacked is None else hijacked
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
@@ -148,6 +158,22 @@ def create_app(
     @app.exception_handler(PlaygroundError)
     def playground_error(_request: Request, error: PlaygroundError) -> JSONResponse:
         return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.exception_handler(HijackedError)
+    def hijacked_error(_request: Request, error: HijackedError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.post("/playground/hijacked", operation_id="startHijacked")
+    def start_hijacked(request: HijackedStart) -> HijackedSession:
+        return hijacked_sessions.start(request)
+
+    @app.post("/playground/hijacked/{session_id}/calls", operation_id="submitHijackedCall")
+    def submit_hijacked_call(session_id: str, command: HijackedToolCallCommand) -> HijackedStep:
+        return hijacked_sessions.submit(session_id, command)
+
+    @app.get("/playground/hijacked/{session_id}", operation_id="getHijacked")
+    def get_hijacked(session_id: str) -> HijackedState:
+        return hijacked_sessions.state(session_id)
 
     @app.post("/playground/poison", operation_id="poisonWorld")
     def poison_world(command: PoisonBody) -> PoisonResponse:

@@ -758,6 +758,224 @@
         "title": "Health",
         "type": "object"
       },
+      "HijackedSession": {
+        "additionalProperties": false,
+        "properties": {
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/Objective"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "run_id",
+          "objectives"
+        ],
+        "title": "HijackedSession",
+        "type": "object"
+      },
+      "HijackedStart": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario": {
+            "enum": [
+              "legitimate_bill",
+              "poisoned_bill"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "seed": {
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario",
+          "seed"
+        ],
+        "title": "HijackedStart",
+        "type": "object"
+      },
+      "HijackedState": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectiveStatus"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "oracle": {
+            "$ref": "#/components/schemas/OracleResult"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "run_id",
+          "calls",
+          "oracle",
+          "objectives"
+        ],
+        "title": "HijackedState",
+        "type": "object"
+      },
+      "HijackedStep": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "call_proposed": "#/components/schemas/CallProposed",
+                  "decision_made": "#/components/schemas/DecisionMade",
+                  "effect_executed": "#/components/schemas/EffectExecuted",
+                  "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "oracle_updated": "#/components/schemas/OracleUpdated",
+                  "run_finished": "#/components/schemas/RunFinished",
+                  "run_started": "#/components/schemas/RunStarted",
+                  "value_labeled": "#/components/schemas/ValueLabeled"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RunStarted"
+                },
+                {
+                  "$ref": "#/components/schemas/ValueLabeled"
+                },
+                {
+                  "$ref": "#/components/schemas/CallProposed"
+                },
+                {
+                  "$ref": "#/components/schemas/DecisionMade"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EffectExecuted"
+                },
+                {
+                  "$ref": "#/components/schemas/OracleUpdated"
+                },
+                {
+                  "$ref": "#/components/schemas/RunFinished"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectiveStatus"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "oracle": {
+            "$ref": "#/components/schemas/OracleResult"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "blocked",
+              "escalated",
+              "executed",
+              "tool_error",
+              "halted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "status",
+          "reason_codes",
+          "events",
+          "oracle",
+          "objectives"
+        ],
+        "title": "HijackedStep",
+        "type": "object"
+      },
+      "HijackedToolCallCommand": {
+        "additionalProperties": false,
+        "description": "Hijacked Mode: a judge submits a raw tool call; no LLM is involved.",
+        "properties": {
+          "args": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "object"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "type": {
+            "const": "hijacked_tool_call",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "run_id",
+          "call_id",
+          "tool",
+          "args"
+        ],
+        "title": "HijackedToolCallCommand",
+        "type": "object"
+      },
       "IntentContract": {
         "additionalProperties": false,
         "properties": {
@@ -1131,6 +1349,49 @@
           "source"
         ],
         "title": "NamedSourceMarker",
+        "type": "object"
+      },
+      "Objective": {
+        "additionalProperties": false,
+        "properties": {
+          "goal_id": {
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "objective_id": {
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective_id",
+          "title",
+          "goal_id"
+        ],
+        "title": "Objective",
+        "type": "object"
+      },
+      "ObjectiveStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "objective_id": {
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "reached": {
+            "title": "Reached",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objective_id",
+          "reached"
+        ],
+        "title": "ObjectiveStatus",
         "type": "object"
       },
       "OracleResult": {
@@ -1856,6 +2117,132 @@
           }
         },
         "summary": "Run Attack"
+      }
+    },
+    "/playground/hijacked": {
+      "post": {
+        "operationId": "startHijacked",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HijackedStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HijackedSession"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Hijacked"
+      }
+    },
+    "/playground/hijacked/{session_id}": {
+      "get": {
+        "operationId": "getHijacked",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HijackedState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Hijacked"
+      }
+    },
+    "/playground/hijacked/{session_id}/calls": {
+      "post": {
+        "operationId": "submitHijackedCall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HijackedToolCallCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HijackedStep"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Hijacked Call"
       }
     },
     "/playground/poison": {
