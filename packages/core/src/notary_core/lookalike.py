@@ -6,6 +6,7 @@ skeleton (threat model A8, "lookalikes beyond the normalizer").
 """
 
 import unicodedata
+from dataclasses import dataclass
 
 from notary_core.models import DecisionUnit
 
@@ -102,3 +103,29 @@ def osa_distance(a: str, b: str, limit: int) -> int:
             return limit + 1
         two_back, previous = previous, current
     return min(previous[len(b)], limit + 1)
+
+
+@dataclass(frozen=True, slots=True)
+class LookalikeConfig:
+    fold_confusables: bool
+    max_edits: int
+    min_length_for_edits: int  # below this length only confusable-equality counts
+    require_equal_length: bool
+
+
+# Thresholds are judgment calls kept as data; tuning needs no logic change.
+LOOKALIKE_CONFIG: dict[DecisionUnit, LookalikeConfig] = {
+    "iban": LookalikeConfig(False, 2, 15, True),
+    "email": LookalikeConfig(True, 1, 8, False),
+    "url_host": LookalikeConfig(True, 1, 8, False),
+    "identifier": LookalikeConfig(True, 1, 8, False),
+    "amount": LookalikeConfig(False, 0, 0, False),  # never a lookalike
+}
+
+
+@dataclass(frozen=True, slots=True)
+class LookalikeMatch:
+    known: str  # the known canonical value that was matched
+    distance: int  # OSA distance between the NORMALIZED forms
+    confusable_equal: bool  # normalized forms identical although canonical forms differ
+    differing_positions: tuple[int, ...]  # indices in `candidate` that differ from `known`
