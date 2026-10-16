@@ -1,7 +1,7 @@
 """FastAPI application: REST for metadata, WebSocket for the typed event stream."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Annotated, Literal
 
 import anyio
@@ -12,8 +12,15 @@ from pydantic import BeforeValidator, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnected
 
-from notary_core.models import AttackCase, HijackedToolCallCommand, NotaryModel, PoisonWorldCommand
+from notary_core.models import (
+    ArenaStartCommand,
+    AttackCase,
+    HijackedToolCallCommand,
+    NotaryModel,
+    PoisonWorldCommand,
+)
 from notary_server.anchors import Anchor, AnchorStore
+from notary_server.arena import ArenaError, ArenaResult, ArenaService, AttackerFactory
 from notary_server.commands import (
     CLOSE_BAD_REQUEST,
     CLOSE_MODE_UNAVAILABLE,
@@ -53,18 +60,23 @@ class ScenarioList(NotaryModel):
     scenarios: tuple[str, ...]
 
 
-def _command_from_json(value: object) -> object:
+def _json_mode[M: NotaryModel](model: type[M]) -> Callable[[object], object]:
     """Validate a decoded JSON body the way the socket does (JSON mode), not as Python objects.
 
     The command models are strict, and strict Python-mode validation rejects a JSON array for
     a tuple field such as `lanes`. Re-encoding keeps the contract's own rules and its 422.
     """
-    if isinstance(value, dict):
-        return PoisonWorldCommand.model_validate_json(json.dumps(value))
-    return value
+
+    def validate(value: object) -> object:
+        if isinstance(value, dict):
+            return model.model_validate_json(json.dumps(value))
+        return value
+
+    return validate
 
 
-PoisonBody = Annotated[PoisonWorldCommand, BeforeValidator(_command_from_json)]
+PoisonBody = Annotated[PoisonWorldCommand, BeforeValidator(_json_mode(PoisonWorldCommand))]
+ArenaBody = Annotated[ArenaStartCommand, BeforeValidator(_json_mode(ArenaStartCommand))]
 
 
 class ModeList(NotaryModel):
@@ -128,12 +140,15 @@ def create_app(
     lane_runner: LaneRunner | None = None,
     hijacked: HijackedSessions | None = None,
     anchors: AnchorStore | None = None,
+    attacker_llm: AttackerFactory | None = None,
+    arena_max_rounds: int = 10,
 ) -> FastAPI:
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
     playground = PlaygroundService(lane_runner)
     hijacked_sessions = HijackedSessions() if hijacked is None else hijacked
     anchor_store = AnchorStore() if anchors is None else anchors
+    arena = ArenaService(lane_runner, attacker_llm, max_rounds=arena_max_rounds)
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
@@ -177,6 +192,14 @@ def create_app(
     @app.get("/playground/hijacked/{session_id}", operation_id="getHijacked")
     def get_hijacked(session_id: str) -> HijackedState:
         return hijacked_sessions.state(session_id)
+
+    @app.exception_handler(ArenaError)
+    def arena_error(_request: Request, error: ArenaError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
+
+    @app.post("/playground/arena", operation_id="startArena")
+    def start_arena(command: ArenaBody) -> ArenaResult:
+        return arena.run(command)
 
     @app.post("/playground/poison", operation_id="poisonWorld")
     def poison_world(command: PoisonBody) -> PoisonResponse:
