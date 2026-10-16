@@ -3,7 +3,14 @@
 import { useRunStream } from "@notary/client/react";
 import type { WebSocketFactory } from "@notary/client";
 import type { IntentContract, OracleResult } from "@notary/schema";
-import { ContractPanel, DecisionStream, OracleLights, ProvenanceGraph } from "@notary/ui";
+import {
+  ContractPanel,
+  DecisionStream,
+  OracleLights,
+  ProvenanceGraph,
+  foldEvents,
+} from "@notary/ui";
+import { useMemo } from "react";
 
 import { Card, CardTitle } from "@/components/ui/card";
 
@@ -15,6 +22,7 @@ export interface XRayViewProps {
 
 export function XRayView({ apiUrl, scenario, webSocket }: XRayViewProps) {
   const stream = useRunStream(apiUrl, scenario, webSocket);
+  const view = useMemo(() => foldEvents(stream.events), [stream.events]);
 
   let contract: IntentContract | null = null;
   let oracle: OracleResult | null = null;
@@ -39,7 +47,7 @@ export function XRayView({ apiUrl, scenario, webSocket }: XRayViewProps) {
       </Card>
       <Card>
         <CardTitle>Provenance graph</CardTitle>
-        <ProvenanceGraph />
+        <ProvenanceGraph view={view} />
       </Card>
       <Card>
         <CardTitle>Intent contract</CardTitle>
