@@ -20,20 +20,20 @@ JSON_VALUES = st.recursive(
 )
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_key_order_does_not_matter() -> None:
     assert canonical_json({"a": 1, "b": 2}) == canonical_json({"b": 2, "a": 1})
     assert canonical_json({"b": {"y": 1, "x": 2}, "a": 1}) == '{"a":1,"b":{"x":2,"y":1}}'
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_no_whitespace_and_unicode_kept() -> None:
     text = canonical_json({"k": ["é", 1]})
     assert text == '{"k":["é",1]}'
     assert "\\u" not in text
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_floats_rejected() -> None:
     with pytest.raises(ValueError, match="floats are not allowed in canonical JSON"):
         canonical_json(1.5)
@@ -43,7 +43,7 @@ def test_floats_rejected() -> None:
         canonical_json(({"a": 0.1},))
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_nan_rejected() -> None:
     with pytest.raises(ValueError, match="floats are not allowed"):
         canonical_json(float("nan"))
@@ -51,13 +51,13 @@ def test_nan_rejected() -> None:
         canonical_json({"a": float("inf")})
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_sha256_known_vector() -> None:
     expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     assert sha256_hex("abc") == expected
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_canonical_hash_stable_across_equal_models() -> None:
     first = contract()
     second = IntentContract.model_validate_json(first.model_dump_json())
@@ -76,7 +76,7 @@ def _reversed_copy(value: object) -> object:
     return value
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_non_str_keys_rejected() -> None:
     with pytest.raises(TypeError, match="keys must be str"):
         canonical_json({1: "x"})
@@ -86,7 +86,7 @@ def test_non_str_keys_rejected() -> None:
         canonical_json([{"a": {True: 1}}])
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_non_json_types_rejected() -> None:
     for value in ({1}, b"x", Decimal("1"), object()):
         with pytest.raises(TypeError, match="not allowed in canonical JSON"):
@@ -95,7 +95,7 @@ def test_non_json_types_rejected() -> None:
             canonical_json({"a": [value]})
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_bool_and_int_hash_differently() -> None:
     assert canonical_json(True) == "true"
     assert canonical_json(1) == "1"
@@ -103,7 +103,7 @@ def test_bool_and_int_hash_differently() -> None:
     assert canonical_json({"a": True}) != canonical_json({"a": 1})
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 def test_lone_surrogate_hashes_deterministically() -> None:
     expected = "91a681b998555fb475479817b126c94e57e52011fa1842c5d188795a4a05226b"
     assert sha256_hex("\ud800") == expected
@@ -113,7 +113,7 @@ def test_lone_surrogate_hashes_deterministically() -> None:
     )
 
 
-# covers: I5
+@pytest.mark.invariant("I5")
 @given(JSON_VALUES)
 def test_canonical_json_is_deterministic(value: object) -> None:
     text = canonical_json(value)

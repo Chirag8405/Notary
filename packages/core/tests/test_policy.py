@@ -52,38 +52,38 @@ def _table(effect: ToolEffect, floor: Marker) -> PolicyTable:
     return {"pay": make_tool_policy(effect, {"to": param})}
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_compiler_cannot_relax_floor() -> None:
     floor = LedgerMarker(kind="ledger", ledger="vendors")
     assert merge_with_compiler_markers(floor, FreeMarker(kind="free")) == floor
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_compiler_can_tighten_floor() -> None:
     proposed = LedgerMarker(kind="ledger", ledger="vendors")
     assert merge_with_compiler_markers(EndorseMarker(kind="endorse"), proposed) == proposed
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_equal_rank_keeps_proposed_marker() -> None:
     proposed = NamedSourceMarker(kind="named_source", source="contacts")
     floor = NamedSourceMarker(kind="named_source", source="other")
     assert merge_with_compiler_markers(floor, proposed) == proposed
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_equal_rank_ledger_keeps_floor() -> None:
     floor = LedgerMarker(kind="ledger", ledger="a")
     assert merge_with_compiler_markers(floor, LedgerMarker(kind="ledger", ledger="b")) == floor
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_none_proposed_returns_floor() -> None:
     floor = EndorseMarker(kind="endorse")
     assert merge_with_compiler_markers(floor, None) == floor
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 @given(floor=markers, proposed=st.none() | markers)
 def test_merge_never_returns_looser_than_floor(floor: Marker, proposed: Marker | None) -> None:
     assert marker_rank(merge_with_compiler_markers(floor, proposed)) <= marker_rank(floor)
@@ -96,12 +96,12 @@ def test_merge_is_deterministic_and_pure(floor: Marker, proposed: Marker) -> Non
     assert first in (floor, proposed)
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_unknown_tool_defaults_to_irreversible() -> None:
     assert effective_effect({}, "x", None) == "irreversible"
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_declared_effect_cannot_be_relaxed_below_table() -> None:
     table = _table("irreversible", EndorseMarker(kind="endorse"))
     assert effective_effect(table, "pay", "read") == "irreversible"
@@ -125,7 +125,7 @@ def test_stricter_effect_is_commutative_and_no_looser(a: ToolEffect, b: ToolEffe
     )
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_unknown_param_floor_is_endorse() -> None:
     assert param_policy({}, "t", "p") == UNKNOWN_PARAM
     assert UNKNOWN_PARAM.floor.kind == "endorse"
@@ -143,7 +143,7 @@ def test_known_param_returns_table_policy() -> None:
     assert param_policy(_table("write", floor), "pay", "to").floor == floor
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_effective_marker_applies_table_floor() -> None:
     floor = LedgerMarker(kind="ledger", ledger="vendors")
     table = _table("write", floor)
@@ -156,13 +156,12 @@ def test_default_policy_is_read_only() -> None:
         DEFAULT_POLICY["x"] = make_tool_policy("read", {})  # type: ignore[index]
 
 
-# covers: model
 def test_literal_floor_rejected() -> None:
     with pytest.raises(ValidationError):
         ParamPolicy(unit=None, floor=LiteralMarker(kind="literal", value="x"), kind="other")
 
 
-# covers: model, I2
+@pytest.mark.invariant("I2")
 def test_empty_ledger_floor_rejected() -> None:
     with pytest.raises(ValidationError):
         ParamPolicy(unit=None, floor=LedgerMarker(kind="ledger", ledger=""), kind="other")
@@ -172,14 +171,12 @@ def _param(unit: DecisionUnit | None = "iban") -> ParamPolicy:
     return ParamPolicy(unit=unit, floor=EndorseMarker(kind="endorse"), kind="destination")
 
 
-# covers: model
 def test_toolpolicy_duplicate_param_names_rejected() -> None:
     binding = ParamBinding(name="to", policy=_param())
     with pytest.raises(ValidationError):
         ToolPolicy(effect="write", params=(binding, binding))
 
 
-# covers: model
 def test_make_tool_policy_is_order_independent() -> None:
     a = make_tool_policy("write", {"to": _param(), "cc": _param("email")})
     b = make_tool_policy("write", {"cc": _param("email"), "to": _param()})
@@ -187,7 +184,7 @@ def test_make_tool_policy_is_order_independent() -> None:
     assert [binding.name for binding in a.params] == ["cc", "to"]
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_toolpolicy_params_immutable() -> None:
     tool = make_tool_policy("write", {"to": _param()})
     with pytest.raises(ValidationError):
@@ -209,7 +206,7 @@ def _manifests_for(table: PolicyTable) -> list[ManifestInfo]:
     ]
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_default_policy_marks_payee_as_ledger_floor() -> None:
     floor = param_policy(DEFAULT_POLICY, "send_money", "payee").floor
     assert floor == LedgerMarker(kind="ledger", ledger="payees")
@@ -218,7 +215,7 @@ def test_default_policy_marks_payee_as_ledger_floor() -> None:
     )
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_default_policy_effects() -> None:
     assert DEFAULT_POLICY["delete_email"].effect == "irreversible"
     assert DEFAULT_POLICY["send_money"].effect == "irreversible"
@@ -226,7 +223,7 @@ def test_default_policy_effects() -> None:
     assert DEFAULT_POLICY["read_email"].effect == "read"
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_default_policy_destinations_name_their_ledger() -> None:
     expected = {
         ("send_email", "to"): "contacts",
@@ -240,14 +237,14 @@ def test_default_policy_destinations_name_their_ledger() -> None:
         )
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_assert_covered_passes_for_known_manifests() -> None:
     manifests = _manifests_for(DEFAULT_POLICY)
     assert {m.tool for m in manifests} == set(DEFAULT_POLICY)
     assert_covered(DEFAULT_POLICY, manifests)
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_assert_covered_fails_on_new_param() -> None:
     manifest = ManifestInfo(
         tool="send_money", effect="irreversible", params=("payee", "amount", "reference", "memo")
@@ -257,7 +254,7 @@ def test_assert_covered_fails_on_new_param() -> None:
     assert error.value.missing == (("send_money", "memo"),)
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_assert_covered_fails_on_unknown_effect_tool() -> None:
     write = ManifestInfo(tool="mystery", effect="write", params=("b", "a"))
     with pytest.raises(PolicyCoverageError) as error:
@@ -269,7 +266,7 @@ def test_assert_covered_fails_on_unknown_effect_tool() -> None:
         assert_covered(DEFAULT_POLICY, [read])
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_assert_covered_skips_read_tools_and_uses_stricter_effect() -> None:
     read = ManifestInfo(tool="read_email", effect="read", params=("message_id", "folder"))
     assert unclassified_params(DEFAULT_POLICY, [read]) == ()
@@ -278,7 +275,7 @@ def test_assert_covered_skips_read_tools_and_uses_stricter_effect() -> None:
     assert unclassified_params(DEFAULT_POLICY, [tightened]) == (("read_email", "folder"),)
 
 
-# covers: I2
+@pytest.mark.invariant("I2")
 def test_unclassified_params_is_sorted_and_deduplicated() -> None:
     manifests = [
         ManifestInfo(tool="b_tool", effect="write", params=("z", "a")),
@@ -288,7 +285,6 @@ def test_unclassified_params_is_sorted_and_deduplicated() -> None:
     assert unclassified_params({}, manifests) == (("a_tool", "x"), ("b_tool", "a"), ("b_tool", "z"))
 
 
-# covers: model
 def test_render_markdown_is_deterministic_and_sorted() -> None:
     first = render_markdown(DEFAULT_POLICY)
     assert render_markdown(DEFAULT_POLICY) == first
@@ -302,14 +298,13 @@ def test_render_markdown_is_deterministic_and_sorted() -> None:
     assert ("send_email", "write", "body", "None", "free", "payload") in rows
 
 
-# covers: model
 def test_render_markdown_ignores_insertion_order() -> None:
     forward = dict(DEFAULT_POLICY)
     backward = dict(reversed(list(DEFAULT_POLICY.items())))
     assert render_markdown(forward) == render_markdown(backward)
 
 
-# covers: I3
+@pytest.mark.invariant("I3")
 def test_every_destination_param_has_a_unit_or_is_identifier() -> None:
     for tool in DEFAULT_POLICY.values():
         for binding in tool.params:
