@@ -11,7 +11,6 @@ from notary_core.models import (
     UserOrigin,
     ValueRef,
 )
-from notary_core.monitor import decide
 
 HASH = "a" * 64
 
@@ -63,11 +62,6 @@ def test_check_order() -> None:
         "confidentiality",
         "budget",
     )
-
-
-def test_stubs_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        decide(None, None, {}, (), None)  # pyright: ignore[reportArgumentType]
 
 
 def test_decision_type_exported() -> None:
