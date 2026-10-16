@@ -1,11 +1,9 @@
 """Tests for the pipeline runner, using fake steps."""
 
-import copy
-
 import pytest
+from builders import contract, scope, sha
 from hypothesis import given
 from hypothesis import strategies as st
-from tests.builders import contract, scope, sha
 
 from notary_core.models import (
     CHECK_ORDER,
@@ -18,6 +16,7 @@ from notary_core.models import (
 )
 from notary_core.models.decision import StepOutcome
 from notary_core.pipeline import Step, StepInput, run_steps
+from notary_core.policy.sensitive_params import DEFAULT_POLICY
 
 
 def make_input() -> StepInput:
@@ -29,7 +28,7 @@ def make_input() -> StepInput:
         ledger=(),
         session=SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
         scope=tool,
-        policy={},
+        policy=DEFAULT_POLICY,
         prior_escalated=False,
     )
 
@@ -195,7 +194,9 @@ def test_run_steps_is_deterministic() -> None:
 # covers: I6
 def test_run_steps_does_not_mutate_inputs() -> None:
     inp = make_input()
-    before = copy.deepcopy(inp)
+    before = (
+        make_input()
+    )  # equal copy; DEFAULT_POLICY is a MappingProxyType and cannot be deep-copied
     run_steps(pipeline(six_fakes()), inp)
     assert inp == before
 

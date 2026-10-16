@@ -18,10 +18,7 @@ from notary_core.models import (
     ToolScope,
 )
 from notary_core.models.decision import StepOutcome
-
-# TODO(#52): replace with `from notary_core.policy.sensitive_params import PolicyTable` once the
-# policy machinery lands. The runner never looks inside the table, so `object` values suffice.
-PolicyTable = Mapping[str, object]
+from notary_core.policy.sensitive_params import PolicyTable
 
 
 @dataclass(frozen=True, slots=True)
