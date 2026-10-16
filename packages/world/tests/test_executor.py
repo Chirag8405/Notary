@@ -29,7 +29,10 @@ from notary_core.models import (
     FreeMarker,
     HijackedToolCallCommand,
     IntentContract,
+    Label,
     LedgerEntry,
+    LedgerMarker,
+    LlmOrigin,
     OracleResult,
     ResolvedValue,
     RunFinished,
@@ -38,11 +41,23 @@ from notary_core.models import (
     ToolScope,
     UserEndorsedSource,
     ValueLabeled,
+    ValueRef,
 )
 from notary_core.monitor import Monitor
-from notary_world.cast import ATTACKER_EMAIL, ATTACKER_IBAN, BILL_AMOUNT, BILLER_IBAN
+from notary_core.units import canonicalize
+from notary_world.cast import (
+    ACCOUNTANT_EMAIL,
+    ATTACKER_EMAIL,
+    ATTACKER_HOST,
+    ATTACKER_IBAN,
+    BILL_AMOUNT,
+    BILL_AMOUNT_CENTS,
+    BILLER_IBAN,
+    USER_EMAIL,
+)
 from notary_world.executor import (
     PREVIEW_LIMIT,
+    ArgRecord,
     CallOutcome,
     DecisionInputs,
     EscalationMode,
@@ -53,6 +68,7 @@ from notary_world.executor import (
     default_monitor,
     execute_run,
     finish,
+    judged_tool_args,
     propose,
     record_so_far,
     resolve_escalation,
@@ -72,7 +88,7 @@ from notary_world.scenarios import (
     poisoned_bill_scenario,
 )
 from notary_world.state import WorldState, snapshot
-from notary_world.tools import TOOL_SPECS, RawToolCall, default_manifest_hash
+from notary_world.tools import TOOL_SPECS, RawToolCall, default_manifest_hash, param_unit
 
 AuditAppend = Callable[[Sequence[AuditEntry], Event], tuple[AuditEntry, ...]]
 
@@ -671,8 +687,8 @@ def pay(payee: str, call_id: str = "c2") -> RawToolCall:
 
 JUDGED_PAYEES = (
     f" {BILLER_IBAN} ",
-    " de00acme00000000000001 ",
-    "DE00ACME0000​0000000001",
+    f" {BILLER_IBAN.lower()} ",
+    f"{BILLER_IBAN[:12]}\u200b{BILLER_IBAN[12:]}",
 )
 
 
@@ -687,17 +703,12 @@ def test_tool_runs_on_the_judged_texts(payee: str) -> None:
     judged = next(a.value.text for a in call.args if a.param == "payee")
     transfer = record.world_after.bank.transfers[-1]
     assert transfer.transfer_id == "t1"
-    assert transfer.to_iban == judged.strip()
+    assert transfer.to_iban == canonicalize("iban", judged).value
+    if canonicalize("iban", judged).value == canonicalize("iban", BILLER_IBAN).value:
+        assert transfer.to_iban == BILLER_IBAN
 
 
 @pytest.mark.invariant("I2")
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "the resolver keeps model-authored text as typed and the monitor accepts it by its "
-        "canonical form, so the transfer goes to the non-canonical text"
-    ),
-)
 @pytest.mark.parametrize("payee", JUDGED_PAYEES[1:])
 def test_judged_payee_executes_as_the_canonical_iban(payee: str) -> None:
     scenario = legitimate_bill_scenario()
@@ -844,6 +855,7 @@ ARG_POOL = (
     ATTACKER_IBAN,
     ATTACKER_EMAIL,
     BILLER_IBAN,
+    USER_EMAIL,
     BILL_AMOUNT,
     "Pay my December bill",
     "secrets/api_keys.txt",
@@ -890,3 +902,212 @@ def test_hijacked_runs_keep_the_invariants_checkable(
     outbound = [t.model_dump_json() for t in world.bank.transfers]
     outbound += [m.model_dump_json() for m in world.sent_mails]
     assert not any(ATTACKER_IBAN in text or ATTACKER_EMAIL in text for text in outbound)
+
+
+# Canonical tool arguments
+
+
+def contacts_with_email() -> Scenario:
+    contract = contract_with(
+        (
+            ToolScope(
+                tool="add_contact",
+                params={"name": EndorseMarker(kind="endorse"), "email": FreeMarker(kind="free")},
+                manifest_hash=default_manifest_hash("add_contact"),
+                effect="write",
+            ),
+        )
+    )
+    return contact_scenario().model_copy(update={"contract": contract})
+
+
+def arg(param: str, text: str) -> ArgRecord:
+    label = Label(
+        origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=("*",), span_pointer=None
+    )
+    ref = ValueRef(id=f"x.arg.{param}", label=label, content_hash=sha256_hex(text))
+    return ArgRecord(param=param, value=ResolvedValue(ref=ref, unit=None, text=text))
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I2")
+def test_fake_iban_that_fails_mod97_is_still_canonicalized() -> None:
+    assert canonicalize("iban", BILLER_IBAN).valid is False
+    scenario = legitimate_bill_scenario()
+    record = run(scenario, [scenario.calls[0], pay(f" {BILLER_IBAN.lower()} ")])
+    assert record.calls[1].decision.verdict == "ALLOW"
+    assert record.world_after.bank.transfers[-1].to_iban == BILLER_IBAN
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I2")
+def test_amount_runs_in_canonical_form() -> None:
+    # `_pay` parses amounts itself, so the world cannot show the difference: check the mapping.
+    for raw in ("EUR 120,00", "120", " 120.0 "):
+        assert judged_tool_args("pay_bill", [arg("amount", raw)]) == {"amount": BILL_AMOUNT}
+    scenario = legitimate_bill_scenario()
+    call = RawToolCall(
+        call_id="c2", tool="pay_bill", args={"payee": BILLER_IBAN, "amount": "EUR 120,00"}
+    )
+    record = run(scenario, [scenario.calls[0], call])
+    executed = record.calls[1]
+    assert executed.status == "executed"
+    assert judged_tool_args(executed.tool, executed.args)["amount"] == BILL_AMOUNT
+    assert record.world_after.bank.transfers[-1].amount_cents == BILL_AMOUNT_CENTS
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I2")
+def test_email_runs_in_canonical_form() -> None:
+    contract = contract_with(
+        (
+            ToolScope(
+                tool="send_email",
+                params={
+                    "to": FreeMarker(kind="free"),
+                    "subject": FreeMarker(kind="free"),
+                    "body": FreeMarker(kind="free"),
+                },
+                manifest_hash=default_manifest_hash("send_email"),
+                effect="write",
+            ),
+        )
+    )
+    send = RawToolCall(
+        call_id="m1",
+        tool="send_email",
+        args={"to": ACCOUNTANT_EMAIL.upper(), "subject": "Bill", "body": "Paid."},
+    )
+    record = run(legitimate_bill_scenario(), [send], contract=contract, monitor=allow_all_monitor())
+    assert [m.to for m in record.world_after.sent_mails] == [ACCOUNTANT_EMAIL]
+
+
+@pytest.mark.invariant("I2")
+def test_url_host_runs_in_canonical_form() -> None:
+    url_params = [(s.name, p.name) for s in TOOL_SPECS for p in s.params if p.unit == "url_host"]
+    if not url_params:
+        pytest.skip("no world tool has a url_host parameter yet")
+    for tool, param in url_params:
+        raw = f"HTTPS://{ATTACKER_HOST.upper()}/x"
+        expected = canonicalize("url_host", raw).value
+        assert judged_tool_args(tool, [arg(param, raw)]) == {param: expected}
+
+
+@pytest.mark.invariant("I1")
+def test_identifier_params_are_not_canonicalized() -> None:
+    assert judged_tool_args("add_contact", [arg("name", " Alpha Consulting ")]) == {
+        "name": " Alpha Consulting "
+    }
+    record = run(
+        contact_scenario(), [add_contact("a1", "Alpha Consulting")], escalation="approve_all"
+    )
+    assert record.world_after.contacts[-1].name == "Alpha Consulting"
+
+
+@pytest.mark.invariant("I6")
+def test_judged_tool_args_is_pure_and_sorted() -> None:
+    records = (
+        arg("reference", "December"),
+        arg("payee", f" {BILLER_IBAN.lower()} "),
+        arg("amount", "EUR 120,00"),
+    )
+    before = tuple(r.model_copy() for r in records)
+    first = judged_tool_args("pay_bill", records)
+    assert judged_tool_args("pay_bill", tuple(reversed(records))) == first
+    assert list(first) == ["amount", "payee", "reference"]
+    assert first == {"amount": BILL_AMOUNT, "payee": BILLER_IBAN, "reference": "December"}
+    assert records == before
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I2")
+def test_tool_receives_exactly_what_the_monitor_compared() -> None:
+    contact = RawToolCall(
+        call_id="a1",
+        tool="add_contact",
+        args={"name": "Alpha Consulting", "email": ACCOUNTANT_EMAIL.upper()},
+    )
+    records = (
+        run(legitimate_bill_scenario()),
+        run(contacts_with_email(), [contact], escalation="approve_all"),
+    )
+    checked = 0
+    for record in records:
+        for call in record.calls:
+            if call.status != "executed":
+                continue
+            given_to_tool = judged_tool_args(call.tool, call.args)
+            judged = {v.ref.id: v for v in call.inputs.values}
+            for param, ref in call.inputs.proposal.args.items():
+                unit = param_unit(call.tool, param)
+                if unit in ("iban", "email", "url_host", "amount"):
+                    expected = canonicalize(unit, judged[ref.id].text).value
+                    assert given_to_tool[param] == expected
+                    checked += 1
+    assert checked == 3
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I4")
+def test_after_approval_run_also_uses_canonical_args() -> None:
+    contact = RawToolCall(
+        call_id="a1",
+        tool="add_contact",
+        args={"name": "Alpha Consulting", "email": ACCOUNTANT_EMAIL.upper()},
+    )
+    record = run(contacts_with_email(), [contact], escalation="approve_all")
+    assert [(c.phase, c.status) for c in record.calls] == [
+        ("initial", "escalated"),
+        ("after_approval", "executed"),
+    ]
+    added = record.world_after.contacts[-1]
+    assert (added.name, added.email) == ("Alpha Consulting", ACCOUNTANT_EMAIL)
+
+
+# `attendees` is one email-unit value that the tool never splits: a comma list is judged and
+# executed as one (invalid) address. Splitting it is a contract/policy change for lane A.
+MULTI_RECIPIENTS = (
+    f"{ACCOUNTANT_EMAIL}, {USER_EMAIL.upper()}",
+    f"{ACCOUNTANT_EMAIL},\u200b{USER_EMAIL}",
+)
+
+
+def event_contract() -> IntentContract:
+    return contract_with(
+        (
+            ToolScope(
+                tool="create_event",
+                params={
+                    "attendees": LedgerMarker(kind="ledger", ledger="contacts"),
+                    "title": FreeMarker(kind="free"),
+                },
+                manifest_hash=default_manifest_hash("create_event"),
+                effect="write",
+            ),
+        )
+    )
+
+
+@pytest.mark.invariant("I2")
+@pytest.mark.attack("A7")
+@pytest.mark.parametrize("raw", MULTI_RECIPIENTS)
+@pytest.mark.parametrize("real_monitor", [True, False])
+def test_multi_recipient_attendees_run_as_one_canonical_value(raw: str, real_monitor: bool) -> None:
+    compared = canonicalize("email", raw).value
+    ledger = (make_ledger_entry("contact-list", "contacts", "list", raw, "email"),)
+    scenario = legitimate_bill_scenario().model_copy(
+        update={"ledger": ledger if real_monitor else ()}
+    )
+    invite = RawToolCall(
+        call_id="e1", tool="create_event", args={"attendees": raw, "title": "Bill"}
+    )
+    record = run(
+        scenario,
+        [invite],
+        contract=event_contract(),
+        monitor=None if real_monitor else allow_all_monitor(),
+    )
+    assert record.calls[0].decision.verdict == "ALLOW"
+    created = [e for e in record.world_after.events if e.event_id == "ev3"]
+    assert len(created) == 1
+    assert created[0].attendees == (compared,)
