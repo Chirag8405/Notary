@@ -9,6 +9,7 @@ Details are fixed sentences; any run-derived text in them passes through `_safe`
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
+from itertools import pairwise
 from types import MappingProxyType
 
 from pydantic import ValidationError
@@ -18,6 +19,7 @@ from notary_core.ledger import find_exact
 from notary_core.models import (
     DecisionMade,
     EffectExecuted,
+    EndorsementRequested,
     Event,
     InvariantId,
     InvariantResult,
@@ -359,3 +361,82 @@ def check_i3(run: RunRecord) -> InvariantResult:
                         )
                         return _fail("I3", detail)
     return _ok("I3")
+
+
+# I4
+
+_USER_SOURCES = ("user_authored", "user_endorsed")
+
+
+def _approved_entries(run: RunRecord) -> dict[str, tuple[str, ...]]:
+    return {
+        e.endorsement_id: e.ledger_entry_ids for e in run.escalations if e.resolution == "approved"
+    }
+
+
+def _appended(run: RunRecord) -> list[tuple[str, tuple[LedgerEntry, ...]]] | None:
+    """(cause, appended entries) per later snapshot; None if a snapshot does not extend the last."""
+    out: list[tuple[str, tuple[LedgerEntry, ...]]] = []
+    snapshots = run.ledger_snapshots
+    for old, new in pairwise(snapshots):
+        if new.ledger[: len(old.ledger)] != old.ledger:
+            return None
+        out.append((new.cause, new.ledger[len(old.ledger) :]))
+    return out
+
+
+def _history_malformed(run: RunRecord, appended: list[tuple[str, tuple[LedgerEntry, ...]]]) -> bool:
+    snapshots = run.ledger_snapshots
+    if not snapshots or snapshots[0].cause != "initial":
+        return True
+    if any(s.cause == "initial" for s in snapshots[1:]):
+        return True
+    approved = _approved_entries(run)
+    for cause, entries in appended:
+        if cause != "approval":
+            continue
+        for entry in entries:
+            source = entry.source
+            if source.kind != "user_endorsed":
+                return True
+            if entry.entry_id not in approved.get(source.endorsement_id, ()):
+                return True
+    return False
+
+
+def _has_duplicates(ledger: Sequence[LedgerEntry]) -> bool:
+    ids = [e.entry_id for e in ledger]
+    triples = [(e.ledger, e.unit, e.canonical) for e in ledger]
+    return len(set(ids)) != len(ids) or len(set(triples)) != len(triples)
+
+
+def check_i4(run: RunRecord) -> InvariantResult:
+    """Ledger closure, from the ledger snapshots, the escalations and the audit chain."""
+    appended = _appended(run)
+    if appended is None:
+        return _fail("I4", I4_CHANGED)
+    requested = {
+        e.endorsement.endorsement_id for e in _events(run) if isinstance(e, EndorsementRequested)
+    }
+    approved = _approved_entries(run)
+    for _, entries in appended:
+        for entry in entries:
+            source = entry.source
+            if source.kind == "user_endorsed" and not (
+                source.endorsement_id in requested and source.endorsement_id in approved
+            ):
+                return _fail("I4", I4_UNAPPROVED.format(entry_id=_safe(entry.entry_id)))
+            if canonicalize(entry.unit, entry.canonical).value != entry.canonical:
+                return _fail("I4", I4_NOT_CANONICAL.format(entry_id=_safe(entry.entry_id)))
+    for _, entries in appended:
+        for entry in entries:
+            if entry.source.kind not in _USER_SOURCES:
+                return _fail("I4", I4_NO_AUTHORITY.format(entry_id=_safe(entry.entry_id)))
+    if _history_malformed(run, appended):
+        return _fail("I4", I4_MALFORMED)
+    recorded = [s.ledger for s in run.ledger_snapshots]
+    if any(record.inputs.ledger not in recorded for record in run.calls):
+        return _fail("I4", I4_UNRECORDED)
+    if any(_has_duplicates(s.ledger) for s in run.ledger_snapshots):
+        return _fail("I4", I4_DUPLICATE)
+    return _ok("I4")
