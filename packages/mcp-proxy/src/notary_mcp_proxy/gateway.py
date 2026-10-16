@@ -14,23 +14,34 @@ from dataclasses import dataclass
 from typing import Literal
 
 from notary_core.audit import append
-from notary_core.gateway import GatewayLabeler, ValueStore
+from notary_core.gateway import GatewayLabeler, ToolResult, ValueStore
 from notary_core.models import (
     AuditEntry,
+    CallProposed,
     Decision,
+    DecisionMade,
+    DecisionUnit,
+    DiffCard,
+    EffectExecuted,
+    Endorsement,
+    EndorsementRequested,
     Event,
     IntentContract,
     Lane,
     LedgerEntry,
     NotaryModel,
+    ResolvedValue,
     SessionState,
     Sha256Hex,
     ToolCallProposal,
+    ValueLabeled,
+    ValueRef,
 )
 from notary_core.monitor import Monitor
-from notary_core.pinning import PinReport, compare_pins, pin_manifests
-from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable
-from notary_core.resolver import ArgResolver
+from notary_core.pinning import PinReport, compare_pins, observed_hash, pin_manifests
+from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable, param_policy
+from notary_core.resolver import ArgResolver, canonical_args
+from notary_core.session import with_effect
 from notary_core.store import InMemoryValueStore
 from notary_mcp_proxy.backend import ToolBackend
 
@@ -169,3 +180,182 @@ class Gateway:
             endorsement_id=None,
             error=error or self._halted,
         )
+
+    def propose(self, call: RawCall) -> MediationOutcome:
+        """Label the arguments, propose, decide (write-ahead) and run the tool only on ALLOW."""
+        if self._halted is not None:
+            return self._halted_outcome(call.call_id)
+        if call.call_id in self._seen_calls:
+            raise ValueError("duplicate call id")
+        self._seen_calls.add(call.call_id)
+        refs: dict[str, ValueRef] = {}
+        for param in sorted(call.args):
+            value = self._resolver(
+                call_id=call.call_id,
+                tool=call.tool,
+                param=param,
+                raw=call.args[param],
+                unit=param_policy(self._policy, call.tool, param).unit,
+                store=self._store.as_mapping(),
+            )
+            if not self._add_value(value):
+                return self._halted_outcome(call.call_id)
+            refs[param] = value.ref
+        # The hash is what the backend reports now, never the agent's claim.
+        proposal = ToolCallProposal(
+            call_id=call.call_id,
+            tool=call.tool,
+            manifest_hash=observed_hash(self._backend.list_tools(), call.tool),
+            args=refs,
+        )
+        proposed = self.emit(
+            lambda run, lane, seq: CallProposed(
+                type="call_proposed", run_id=run, lane=lane, seq=seq, proposal=proposal
+            )
+        )
+        if not proposed:
+            return self._halted_outcome(call.call_id)
+        return self._decide(call, proposal)
+
+    def _add_value(self, value: ResolvedValue) -> bool:
+        """Announce and store a value; it joins the store only after its event is appended."""
+        known = self._store.get(value.ref.id)
+        if known is not None:
+            if known != value:
+                raise ValueError("value id collision")
+            return True
+        logged = self.emit(
+            lambda run, lane, seq: ValueLabeled(
+                type="value_labeled",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                value=value.ref,
+                unit=value.unit,
+                preview=value.text[:PREVIEW_LIMIT],
+            )
+        )
+        if not logged:
+            return False
+        self._store = self._store.with_values([value])
+        return True
+
+    def _decide(self, call: RawCall, proposal: ToolCallProposal) -> MediationOutcome:
+        """Ask the monitor, append the decision FIRST, then act on it."""
+        decision = self._monitor(
+            self._contract, proposal, self._store.as_mapping(), self._ledger, self._session
+        )
+        decided = self.emit(
+            lambda run, lane, seq: DecisionMade(
+                type="decision_made",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                call_id=proposal.call_id,
+                decision=decision,
+            )
+        )
+        if not decided:
+            return self._halted_outcome(call.call_id)
+        if decision.verdict == "BLOCK":
+            return self._outcome(call.call_id, "blocked", decision)
+        if decision.verdict == "ESCALATE":
+            return self._escalate(call, proposal, decision)
+        return self._execute(call, proposal, decision)
+
+    def _outcome(
+        self,
+        call_id: str,
+        status: Literal["blocked", "escalated", "executed", "tool_error"],
+        decision: Decision,
+        *,
+        endorsement_id: str | None = None,
+        error: str | None = None,
+    ) -> MediationOutcome:
+        return MediationOutcome(
+            call_id=call_id,
+            status=status,
+            decision=decision,
+            endorsement_id=endorsement_id,
+            error=error,
+        )
+
+    def _escalate(
+        self, call: RawCall, proposal: ToolCallProposal, decision: Decision
+    ) -> MediationOutcome:
+        k = len(self._escalations) + 1
+        endorsement_id = f"e{k}"
+        endorsement = Endorsement(
+            endorsement_id=endorsement_id,
+            call_id=call.call_id,
+            card=decision.diff_card or DiffCard(rows=()),
+            status="pending",
+            sequence=k - 1,
+        )
+        self._escalations[endorsement_id] = _Pending(
+            call=call, proposal=proposal, decision=decision, resolved=False
+        )
+        requested = self.emit(
+            lambda run, lane, seq: EndorsementRequested(
+                type="endorsement_requested",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                endorsement=endorsement,
+            )
+        )
+        if not requested:
+            return self._halted_outcome(call.call_id)
+        return self._outcome(call.call_id, "escalated", decision, endorsement_id=endorsement_id)
+
+    def _execute(
+        self, call: RawCall, proposal: ToolCallProposal, decision: Decision
+    ) -> MediationOutcome:
+        """The only place the backend runs a tool; reached only after a logged ALLOW."""
+        resolved: dict[str, ResolvedValue] = {}
+        for param, ref in sorted(proposal.args.items()):
+            value = self._store.get(ref.id)
+            if value is None:
+                raise ValueError("judged value missing from the store")
+            resolved[param] = value
+        units: dict[str, DecisionUnit | None] = {
+            param: param_policy(self._policy, call.tool, param).unit for param in resolved
+        }
+        result = self._backend.call_tool(call.tool, canonical_args(resolved, units))
+        if result.error is not None:
+            return self._outcome(call.call_id, "tool_error", decision, error=result.error)
+        effect = result.effect
+        # The session update is committed before the effect is logged: if that append fails the
+        # effect really happened, so the update stays.
+        if effect is not None and effect.mutating:
+            self._session = with_effect(
+                self._session, spent_cents=effect.spent_cents, egress_bytes=effect.egress_bytes
+            )
+        if effect is not None:
+            summary = effect.summary
+            logged = self.emit(
+                lambda run, lane, seq: EffectExecuted(
+                    type="effect_executed",
+                    run_id=run,
+                    lane=lane,
+                    seq=seq,
+                    call_id=call.call_id,
+                    tool=call.tool,
+                    summary=summary,
+                )
+            )
+            if not logged:
+                return self._halted_outcome(call.call_id, ERR_EFFECT_NOT_LOGGED)
+        for record in result.records:
+            labeled = self._labeler(
+                ToolResult(
+                    tool=call.tool,
+                    record_id=f"{call.call_id}.{record.record_id}",
+                    fields=record.fields,
+                ),
+                readers=record.readers,
+            )
+            for value in labeled:
+                if not self._add_value(value):
+                    return self._halted_outcome(call.call_id, ERR_RESULT_NOT_LOGGED)
+        return self._outcome(call.call_id, "executed", decision)
