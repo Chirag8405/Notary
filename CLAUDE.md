@@ -60,3 +60,13 @@ Use `uv run --no-sync` inside package scripts (parallel `uv run` calls corrupt t
 6. **budget** — the call fits the remaining effect budget
 
 Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherwise ALLOW. (Not implemented yet: stubs raise `NotImplementedError`.)
+
+## Docs
+
+- `docs/architecture.md` — components, monitor decision order, invariants I1-I6, event contract
+- `docs/threat-model.md` — attacks A1-A14, prior art, verification plan, limitations
+- `docs/demo.md` — determinism, Trust X-ray, judge playground, stage script
+- `docs/phase.md` — build phases P0-P7, cut line, risks
+- `docs/decisions.md` — tool/design choices and conventions
+
+When behavior, invariants, event types or package boundaries change, update the relevant doc in the same commit.
