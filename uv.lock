@@ -326,6 +326,7 @@ name = "notary-server"
 version = "0.0.0"
 source = { editable = "apps/server" }
 dependencies = [
+    { name = "anyio" },
     { name = "fastapi" },
     { name = "notary-core" },
     { name = "notary-mcp-proxy" },
@@ -336,6 +337,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.15" },
     { name = "fastapi", specifier = ">=0.143" },
     { name = "notary-core", editable = "packages/core" },
     { name = "notary-mcp-proxy", editable = "packages/mcp-proxy" },
