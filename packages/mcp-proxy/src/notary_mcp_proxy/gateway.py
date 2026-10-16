@@ -10,11 +10,12 @@ immutable snapshot, and the backend is private (no attribute or method hands it 
 """
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from notary_core.audit import append
 from notary_core.gateway import GatewayLabeler, ToolResult, ValueStore
+from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
 from notary_core.models import (
     AuditEntry,
     CallProposed,
@@ -41,7 +42,7 @@ from notary_core.monitor import Monitor
 from notary_core.pinning import PinReport, compare_pins, observed_hash, pin_manifests
 from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable, param_policy
 from notary_core.resolver import ArgResolver, canonical_args
-from notary_core.session import with_effect
+from notary_core.session import with_approval, with_effect
 from notary_core.store import InMemoryValueStore
 from notary_mcp_proxy.backend import ToolBackend
 
@@ -359,3 +360,43 @@ class Gateway:
                 if not self._add_value(value):
                     return self._halted_outcome(call.call_id, ERR_RESULT_NOT_LOGGED)
         return self._outcome(call.call_id, "executed", decision)
+
+    def approve(
+        self, endorsement_id: str, entries: Sequence[LedgerEntry]
+    ) -> MediationOutcome | None:
+        """The user approved: write ALL entries or none, then decide the same proposal again."""
+        pending = self._escalations.get(endorsement_id)
+        if pending is None or pending.resolved:
+            return None
+        call_id = pending.call.call_id
+        if self._halted is not None:
+            return self._halted_outcome(call_id)
+        authority = UserEndorsedAuthority(kind="user_endorsed", endorsement_id=endorsement_id)
+        ledger = self._ledger
+        try:
+            for entry in entries:
+                ledger = with_entry(ledger, entry, authority)
+        except LedgerClosureError as error:
+            self._escalations[endorsement_id] = replace(pending, resolved=True)
+            return self._outcome(
+                call_id,
+                "blocked",
+                pending.decision,
+                endorsement_id=endorsement_id,
+                error=str(error),
+            )
+        self._ledger = ledger
+        self._session = with_approval(self._session)
+        self._escalations[endorsement_id] = replace(pending, resolved=True)
+        return self._decide(pending.call, pending.proposal)
+
+    def reject(self, endorsement_id: str) -> MediationOutcome | None:
+        """The user rejected: no effect, no session change."""
+        pending = self._escalations.get(endorsement_id)
+        if pending is None or pending.resolved:
+            return None
+        call_id = pending.call.call_id
+        if self._halted is not None:
+            return self._halted_outcome(call_id)
+        self._escalations[endorsement_id] = replace(pending, resolved=True)
+        return self._outcome(call_id, "blocked", pending.decision, endorsement_id=endorsement_id)
