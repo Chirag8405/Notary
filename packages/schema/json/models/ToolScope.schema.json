@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "EndorseMarker": {
+      "additionalProperties": false,
+      "description": "Parameter may be untrusted but only after explicit human endorsement.",
+      "properties": {
+        "kind": {
+          "const": "endorse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EndorseMarker",
+      "type": "object"
+    },
+    "FreeMarker": {
+      "additionalProperties": false,
+      "description": "Parameter is unconstrained by the contract.",
+      "properties": {
+        "kind": {
+          "const": "free",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FreeMarker",
+      "type": "object"
+    },
+    "LedgerMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must resolve to an entry of the named ledger.",
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        },
+        "ledger": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ledger"
+      ],
+      "title": "LedgerMarker",
+      "type": "object"
+    },
+    "LiteralMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must equal this exact value.",
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "LiteralMarker",
+      "type": "object"
+    },
+    "Marker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LiteralMarker"
+        },
+        {
+          "$ref": "#/$defs/NamedSourceMarker"
+        },
+        {
+          "$ref": "#/$defs/LedgerMarker"
+        },
+        {
+          "$ref": "#/$defs/EndorseMarker"
+        },
+        {
+          "$ref": "#/$defs/FreeMarker"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "endorse": "#/$defs/EndorseMarker",
+          "free": "#/$defs/FreeMarker",
+          "ledger": "#/$defs/LedgerMarker",
+          "literal": "#/$defs/LiteralMarker",
+          "named_source": "#/$defs/NamedSourceMarker"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Marker"
+    },
+    "NamedSourceMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must come from a named source (e.g. a contact book entry).",
+      "properties": {
+        "kind": {
+          "const": "named_source",
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source"
+      ],
+      "title": "NamedSourceMarker",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "params": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Marker"
+      },
+      "type": "object"
+    },
+    "tool": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool",
+    "params"
+  ],
+  "title": "ToolScope",
+  "type": "object"
+}

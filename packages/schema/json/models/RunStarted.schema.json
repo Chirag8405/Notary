@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "EffectBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "max_effects": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_egress_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_spend_cents": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_effects",
+        "max_spend_cents",
+        "max_egress_bytes"
+      ],
+      "title": "EffectBudget",
+      "type": "object"
+    },
+    "EndorseMarker": {
+      "additionalProperties": false,
+      "description": "Parameter may be untrusted but only after explicit human endorsement.",
+      "properties": {
+        "kind": {
+          "const": "endorse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EndorseMarker",
+      "type": "object"
+    },
+    "FreeMarker": {
+      "additionalProperties": false,
+      "description": "Parameter is unconstrained by the contract.",
+      "properties": {
+        "kind": {
+          "const": "free",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FreeMarker",
+      "type": "object"
+    },
+    "IntentContract": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "items": {
+            "$ref": "#/$defs/ToolScope"
+          },
+          "type": "array"
+        },
+        "budget": {
+          "$ref": "#/$defs/EffectBudget"
+        },
+        "contract_id": {
+          "type": "string"
+        },
+        "user_intent": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id",
+        "user_intent",
+        "allowed_tools",
+        "budget"
+      ],
+      "title": "IntentContract",
+      "type": "object"
+    },
+    "LedgerMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must resolve to an entry of the named ledger.",
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        },
+        "ledger": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ledger"
+      ],
+      "title": "LedgerMarker",
+      "type": "object"
+    },
+    "LiteralMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must equal this exact value.",
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "LiteralMarker",
+      "type": "object"
+    },
+    "Marker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LiteralMarker"
+        },
+        {
+          "$ref": "#/$defs/NamedSourceMarker"
+        },
+        {
+          "$ref": "#/$defs/LedgerMarker"
+        },
+        {
+          "$ref": "#/$defs/EndorseMarker"
+        },
+        {
+          "$ref": "#/$defs/FreeMarker"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "endorse": "#/$defs/EndorseMarker",
+          "free": "#/$defs/FreeMarker",
+          "ledger": "#/$defs/LedgerMarker",
+          "literal": "#/$defs/LiteralMarker",
+          "named_source": "#/$defs/NamedSourceMarker"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Marker"
+    },
+    "NamedSourceMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must come from a named source (e.g. a contact book entry).",
+      "properties": {
+        "kind": {
+          "const": "named_source",
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source"
+      ],
+      "title": "NamedSourceMarker",
+      "type": "object"
+    },
+    "ToolScope": {
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Marker"
+          },
+          "type": "object"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "params"
+      ],
+      "title": "ToolScope",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/IntentContract"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "const": "run_started",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "seq",
+    "type",
+    "scenario",
+    "contract"
+  ],
+  "title": "RunStarted",
+  "type": "object"
+}

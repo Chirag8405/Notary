@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "DiffRow": {
+      "additionalProperties": false,
+      "description": "One parameter of the proposed call, rendered from its label.",
+      "properties": {
+        "integrity": {
+          "enum": [
+            "trusted",
+            "untrusted",
+            "endorsed"
+          ],
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "param": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "value_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "param",
+        "value_id",
+        "origin",
+        "integrity",
+        "preview"
+      ],
+      "title": "DiffRow",
+      "type": "object"
+    },
+    "EmailOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EmailOrigin",
+      "type": "object"
+    },
+    "FileOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FileOrigin",
+      "type": "object"
+    },
+    "LedgerOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LedgerOrigin",
+      "type": "object"
+    },
+    "LlmOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "llm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LlmOrigin",
+      "type": "object"
+    },
+    "Origin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UserOrigin"
+        },
+        {
+          "$ref": "#/$defs/ToolOrigin"
+        },
+        {
+          "$ref": "#/$defs/EmailOrigin"
+        },
+        {
+          "$ref": "#/$defs/FileOrigin"
+        },
+        {
+          "$ref": "#/$defs/WebOrigin"
+        },
+        {
+          "$ref": "#/$defs/LedgerOrigin"
+        },
+        {
+          "$ref": "#/$defs/LlmOrigin"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "email": "#/$defs/EmailOrigin",
+          "file": "#/$defs/FileOrigin",
+          "ledger": "#/$defs/LedgerOrigin",
+          "llm": "#/$defs/LlmOrigin",
+          "tool": "#/$defs/ToolOrigin",
+          "user": "#/$defs/UserOrigin",
+          "web": "#/$defs/WebOrigin"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Origin"
+    },
+    "ToolOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "tool",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ToolOrigin",
+      "type": "object"
+    },
+    "UserOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserOrigin",
+      "type": "object"
+    },
+    "WebOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "web",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WebOrigin",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/DiffRow"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "rows"
+  ],
+  "title": "DiffCard",
+  "type": "object"
+}

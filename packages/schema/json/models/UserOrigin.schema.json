@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "user",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "UserOrigin",
+  "type": "object"
+}

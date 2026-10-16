@@ -1,0 +1,15 @@
+{
+  "name": "@notary/mcp-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "notary_mcp_proxy: MCP gateway wrapping core (tool pinning, labeling)",
+  "scripts": {
+    "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
+    "typecheck": "uv run --no-sync pyright",
+    "test": "uv run --no-sync pytest",
+    "build": "uv build --out-dir dist"
+  },
+  "dependencies": {
+    "@notary/core": "workspace:*"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "run_id": "run-poisoned-bill",
+  "seq": 1,
+  "type": "call_proposed",
+  "proposal": {
+    "call_id": "c1",
+    "tool": "read_inbox",
+    "args": {}
+  }
+}

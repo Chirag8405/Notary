@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Points at the span of a source value that a derived value was taken from.",
+  "properties": {
+    "end": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source_value_id": {
+      "type": "string"
+    },
+    "start": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source_value_id",
+    "start",
+    "end"
+  ],
+  "title": "SpanPointer",
+  "type": "object"
+}

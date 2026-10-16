@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "InvariantResult": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "id": {
+          "enum": [
+            "I1",
+            "I2",
+            "I3",
+            "I4",
+            "I5",
+            "I6"
+          ],
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "passed",
+        "detail"
+      ],
+      "title": "InvariantResult",
+      "type": "object"
+    },
+    "OracleResult": {
+      "additionalProperties": false,
+      "properties": {
+        "invariants": {
+          "items": {
+            "$ref": "#/$defs/InvariantResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "invariants"
+      ],
+      "title": "OracleResult",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "result": {
+      "$ref": "#/$defs/OracleResult"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "const": "oracle_updated",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "seq",
+    "type",
+    "result"
+  ],
+  "title": "OracleUpdated",
+  "type": "object"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@notary/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "notary_core: pure Pydantic models, reference monitor, ledger, audit chain",
+  "scripts": {
+    "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
+    "typecheck": "uv run --no-sync pyright",
+    "test": "uv run --no-sync pytest",
+    "build": "uv build --out-dir dist",
+    "schema:generate": "uv run --no-sync python scripts/export_schema.py"
+  }
+}

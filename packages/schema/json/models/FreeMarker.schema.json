@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Parameter is unconstrained by the contract.",
+  "properties": {
+    "kind": {
+      "const": "free",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "FreeMarker",
+  "type": "object"
+}

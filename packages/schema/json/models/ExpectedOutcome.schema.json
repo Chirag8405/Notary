@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "deciding_check": {
+      "anyOf": [
+        {
+          "enum": [
+            "scope",
+            "irreversibility",
+            "origin",
+            "corroboration",
+            "confidentiality",
+            "budget"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "ALLOW",
+        "ESCALATE",
+        "BLOCK"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "verdict",
+    "deciding_check"
+  ],
+  "title": "ExpectedOutcome",
+  "type": "object"
+}

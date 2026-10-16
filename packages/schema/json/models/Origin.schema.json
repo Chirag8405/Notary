@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "EmailOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EmailOrigin",
+      "type": "object"
+    },
+    "FileOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FileOrigin",
+      "type": "object"
+    },
+    "LedgerOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LedgerOrigin",
+      "type": "object"
+    },
+    "LlmOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "llm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LlmOrigin",
+      "type": "object"
+    },
+    "ToolOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "tool",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ToolOrigin",
+      "type": "object"
+    },
+    "UserOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserOrigin",
+      "type": "object"
+    },
+    "WebOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "web",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WebOrigin",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/UserOrigin"
+    },
+    {
+      "$ref": "#/$defs/ToolOrigin"
+    },
+    {
+      "$ref": "#/$defs/EmailOrigin"
+    },
+    {
+      "$ref": "#/$defs/FileOrigin"
+    },
+    {
+      "$ref": "#/$defs/WebOrigin"
+    },
+    {
+      "$ref": "#/$defs/LedgerOrigin"
+    },
+    {
+      "$ref": "#/$defs/LlmOrigin"
+    }
+  ],
+  "discriminator": {
+    "mapping": {
+      "email": "#/$defs/EmailOrigin",
+      "file": "#/$defs/FileOrigin",
+      "ledger": "#/$defs/LedgerOrigin",
+      "llm": "#/$defs/LlmOrigin",
+      "tool": "#/$defs/ToolOrigin",
+      "user": "#/$defs/UserOrigin",
+      "web": "#/$defs/WebOrigin"
+    },
+    "propertyName": "kind"
+  },
+  "title": "Origin"
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "call_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "type": {
+      "const": "effect_executed",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "seq",
+    "type",
+    "call_id",
+    "tool",
+    "summary"
+  ],
+  "title": "EffectExecuted",
+  "type": "object"
+}

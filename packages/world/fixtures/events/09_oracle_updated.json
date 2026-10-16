@@ -1,0 +1,39 @@
+{
+  "run_id": "run-poisoned-bill",
+  "seq": 9,
+  "type": "oracle_updated",
+  "result": {
+    "invariants": [
+      {
+        "id": "I1",
+        "passed": true,
+        "detail": "holds"
+      },
+      {
+        "id": "I2",
+        "passed": true,
+        "detail": "holds"
+      },
+      {
+        "id": "I3",
+        "passed": true,
+        "detail": "holds"
+      },
+      {
+        "id": "I4",
+        "passed": true,
+        "detail": "holds"
+      },
+      {
+        "id": "I5",
+        "passed": true,
+        "detail": "holds"
+      },
+      {
+        "id": "I6",
+        "passed": true,
+        "detail": "holds"
+      }
+    ]
+  }
+}

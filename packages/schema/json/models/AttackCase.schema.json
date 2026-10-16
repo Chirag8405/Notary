@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "ExpectedOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "deciding_check": {
+          "anyOf": [
+            {
+              "enum": [
+                "scope",
+                "irreversibility",
+                "origin",
+                "corroboration",
+                "confidentiality",
+                "budget"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verdict": {
+          "enum": [
+            "ALLOW",
+            "ESCALATE",
+            "BLOCK"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "deciding_check"
+      ],
+      "title": "ExpectedOutcome",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "enum": [
+        "direct_injection",
+        "argument_hijack",
+        "exfiltration",
+        "tool_poisoning",
+        "confused_deputy",
+        "ledger_poisoning",
+        "endorsement_abuse"
+      ],
+      "type": "string"
+    },
+    "expected": {
+      "$ref": "#/$defs/ExpectedOutcome"
+    },
+    "id": {
+      "enum": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "type": "string"
+    },
+    "payload": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "category",
+    "title",
+    "payload",
+    "expected"
+  ],
+  "title": "AttackCase",
+  "type": "object"
+}

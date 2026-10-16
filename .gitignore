@@ -1,0 +1,17 @@
+node_modules/
+.turbo/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+*.egg-info/
+.env
+.DS_Store
+next-env.d.ts

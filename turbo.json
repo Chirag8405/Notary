@@ -1,0 +1,142 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalDependencies": [".nvmrc", "pyproject.toml", "uv.lock", "pyrightconfig.base.json"],
+  "globalPassThroughEnv": ["UV_CACHE_DIR", "UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV", "CI"],
+  "tasks": {
+    "schema:generate": {
+      "inputs": ["src/**/*.py", "scripts/**", "json/**", "package.json", "pyproject.toml"],
+      "outputs": ["src/generated/**"]
+    },
+    "@notary/core#schema:generate": {
+      "inputs": ["src/**/*.py", "scripts/**/*.py", "pyproject.toml"],
+      "cache": false
+    },
+    "@notary/schema#schema:generate": {
+      "dependsOn": ["@notary/core#schema:generate"],
+      "inputs": ["json/**", "scripts/**", "package.json"],
+      "outputs": ["src/generated/**"]
+    },
+    "@notary/server#api:export": {
+      "inputs": ["src/**/*.py", "scripts/**/*.py", "pyproject.toml"],
+      "cache": false
+    },
+    "@notary/client#api:generate": {
+      "dependsOn": ["@notary/server#api:export"],
+      "inputs": ["openapi.json", "package.json"],
+      "outputs": ["src/generated/**"]
+    },
+    "schema:check": {
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": ["@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "app/**",
+        "scripts/**",
+        "*.config.*",
+        "eslint.config.*",
+        "tsconfig*.json",
+        "pyproject.toml",
+        "pyrightconfig.json",
+        "$TURBO_ROOT$/pyproject.toml",
+        "$TURBO_ROOT$/uv.lock",
+        "$TURBO_ROOT$/.prettierrc.json"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "app/**",
+        "scripts/**",
+        "*.config.*",
+        "tsconfig*.json",
+        "next-env.d.ts",
+        "pyproject.toml",
+        "pyrightconfig.json",
+        "$TURBO_ROOT$/pyrightconfig.base.json",
+        "$TURBO_ROOT$/uv.lock"
+      ]
+    },
+    "test": {
+      "dependsOn": ["@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "fixtures/**",
+        "scripts/**",
+        "vitest.config.*",
+        "pyproject.toml",
+        "$TURBO_ROOT$/packages/world/fixtures/**",
+        "$TURBO_ROOT$/uv.lock"
+      ]
+    },
+    "build": {
+      "dependsOn": ["^build", "@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "app/**",
+        "public/**",
+        "scripts/**",
+        "*.config.*",
+        "tsconfig*.json",
+        "pyproject.toml",
+        "$TURBO_ROOT$/uv.lock"
+      ],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "cache": false,
+      "persistent": true
+    },
+    "@notary/schema#build": {
+      "dependsOn": ["^build", "@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "app/**",
+        "public/**",
+        "scripts/**",
+        "*.config.*",
+        "tsconfig*.json",
+        "pyproject.toml",
+        "$TURBO_ROOT$/uv.lock"
+      ],
+      "outputs": []
+    },
+    "@notary/client#build": {
+      "dependsOn": ["^build", "@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "app/**",
+        "public/**",
+        "scripts/**",
+        "*.config.*",
+        "tsconfig*.json",
+        "pyproject.toml",
+        "$TURBO_ROOT$/uv.lock"
+      ],
+      "outputs": []
+    },
+    "@notary/ui#build": {
+      "dependsOn": ["^build", "@notary/schema#schema:generate", "@notary/client#api:generate"],
+      "inputs": [
+        "src/**",
+        "app/**",
+        "public/**",
+        "scripts/**",
+        "*.config.*",
+        "tsconfig*.json",
+        "pyproject.toml",
+        "$TURBO_ROOT$/uv.lock"
+      ],
+      "outputs": []
+    },
+    "@notary/world#fixtures:generate": {
+      "cache": false
+    }
+  }
+}

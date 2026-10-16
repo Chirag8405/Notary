@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+.turbo
+pnpm-lock.yaml
+uv.lock
+packages/schema/src/generated
+packages/schema/json
+packages/world/fixtures
+packages/client/src/generated
+.venv
+packages/client/openapi.json

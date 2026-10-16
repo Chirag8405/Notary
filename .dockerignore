@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+.venv
+**/__pycache__
+.git
+**/.pytest_cache
+**/.ruff_cache
+**/.hypothesis

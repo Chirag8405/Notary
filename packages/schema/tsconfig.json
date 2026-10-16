@@ -1,0 +1,4 @@
+{
+  "extends": "@notary/config-typescript/node.json",
+  "include": ["src", "scripts", "tests", "*.config.ts"]
+}

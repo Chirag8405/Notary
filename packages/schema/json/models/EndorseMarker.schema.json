@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Parameter may be untrusted but only after explicit human endorsement.",
+  "properties": {
+    "kind": {
+      "const": "endorse",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "EndorseMarker",
+  "type": "object"
+}

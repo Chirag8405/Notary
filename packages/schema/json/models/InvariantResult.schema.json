@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "detail": {
+      "type": "string"
+    },
+    "id": {
+      "enum": [
+        "I1",
+        "I2",
+        "I3",
+        "I4",
+        "I5",
+        "I6"
+      ],
+      "type": "string"
+    },
+    "passed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "passed",
+    "detail"
+  ],
+  "title": "InvariantResult",
+  "type": "object"
+}

@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "Reason": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "enum": [
+            "scope",
+            "irreversibility",
+            "origin",
+            "corroboration",
+            "confidentiality",
+            "budget"
+          ],
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "escalate",
+            "fail"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "check",
+        "outcome",
+        "detail"
+      ],
+      "title": "Reason",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "reasons": {
+      "items": {
+        "$ref": "#/$defs/Reason"
+      },
+      "type": "array"
+    },
+    "verdict": {
+      "enum": [
+        "ALLOW",
+        "ESCALATE",
+        "BLOCK"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "verdict",
+    "reasons"
+  ],
+  "title": "Decision",
+  "type": "object"
+}

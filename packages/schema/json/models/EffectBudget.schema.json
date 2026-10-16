@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "max_effects": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_egress_bytes": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_spend_cents": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "max_effects",
+    "max_spend_cents",
+    "max_egress_bytes"
+  ],
+  "title": "EffectBudget",
+  "type": "object"
+}

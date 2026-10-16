@@ -1,0 +1,16 @@
+{
+  "name": "@notary/world",
+  "version": "0.0.0",
+  "private": true,
+  "description": "notary_world: deterministic fixtures, attack library A1-A14, LLM cassettes",
+  "scripts": {
+    "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
+    "typecheck": "uv run --no-sync pyright",
+    "test": "uv run --no-sync pytest",
+    "build": "uv build --out-dir dist",
+    "fixtures:generate": "uv run --no-sync python scripts/export_event_fixtures.py"
+  },
+  "dependencies": {
+    "@notary/core": "workspace:*"
+  }
+}

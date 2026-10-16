@@ -1,0 +1,954 @@
+{
+  "$defs": {
+    "CallProposed": {
+      "additionalProperties": false,
+      "properties": {
+        "proposal": {
+          "$ref": "#/$defs/ToolCallProposal"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "call_proposed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "proposal"
+      ],
+      "title": "CallProposed",
+      "type": "object"
+    },
+    "Decision": {
+      "additionalProperties": false,
+      "properties": {
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/Reason"
+          },
+          "type": "array"
+        },
+        "verdict": {
+          "enum": [
+            "ALLOW",
+            "ESCALATE",
+            "BLOCK"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "reasons"
+      ],
+      "title": "Decision",
+      "type": "object"
+    },
+    "DecisionMade": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/Decision"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "decision_made",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "call_id",
+        "decision"
+      ],
+      "title": "DecisionMade",
+      "type": "object"
+    },
+    "DiffCard": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/DiffRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "title": "DiffCard",
+      "type": "object"
+    },
+    "DiffRow": {
+      "additionalProperties": false,
+      "description": "One parameter of the proposed call, rendered from its label.",
+      "properties": {
+        "integrity": {
+          "enum": [
+            "trusted",
+            "untrusted",
+            "endorsed"
+          ],
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "param": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "value_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "param",
+        "value_id",
+        "origin",
+        "integrity",
+        "preview"
+      ],
+      "title": "DiffRow",
+      "type": "object"
+    },
+    "EffectBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "max_effects": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_egress_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_spend_cents": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_effects",
+        "max_spend_cents",
+        "max_egress_bytes"
+      ],
+      "title": "EffectBudget",
+      "type": "object"
+    },
+    "EffectExecuted": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "type": {
+          "const": "effect_executed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "call_id",
+        "tool",
+        "summary"
+      ],
+      "title": "EffectExecuted",
+      "type": "object"
+    },
+    "EmailOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EmailOrigin",
+      "type": "object"
+    },
+    "EndorseMarker": {
+      "additionalProperties": false,
+      "description": "Parameter may be untrusted but only after explicit human endorsement.",
+      "properties": {
+        "kind": {
+          "const": "endorse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EndorseMarker",
+      "type": "object"
+    },
+    "Endorsement": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/DiffCard"
+        },
+        "endorsement_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "endorsement_id",
+        "call_id",
+        "card",
+        "status",
+        "sequence"
+      ],
+      "title": "Endorsement",
+      "type": "object"
+    },
+    "EndorsementRequested": {
+      "additionalProperties": false,
+      "properties": {
+        "endorsement": {
+          "$ref": "#/$defs/Endorsement"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "endorsement_requested",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "endorsement"
+      ],
+      "title": "EndorsementRequested",
+      "type": "object"
+    },
+    "Event": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunStarted"
+        },
+        {
+          "$ref": "#/$defs/ValueLabeled"
+        },
+        {
+          "$ref": "#/$defs/CallProposed"
+        },
+        {
+          "$ref": "#/$defs/DecisionMade"
+        },
+        {
+          "$ref": "#/$defs/EndorsementRequested"
+        },
+        {
+          "$ref": "#/$defs/EffectExecuted"
+        },
+        {
+          "$ref": "#/$defs/OracleUpdated"
+        },
+        {
+          "$ref": "#/$defs/RunFinished"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "call_proposed": "#/$defs/CallProposed",
+          "decision_made": "#/$defs/DecisionMade",
+          "effect_executed": "#/$defs/EffectExecuted",
+          "endorsement_requested": "#/$defs/EndorsementRequested",
+          "oracle_updated": "#/$defs/OracleUpdated",
+          "run_finished": "#/$defs/RunFinished",
+          "run_started": "#/$defs/RunStarted",
+          "value_labeled": "#/$defs/ValueLabeled"
+        },
+        "propertyName": "type"
+      },
+      "title": "Event"
+    },
+    "FileOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FileOrigin",
+      "type": "object"
+    },
+    "FreeMarker": {
+      "additionalProperties": false,
+      "description": "Parameter is unconstrained by the contract.",
+      "properties": {
+        "kind": {
+          "const": "free",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FreeMarker",
+      "type": "object"
+    },
+    "IntentContract": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "items": {
+            "$ref": "#/$defs/ToolScope"
+          },
+          "type": "array"
+        },
+        "budget": {
+          "$ref": "#/$defs/EffectBudget"
+        },
+        "contract_id": {
+          "type": "string"
+        },
+        "user_intent": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id",
+        "user_intent",
+        "allowed_tools",
+        "budget"
+      ],
+      "title": "IntentContract",
+      "type": "object"
+    },
+    "InvariantResult": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "id": {
+          "enum": [
+            "I1",
+            "I2",
+            "I3",
+            "I4",
+            "I5",
+            "I6"
+          ],
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "passed",
+        "detail"
+      ],
+      "title": "InvariantResult",
+      "type": "object"
+    },
+    "Label": {
+      "additionalProperties": false,
+      "properties": {
+        "integrity": {
+          "enum": [
+            "trusted",
+            "untrusted",
+            "endorsed"
+          ],
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "readers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "span_pointer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanPointer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "origin",
+        "integrity",
+        "readers",
+        "span_pointer"
+      ],
+      "title": "Label",
+      "type": "object"
+    },
+    "LedgerMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must resolve to an entry of the named ledger.",
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        },
+        "ledger": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ledger"
+      ],
+      "title": "LedgerMarker",
+      "type": "object"
+    },
+    "LedgerOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LedgerOrigin",
+      "type": "object"
+    },
+    "LiteralMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must equal this exact value.",
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "LiteralMarker",
+      "type": "object"
+    },
+    "LlmOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "llm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LlmOrigin",
+      "type": "object"
+    },
+    "Marker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LiteralMarker"
+        },
+        {
+          "$ref": "#/$defs/NamedSourceMarker"
+        },
+        {
+          "$ref": "#/$defs/LedgerMarker"
+        },
+        {
+          "$ref": "#/$defs/EndorseMarker"
+        },
+        {
+          "$ref": "#/$defs/FreeMarker"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "endorse": "#/$defs/EndorseMarker",
+          "free": "#/$defs/FreeMarker",
+          "ledger": "#/$defs/LedgerMarker",
+          "literal": "#/$defs/LiteralMarker",
+          "named_source": "#/$defs/NamedSourceMarker"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Marker"
+    },
+    "NamedSourceMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must come from a named source (e.g. a contact book entry).",
+      "properties": {
+        "kind": {
+          "const": "named_source",
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source"
+      ],
+      "title": "NamedSourceMarker",
+      "type": "object"
+    },
+    "OracleResult": {
+      "additionalProperties": false,
+      "properties": {
+        "invariants": {
+          "items": {
+            "$ref": "#/$defs/InvariantResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "invariants"
+      ],
+      "title": "OracleResult",
+      "type": "object"
+    },
+    "OracleUpdated": {
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/OracleResult"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "oracle_updated",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "result"
+      ],
+      "title": "OracleUpdated",
+      "type": "object"
+    },
+    "Origin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UserOrigin"
+        },
+        {
+          "$ref": "#/$defs/ToolOrigin"
+        },
+        {
+          "$ref": "#/$defs/EmailOrigin"
+        },
+        {
+          "$ref": "#/$defs/FileOrigin"
+        },
+        {
+          "$ref": "#/$defs/WebOrigin"
+        },
+        {
+          "$ref": "#/$defs/LedgerOrigin"
+        },
+        {
+          "$ref": "#/$defs/LlmOrigin"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "email": "#/$defs/EmailOrigin",
+          "file": "#/$defs/FileOrigin",
+          "ledger": "#/$defs/LedgerOrigin",
+          "llm": "#/$defs/LlmOrigin",
+          "tool": "#/$defs/ToolOrigin",
+          "user": "#/$defs/UserOrigin",
+          "web": "#/$defs/WebOrigin"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Origin"
+    },
+    "Reason": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "enum": [
+            "scope",
+            "irreversibility",
+            "origin",
+            "corroboration",
+            "confidentiality",
+            "budget"
+          ],
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "escalate",
+            "fail"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "check",
+        "outcome",
+        "detail"
+      ],
+      "title": "Reason",
+      "type": "object"
+    },
+    "RunFinished": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "completed",
+            "blocked",
+            "error"
+          ],
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "type": {
+          "const": "run_finished",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "outcome",
+        "summary"
+      ],
+      "title": "RunFinished",
+      "type": "object"
+    },
+    "RunStarted": {
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/IntentContract"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "run_started",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "scenario",
+        "contract"
+      ],
+      "title": "RunStarted",
+      "type": "object"
+    },
+    "SpanPointer": {
+      "additionalProperties": false,
+      "description": "Points at the span of a source value that a derived value was taken from.",
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_value_id": {
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_value_id",
+        "start",
+        "end"
+      ],
+      "title": "SpanPointer",
+      "type": "object"
+    },
+    "ToolCallProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ValueRef"
+          },
+          "type": "object"
+        },
+        "call_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "tool",
+        "args"
+      ],
+      "title": "ToolCallProposal",
+      "type": "object"
+    },
+    "ToolOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "tool",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ToolOrigin",
+      "type": "object"
+    },
+    "ToolScope": {
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Marker"
+          },
+          "type": "object"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "params"
+      ],
+      "title": "ToolScope",
+      "type": "object"
+    },
+    "UserOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserOrigin",
+      "type": "object"
+    },
+    "ValueLabeled": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "value_labeled",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/ValueRef"
+        }
+      },
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "value"
+      ],
+      "title": "ValueLabeled",
+      "type": "object"
+    },
+    "ValueRef": {
+      "additionalProperties": false,
+      "description": "A labeled handle to a value. Raw content never travels through the monitor.",
+      "properties": {
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/Label"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "content_hash"
+      ],
+      "title": "ValueRef",
+      "type": "object"
+    },
+    "WebOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "web",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WebOrigin",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "event": {
+      "$ref": "#/$defs/Event"
+    },
+    "hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "index": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "prev_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "index",
+    "prev_hash",
+    "hash",
+    "event"
+  ],
+  "title": "AuditEntry",
+  "type": "object"
+}

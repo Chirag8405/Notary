@@ -1,0 +1,200 @@
+{
+  "components": {
+    "schemas": {
+      "AttackCase": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "direct_injection",
+              "argument_hijack",
+              "exfiltration",
+              "tool_poisoning",
+              "confused_deputy",
+              "ledger_poisoning",
+              "endorsement_abuse"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/ExpectedOutcome"
+          },
+          "id": {
+            "enum": [
+              "A1",
+              "A2",
+              "A3",
+              "A4",
+              "A5",
+              "A6",
+              "A7",
+              "A8",
+              "A9",
+              "A10",
+              "A11",
+              "A12",
+              "A13",
+              "A14"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "title": "Payload",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "title",
+          "payload",
+          "expected"
+        ],
+        "title": "AttackCase",
+        "type": "object"
+      },
+      "ExpectedOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "deciding_check": {
+            "anyOf": [
+              {
+                "enum": [
+                  "scope",
+                  "irreversibility",
+                  "origin",
+                  "corroboration",
+                  "confidentiality",
+                  "budget"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deciding Check"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "ESCALATE",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "deciding_check"
+        ],
+        "title": "ExpectedOutcome",
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "ScenarioList": {
+        "additionalProperties": false,
+        "properties": {
+          "scenarios": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenarios"
+        ],
+        "title": "ScenarioList",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "NOTARY server",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/attacks": {
+      "get": {
+        "operationId": "listAttacks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttackCase"
+                  },
+                  "title": "Response Listattacks",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Attacks"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/scenarios": {
+      "get": {
+        "operationId": "listScenarios",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scenarios"
+      }
+    }
+  }
+}

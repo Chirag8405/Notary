@@ -1,0 +1,19 @@
+{
+  "name": "@notary/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "notary_server: FastAPI app (REST + WebSocket events), agent runner, world host",
+  "scripts": {
+    "dev": "uv run --no-sync uvicorn notary_server.app:app --reload --host 0.0.0.0 --port 8000",
+    "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
+    "typecheck": "uv run --no-sync pyright",
+    "test": "uv run --no-sync pytest",
+    "build": "uv build --out-dir dist",
+    "api:export": "uv run --no-sync python scripts/export_openapi.py"
+  },
+  "dependencies": {
+    "@notary/core": "workspace:*",
+    "@notary/mcp-proxy": "workspace:*",
+    "@notary/world": "workspace:*"
+  }
+}

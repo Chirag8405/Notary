@@ -1,0 +1,100 @@
+[project]
+name = "notary-workspace"
+version = "0.0.0"
+description = "NOTARY monorepo (uv workspace root)"
+requires-python = ">=3.12,<3.13"
+# Depend on every member so a plain `uv sync` installs the whole workspace.
+dependencies = [
+  "notary-core",
+  "notary-mcp-proxy",
+  "notary-cli",
+  "notary-eval",
+  "notary-world",
+  "notary-server",
+]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.17",
+  "pyright>=1.1.414",
+  "pytest>=9.1",
+  "pytest-asyncio>=1.4",
+  "hypothesis>=6.170",
+  "import-linter>=2.15",
+  "httpx2>=2.13",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = [
+  "apps/server",
+  "packages/core",
+  "packages/mcp-proxy",
+  "packages/cli",
+  "packages/eval",
+  "packages/world",
+]
+
+[tool.uv.sources]
+notary-core = { workspace = true }
+notary-mcp-proxy = { workspace = true }
+notary-cli = { workspace = true }
+notary-eval = { workspace = true }
+notary-world = { workspace = true }
+notary-server = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "TID", "PT", "C4", "N"]
+ignore = ["RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["ANN"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any" = { msg = "Any is banned; use a precise type, object, or JsonValue." }
+"typing_extensions.Any" = { msg = "Any is banned; use a precise type, object, or JsonValue." }
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "notary_core", "notary_mcp_proxy", "notary_server", "notary_cli", "notary_eval", "notary_world",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+
+[tool.importlinter]
+root_packages = [
+  "notary_core",
+  "notary_mcp_proxy",
+  "notary_server",
+  "notary_cli",
+  "notary_eval",
+  "notary_world",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: core <- (mcp_proxy, world) <- (server, cli, eval)"
+type = "layers"
+layers = ["notary_server | notary_cli | notary_eval", "notary_mcp_proxy | notary_world", "notary_core"]
+
+[[tool.importlinter.contracts]]
+name = "notary_core is pure (no I/O, network, LLM SDK or clock modules)"
+type = "forbidden"
+source_modules = ["notary_core"]
+forbidden_modules = [
+  "socket", "http", "urllib", "requests", "httpx", "aiohttp", "subprocess", "random", "time",
+  "datetime", "anthropic", "openai", "langchain", "litellm", "fastapi", "typer",
+]
+allow_indirect_imports = true

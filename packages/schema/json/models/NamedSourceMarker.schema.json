@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Parameter must come from a named source (e.g. a contact book entry).",
+  "properties": {
+    "kind": {
+      "const": "named_source",
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "source"
+  ],
+  "title": "NamedSourceMarker",
+  "type": "object"
+}

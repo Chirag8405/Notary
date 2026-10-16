@@ -1,0 +1,23 @@
+{
+  "run_id": "run-poisoned-bill",
+  "seq": 4,
+  "type": "value_labeled",
+  "value": {
+    "id": "v-email-body",
+    "label": {
+      "origin": {
+        "kind": "email"
+      },
+      "integrity": "untrusted",
+      "readers": [
+        "user"
+      ],
+      "span_pointer": {
+        "source_value_id": "v-email-body",
+        "start": 42,
+        "end": 66
+      }
+    },
+    "content_hash": "ec634f4cbe815dfcacc1af4a4e12fccb64455a8bbc686b9ebaba4c95085d66f2"
+  }
+}

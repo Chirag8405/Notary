@@ -1,0 +1,16 @@
+{
+  "name": "@notary/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "notary_cli: Command line: fuzz, replay, bench, attack",
+  "scripts": {
+    "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
+    "typecheck": "uv run --no-sync pyright",
+    "test": "uv run --no-sync pytest",
+    "build": "uv build --out-dir dist"
+  },
+  "dependencies": {
+    "@notary/core": "workspace:*",
+    "@notary/world": "workspace:*"
+  }
+}
