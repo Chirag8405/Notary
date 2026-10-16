@@ -11,7 +11,14 @@ from typing import Literal, Protocol
 
 from notary_core.audit import append
 from notary_core.canon import sha256_hex
+from notary_core.contract import ContractWideningError, assert_monotonic
 from notary_core.gateway import GatewayLabeler
+from notary_core.ledger import (
+    LedgerClosureError,
+    UserEndorsedAuthority,
+    WriteAuthority,
+    with_entry,
+)
 from notary_core.models import (
     AuditEntry,
     CallProposed,
@@ -35,6 +42,7 @@ from notary_core.models import (
     SessionState,
     SpanPointer,
     ToolCallProposal,
+    UserEndorsedSource,
     UserOrigin,
     ValueLabeled,
     ValueRef,
@@ -42,7 +50,7 @@ from notary_core.models import (
 from notary_core.monitor import Monitor, decide
 from notary_core.policy.sensitive_params import PolicyTable
 from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_readers
-from notary_core.session import with_effect
+from notary_core.session import with_approval, with_effect
 from notary_core.units import canonicalize
 from notary_world.fakes import FakeGateway
 from notary_world.state import WorldDiff, WorldState
@@ -699,3 +707,152 @@ def propose(engine: RunEngine, call: RawToolCall) -> tuple[RunEngine, CallOutcom
     if engine.halted is not None:
         return engine, _halted(call.call_id, engine)
     return _judge(engine, call, proposal, "initial")
+
+
+def _set_resolution(
+    engine: RunEngine,
+    endorsement_id: str,
+    resolution: Literal["approved", "rejected"],
+    ledger_entry_ids: tuple[str, ...] = (),
+) -> RunEngine:
+    escalations = tuple(
+        e.model_copy(update={"resolution": resolution, "ledger_entry_ids": ledger_entry_ids})
+        if e.endorsement_id == endorsement_id
+        else e
+        for e in engine.escalations
+    )
+    pending = tuple(p for p in engine.pending if p[0] != endorsement_id)
+    return replace(engine, escalations=escalations, pending=pending)
+
+
+def _escalated_decision(engine: RunEngine, call_id: str) -> Decision:
+    """The ESCALATE decision of the call's latest record."""
+    return next(r.decision for r in reversed(engine.calls) if r.call_id == call_id)
+
+
+def _approval_entries(
+    engine: RunEngine, endorsement_id: str, proposal: ToolCallProposal, card: DiffCard
+) -> tuple[LedgerEntry, ...] | str:
+    """The ledger entries of an approved card, or the refusal reason. All rows or none."""
+    entries: list[LedgerEntry] = []
+    for row in card.rows:
+        ref = proposal.args.get(row.param)
+        value = None if ref is None else _lookup(engine, ref.id)
+        if value is None:
+            return ERR_BAD_APPROVAL_ROW
+        unit: DecisionUnit = param_unit(proposal.tool, row.param) or "identifier"
+        entries.append(
+            LedgerEntry(
+                entry_id=f"led-{endorsement_id}-{row.param}",
+                ledger="endorsed",
+                key=f"{row.param}: {row.preview}",
+                value=value.ref,
+                unit=unit,
+                canonical=row.preview,
+                source=UserEndorsedSource(kind="user_endorsed", endorsement_id=endorsement_id),
+            )
+        )
+    return tuple(entries)
+
+
+def resolve_escalation(
+    engine: RunEngine, endorsement_id: str, decision: Literal["approve", "reject"]
+) -> tuple[RunEngine, CallOutcome | None]:
+    """Reject, or approve (endorse into the ledger, then decide the same proposal again)."""
+    _check_open(engine)
+    if engine.halted is not None:
+        return engine, None
+    found = next((p for p in engine.pending if p[0] == endorsement_id), None)
+    if found is None:
+        return engine, None
+    _, call, proposal = found
+    escalated = _escalated_decision(engine, proposal.call_id)
+    engine = replace(engine, step=engine.step + 1)
+    blocked = CallOutcome(
+        call_id=proposal.call_id,
+        status="blocked",
+        decision=escalated,
+        endorsement_id=endorsement_id,
+        error=None,
+    )
+    if decision == "reject":
+        return _set_resolution(engine, endorsement_id, "rejected"), blocked
+    built = _approval_entries(
+        engine, endorsement_id, proposal, escalated.diff_card or DiffCard(rows=())
+    )
+    ledger = engine.ledger
+    reason: str | None = built if isinstance(built, str) else None
+    if not isinstance(built, str):
+        authority = UserEndorsedAuthority(kind="user_endorsed", endorsement_id=endorsement_id)
+        try:
+            for entry in built:
+                ledger = with_entry(ledger, entry, authority)
+        except LedgerClosureError as error:
+            reason = str(error)
+    if reason is not None:
+        refusal = RefusalRecord(step=engine.step, kind="ledger_write", reason=reason)
+        engine = replace(engine, refusals=(*engine.refusals, refusal))
+        return _set_resolution(engine, endorsement_id, "rejected"), blocked
+    old_ids = {e.entry_id for e in engine.ledger}
+    new_ids = tuple(e.entry_id for e in ledger if e.entry_id not in old_ids)
+    engine = replace(
+        engine,
+        ledger=ledger,
+        session=with_approval(engine.session),
+        ledger_snapshots=(
+            *engine.ledger_snapshots,
+            LedgerSnapshot(step=engine.step, cause="approval", ledger=ledger),
+        ),
+    )
+    engine = _set_resolution(engine, endorsement_id, "approved", new_ids)
+    return _judge(engine, call, proposal, "after_approval")
+
+
+def write_ledger(
+    engine: RunEngine, entry: LedgerEntry, authority: WriteAuthority
+) -> tuple[RunEngine, bool]:
+    """Endorsement Service stand-in: a refused write is recorded, never raised."""
+    _check_open(engine)
+    if engine.halted is not None:
+        return engine, False
+    engine = replace(engine, step=engine.step + 1)
+    reason: str | None = None
+    ledger = engine.ledger
+    approved = {e.endorsement_id for e in engine.escalations if e.resolution == "approved"}
+    if isinstance(authority, UserEndorsedAuthority) and authority.endorsement_id not in approved:
+        reason = ERR_UNKNOWN_ENDORSEMENT
+    else:
+        try:
+            ledger = with_entry(engine.ledger, entry, authority)
+        except LedgerClosureError as error:
+            reason = str(error)
+    if reason is not None:
+        refusal = RefusalRecord(step=engine.step, kind="ledger_write", reason=reason)
+        return replace(engine, refusals=(*engine.refusals, refusal)), False
+    if ledger != engine.ledger:
+        snapshot = LedgerSnapshot(step=engine.step, cause="user_write", ledger=ledger)
+        engine = replace(
+            engine, ledger=ledger, ledger_snapshots=(*engine.ledger_snapshots, snapshot)
+        )
+    return engine, True
+
+
+def update_contract(engine: RunEngine, new: IntentContract) -> tuple[RunEngine, bool]:
+    """Replace the contract with a narrower or equal one; a widening is refused (I5)."""
+    _check_open(engine)
+    if engine.halted is not None:
+        return engine, False
+    engine = replace(engine, step=engine.step + 1)
+    try:
+        assert_monotonic(engine.contract, new)
+    except ContractWideningError as error:
+        refusal = RefusalRecord(
+            step=engine.step, kind="contract_update", reason="; ".join(error.reasons)
+        )
+        return replace(engine, refusals=(*engine.refusals, refusal)), False
+    if new != engine.contract:
+        snapshot = ContractSnapshot(step=engine.step, cause="update", contract=new)
+        engine = replace(
+            engine, contract=new, contract_snapshots=(*engine.contract_snapshots, snapshot)
+        )
+    return engine, True
