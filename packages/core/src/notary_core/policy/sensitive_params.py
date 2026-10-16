@@ -41,9 +41,28 @@ class ParamPolicy(NotaryModel):
         return self
 
 
+class ParamBinding(NotaryModel):
+    name: str
+    policy: ParamPolicy
+
+
 class ToolPolicy(NotaryModel):
     effect: ToolEffect
-    params: dict[str, ParamPolicy]
+    params: tuple[ParamBinding, ...]
+    """Immutable by construction (a strict `dict` cannot be frozen); use `make_tool_policy`."""
+
+    @model_validator(mode="after")
+    def _names_are_unique(self) -> Self:
+        names = [binding.name for binding in self.params]
+        if len(names) != len(set(names)):
+            raise ValueError("a tool policy cannot bind the same parameter twice")
+        return self
+
+
+def make_tool_policy(effect: ToolEffect, params: Mapping[str, ParamPolicy]) -> ToolPolicy:
+    """Build a `ToolPolicy`, sorting bindings by name so insertion order never shows."""
+    bindings = tuple(ParamBinding(name=name, policy=params[name]) for name in sorted(params))
+    return ToolPolicy(effect=effect, params=bindings)
 
 
 PolicyTable = Mapping[str, ToolPolicy]
@@ -88,7 +107,10 @@ def param_policy(policy: PolicyTable, tool: str, param: str) -> ParamPolicy:
     tool_policy = policy.get(tool)
     if tool_policy is None:
         return UNKNOWN_PARAM
-    return tool_policy.params.get(param, UNKNOWN_PARAM)
+    for binding in tool_policy.params:
+        if binding.name == param:
+            return binding.policy
+    return UNKNOWN_PARAM
 
 
 def effective_effect(policy: PolicyTable, tool: str, declared: ToolEffect | None) -> ToolEffect:

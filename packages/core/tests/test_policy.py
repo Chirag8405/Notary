@@ -6,6 +6,7 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from notary_core.models import (
+    DecisionUnit,
     EndorseMarker,
     FreeMarker,
     LedgerMarker,
@@ -18,11 +19,13 @@ from notary_core.policy.sensitive_params import (
     DEFAULT_POLICY,
     EFFECT_STRICTNESS,
     UNKNOWN_PARAM,
+    ParamBinding,
     ParamPolicy,
     PolicyTable,
     ToolPolicy,
     effective_effect,
     effective_marker,
+    make_tool_policy,
     marker_rank,
     merge_with_compiler_markers,
     param_policy,
@@ -41,7 +44,7 @@ effects: st.SearchStrategy[ToolEffect] = st.sampled_from(EFFECT_STRICTNESS)
 
 def _table(effect: ToolEffect, floor: Marker) -> PolicyTable:
     param = ParamPolicy(unit="iban", floor=floor, kind="destination")
-    return {"pay": ToolPolicy(effect=effect, params={"to": param})}
+    return {"pay": make_tool_policy(effect, {"to": param})}
 
 
 # covers: I2
@@ -145,7 +148,7 @@ def test_effective_marker_applies_table_floor() -> None:
 
 def test_default_policy_is_read_only() -> None:
     with pytest.raises(TypeError):
-        DEFAULT_POLICY["x"] = ToolPolicy(effect="read", params={})  # type: ignore[index]
+        DEFAULT_POLICY["x"] = make_tool_policy("read", {})  # type: ignore[index]
 
 
 # covers: model
@@ -158,3 +161,33 @@ def test_literal_floor_rejected() -> None:
 def test_empty_ledger_floor_rejected() -> None:
     with pytest.raises(ValidationError):
         ParamPolicy(unit=None, floor=LedgerMarker(kind="ledger", ledger=""), kind="other")
+
+
+def _param(unit: DecisionUnit | None = "iban") -> ParamPolicy:
+    return ParamPolicy(unit=unit, floor=EndorseMarker(kind="endorse"), kind="destination")
+
+
+# covers: model
+def test_toolpolicy_duplicate_param_names_rejected() -> None:
+    binding = ParamBinding(name="to", policy=_param())
+    with pytest.raises(ValidationError):
+        ToolPolicy(effect="write", params=(binding, binding))
+
+
+# covers: model
+def test_make_tool_policy_is_order_independent() -> None:
+    a = make_tool_policy("write", {"to": _param(), "cc": _param("email")})
+    b = make_tool_policy("write", {"cc": _param("email"), "to": _param()})
+    assert a.model_dump_json() == b.model_dump_json()
+    assert [binding.name for binding in a.params] == ["cc", "to"]
+
+
+# covers: I2
+def test_toolpolicy_params_immutable() -> None:
+    tool = make_tool_policy("write", {"to": _param()})
+    with pytest.raises(ValidationError):
+        tool.params = ()
+    with pytest.raises(ValidationError):
+        tool.params[0].name = "other"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        tool.params[0] = tool.params[0]  # type: ignore[index]
