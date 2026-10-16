@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Annotated, Literal
 
 import anyio
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BeforeValidator, ValidationError
@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnected
 
 from notary_core.models import AttackCase, HijackedToolCallCommand, NotaryModel, PoisonWorldCommand
+from notary_server.anchors import Anchor, AnchorStore
 from notary_server.commands import (
     CLOSE_BAD_REQUEST,
     CLOSE_MODE_UNAVAILABLE,
@@ -126,11 +127,13 @@ def create_app(
     router: CommandRouter | None = None,
     lane_runner: LaneRunner | None = None,
     hijacked: HijackedSessions | None = None,
+    anchors: AnchorStore | None = None,
 ) -> FastAPI:
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
     playground = PlaygroundService(lane_runner)
     hijacked_sessions = HijackedSessions() if hijacked is None else hijacked
+    anchor_store = AnchorStore() if anchors is None else anchors
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
@@ -182,6 +185,13 @@ def create_app(
     @app.post("/playground/attacks/{attack_id}/run", operation_id="runAttack")
     def run_attack(attack_id: str) -> AttackRunResponse:
         return playground.run_attack(attack_id)
+
+    @app.get("/runs/{run_id}/anchor", operation_id="getAnchor")
+    def run_anchor(run_id: str) -> Anchor:
+        anchor = anchor_store.get(run_id)
+        if anchor is None:
+            raise HTTPException(status_code=404, detail="no anchor for this run")
+        return anchor
 
     @app.websocket("/ws/runs/{scenario}")
     async def run_stream(

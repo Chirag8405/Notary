@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "Anchor": {
+        "additionalProperties": false,
+        "properties": {
+          "head": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Head",
+            "type": "string"
+          },
+          "length": {
+            "title": "Length",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "head",
+          "length"
+        ],
+        "title": "Anchor",
+        "type": "object"
+      },
       "AttackCase": {
         "additionalProperties": false,
         "properties": {
@@ -2299,6 +2324,45 @@
           }
         },
         "summary": "Run Modes"
+      }
+    },
+    "/runs/{run_id}/anchor": {
+      "get": {
+        "operationId": "getAnchor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Anchor"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Anchor"
       }
     },
     "/scenarios": {

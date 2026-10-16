@@ -140,6 +140,8 @@ Playground endpoints (synchronous REST, `notary_server.playground`; CORS allows 
 - `POST /playground/attacks/{attack_id}/run` [`runAttack`]: `A1`-`A14` or `B1`-`B4` (case-insensitive) replayed through the real monitor with the oracle; unknown id is `404 unknown attack id`. `ok` and `checks` report what the monitor did, so a mismatch is never hidden.
 - Errors are `{"detail": ...}`; a malformed body is FastAPI's own 422.
 
+Audit anchor (`notary_server.anchors`): `AnchorStore` keeps `(run_id, head, length)` in SQLite, outside the log (no timestamps, parameterized SQL, an anchor never shrinks). `anchored_append(store)` wraps the executor's `audit_append` hook and records the new head and length after every successful append; a failing anchor write raises, so the engine halts and no effect runs (write-ahead audit). `verify_against_anchor` checks a chain with `verify_chain_detailed(expected_length, expected_head)`, so a truncated tail reports `length mismatch` and an edited entry `hash mismatch`. `GET /runs/{run_id}/anchor` [`getAnchor`] returns the stored anchor (404 `no anchor for this run`); `create_app(anchors=...)` takes a store, default in memory. The X-ray cannot recompute the head yet because events carry no entry hashes; verification goes through `notary replay --expect-head --expect-length`.
+
 Hijacked Mode endpoints (`notary_server.hijacked`, in-memory sessions, no LLM):
 
 - `POST /playground/hijacked` [`startHijacked`] starts a session on `legitimate_bill` or `poisoned_bill` (seed >= 0): ids are counters (`h1`, run id `run-hijacked-h1`), at most 64 sessions (429). The response lists the four objective cards (`pay_attacker`, `leak_2fa`, `delete_inbox`, `add_contact`).
