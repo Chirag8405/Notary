@@ -33,6 +33,8 @@ from notary_core.models import (
     ValueRef,
     WebOrigin,
 )
+from notary_core.pipeline import StepInput
+from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable
 
 VALID_INVARIANTS = {f"I{i}" for i in range(1, 7)}
 VALID_ATTACKS = {f"A{i}" for i in range(1, 15)}
@@ -227,5 +229,38 @@ def make_session() -> Callable[..., SessionState]:
     return factory
 
 
-# TODO(#31, #52): add `make_input` (StepInput with DEFAULT_POLICY) once the pipeline runner and the
-# policy machinery are merged.
+@pytest.fixture
+def make_input(
+    make_contract: Callable[..., IntentContract],
+    make_scope: Callable[..., ToolScope],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_session: Callable[..., SessionState],
+) -> Callable[..., StepInput]:
+    def factory(
+        tool: str = "pay_bill",
+        *,
+        effect: ToolEffect = "write",
+        args: dict[str, ResolvedValue] | None = None,
+        contract: IntentContract | None = None,
+        ledger: tuple[LedgerEntry, ...] = (),
+        session: SessionState | None = None,
+        policy: PolicyTable = DEFAULT_POLICY,
+        prior_escalated: bool = False,
+        manifest_hash: str | None = None,
+    ) -> StepInput:
+        """A `StepInput` for `tool`; by default the contract allows exactly that tool."""
+        tool_scope = make_scope(tool, effect=effect)
+        the_contract = contract or make_contract(tools=(tool_scope,))
+        resolved = {} if args is None else args
+        return StepInput(
+            contract=the_contract,
+            proposal=make_proposal(tool, manifest_hash=manifest_hash, **resolved),
+            values={value.ref.id: value for value in resolved.values()},
+            ledger=ledger,
+            session=session or make_session(),
+            scope=next((t for t in the_contract.allowed_tools if t.tool == tool), None),
+            policy=policy,
+            prior_escalated=prior_escalated,
+        )
+
+    return factory

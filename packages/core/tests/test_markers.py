@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from notary_core.models import IntentContract, ResolvedValue
+from notary_core.pipeline import StepInput, run_steps
 
 pytest_plugins = ["pytester"]
 
@@ -90,3 +91,22 @@ def test_make_contract_is_valid_and_frozen(
     assert contract.allowed_tools[0].tool == "pay"
     with pytest.raises(ValidationError):
         contract.contract_id = "other"
+
+
+def test_make_input_defaults_run_through_a_fake_step(
+    make_input: Callable[..., StepInput], make_value: Callable[..., ResolvedValue]
+) -> None:
+    amount = make_value("v1", "100", unit="amount")
+    inp = make_input("pay_bill", args={"amount": amount})
+    assert inp.scope is not None
+    assert inp.proposal.args["amount"] == amount.ref
+    assert inp.values == {"v1": amount}
+    decision = run_steps([("scope", lambda _inp: None)], inp)
+    assert decision.verdict == "ALLOW"
+
+
+def test_make_input_for_a_tool_outside_the_contract_has_no_scope(
+    make_input: Callable[..., StepInput], make_contract: Callable[..., IntentContract]
+) -> None:
+    inp = make_input("send_email", contract=make_contract())
+    assert inp.scope is None
