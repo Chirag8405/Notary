@@ -9,7 +9,7 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 | World                   | seeded: bank, inbox, calendar, files, Slack as one JSON state, reset before every run; mirrors the organizer's sandbox tools (`packages/world`) |
 | Monitor, ledger, oracle | pure functions of state (`packages/core`)                                                                                                       |
 | Stage run               | replays recorded LLM responses keyed by prompt hash (cassettes in `packages/world/fixtures/cassettes`); byte-identical                          |
-| Live mode               | temperature 0; labeled "live" in the UI                                                                                                         |
+| Live mode               | labeled "live" in the UI; the current Anthropic SDK exposes no sampling parameters (no `temperature`), so live runs are not reproducible: use cassettes |
 | Hijacked Mode           | no LLM; a judge or script submits raw tool calls; demonstrates I6                                                                               |
 
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)

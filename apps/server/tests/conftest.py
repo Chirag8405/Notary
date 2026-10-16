@@ -1,4 +1,4 @@
-"""I/A markers for the server tests, registered the way `packages/world/tests/conftest.py` does."""
+"""I/A markers for the world tests, registered the way `packages/core/tests/conftest.py` does."""
 
 import pytest
 
