@@ -5,7 +5,9 @@ confusables data. Lookalikes beyond this table are not normalized to the same
 skeleton (threat model A8, "lookalikes beyond the normalizer").
 """
 
+import difflib
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from notary_core.models import DecisionUnit
@@ -129,3 +131,89 @@ class LookalikeMatch:
     distance: int  # OSA distance between the NORMALIZED forms
     confusable_equal: bool  # normalized forms identical although canonical forms differ
     differing_positions: tuple[int, ...]  # indices in `candidate` that differ from `known`
+
+
+def _decode_punycode(text: str) -> str:
+    """Back to Unicode when `text` holds punycode labels; unchanged on any decode error."""
+    if "xn--" not in text:
+        return text
+    try:
+        return text.encode("ascii").decode("idna")
+    except UnicodeError:
+        return text
+
+
+def _skeleton(unit: DecisionUnit, s: str) -> str:
+    # Canonical hosts and email domains are punycode, so decode them first or the
+    # Cyrillic and Greek entries of CONFUSABLES could never apply.
+    if unit == "url_host":
+        s = _decode_punycode(s)
+    elif unit == "email":
+        local, at, domain = s.rpartition("@")
+        s = local + at + _decode_punycode(domain)
+    return normalize_for_match(unit, s)
+
+
+def _differing_positions(known: str, candidate: str) -> tuple[int, ...]:
+    """Indices in `candidate` that differ from `known`, sorted and unique."""
+    if len(candidate) == len(known):
+        return tuple(i for i, (x, y) in enumerate(zip(known, candidate, strict=True)) if x != y)
+    if not candidate:
+        return ()
+    positions: set[int] = set()
+    matcher = difflib.SequenceMatcher(None, known, candidate, autojunk=False)
+    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if j2 > j1:
+            positions.update(range(j1, j2))
+        else:
+            # Pure deletion: the candidate lacks characters; still mark the spot.
+            positions.add(min(j1, len(candidate) - 1))
+    return tuple(sorted(positions))
+
+
+def is_lookalike(unit: DecisionUnit, candidate: str, known: Sequence[str]) -> LookalikeMatch | None:
+    """Closest known value that `candidate` imitates, or None. Inputs are canonical strings."""
+    config = LOOKALIKE_CONFIG[unit]
+    if unit == "amount":
+        return None
+    a = _skeleton(unit, candidate)
+    best: LookalikeMatch | None = None
+    for k in known:
+        if candidate == k:
+            continue
+        b = _skeleton(unit, k)
+        if a == b:
+            distance, confusable_equal = 0, True
+        elif (
+            len(a) >= config.min_length_for_edits
+            and (not config.require_equal_length or len(a) == len(b))
+            and abs(len(a) - len(b)) <= config.max_edits
+        ):
+            distance = osa_distance(a, b, config.max_edits)
+            if distance > config.max_edits:
+                continue
+            confusable_equal = False
+        else:
+            continue
+        if best is None or distance < best.distance:
+            best = LookalikeMatch(k, distance, confusable_equal, _differing_positions(k, candidate))
+    return best
+
+
+def nearest_known(
+    unit: DecisionUnit, candidate: str, known: Sequence[str]
+) -> tuple[str, tuple[int, ...]] | None:
+    """Closest known value at any distance, with the differing positions for the diff card."""
+    a = _skeleton(unit, candidate)
+    best: str | None = None
+    best_distance = 0
+    for k in known:
+        b = _skeleton(unit, k)
+        distance = osa_distance(a, b, max(len(a), len(b)))
+        if best is None or distance < best_distance:
+            best, best_distance = k, distance
+    if best is None:
+        return None
+    return best, _differing_positions(best, candidate)
