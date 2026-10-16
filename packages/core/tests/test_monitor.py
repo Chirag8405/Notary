@@ -115,11 +115,12 @@ def test_steps_registry_is_in_check_order() -> None:
     assert [name for name, _ in STEPS] == list(CHECK_ORDER)
 
 
-def test_steps_registry_uses_real_steps_where_they_exist() -> None:
-    registry = dict(STEPS)
-    assert registry["scope"] is check_scope
-    assert registry["irreversibility"] is check_irreversibility
-    assert registry["origin"] is check_origin
-    assert registry["confidentiality"] is check_confidentiality
-    assert registry["budget"] is check_budget
-    assert registry["corroboration"] is check_corroboration
+def test_steps_registry_maps_each_check_to_its_step() -> None:
+    assert dict(STEPS) == {
+        "scope": check_scope,
+        "irreversibility": check_irreversibility,
+        "origin": check_origin,
+        "corroboration": check_corroboration,
+        "confidentiality": check_confidentiality,
+        "budget": check_budget,
+    }

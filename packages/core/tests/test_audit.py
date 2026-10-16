@@ -44,13 +44,11 @@ def _forged(prev: AuditEntry, index: int, event: Event) -> AuditEntry:
     )
 
 
-# covers: model
 def test_empty_chain_is_valid() -> None:
     assert verify_chain(()) is True
     assert verify_chain_detailed(()).reason == ""
 
 
-# covers: model
 def test_append_builds_a_valid_chain() -> None:
     chain = _chain(5)
     result = verify_chain_detailed(chain)
@@ -59,12 +57,10 @@ def test_append_builds_a_valid_chain() -> None:
     assert (result.ok, result.first_bad_index, result.reason) == (True, None, "")
 
 
-# covers: model
 def test_first_entry_links_to_genesis() -> None:
     assert _chain(1)[0].prev_hash == GENESIS_HASH == "0" * 64
 
 
-# covers: model
 def test_modified_event_is_detected() -> None:
     chain = _chain()
     tampered = (*chain[:3], chain[3].model_copy(update={"event": _event(3, "forged")}), chain[4])
@@ -72,14 +68,12 @@ def test_modified_event_is_detected() -> None:
     assert (result.ok, result.first_bad_index, result.reason) == (False, 3, "hash mismatch")
 
 
-# covers: model
 def test_deleted_middle_entry_is_detected() -> None:
     chain = _chain()
     result = verify_chain_detailed(chain[:2] + chain[3:])
     assert (result.ok, result.first_bad_index, result.reason) == (False, 2, "index mismatch")
 
 
-# covers: model
 def test_reordered_entries_are_detected() -> None:
     chain = _chain()
     swapped = (chain[0], chain[2], chain[1], *chain[3:])
@@ -87,7 +81,6 @@ def test_reordered_entries_are_detected() -> None:
     assert (result.ok, result.first_bad_index, result.reason) == (False, 1, "index mismatch")
 
 
-# covers: model
 def test_inserted_entry_is_detected() -> None:
     chain = _chain()
     forged = _forged(chain[1], 2, _event(99, "forged"))
@@ -105,7 +98,6 @@ def test_inserted_entry_is_detected() -> None:
     assert (result.ok, result.first_bad_index, result.reason) == (False, 3, "prev_hash mismatch")
 
 
-# covers: model
 def test_replaced_entry_with_recomputed_hash_breaks_the_next_link() -> None:
     chain = _chain()
     forged = _forged(chain[1], 2, _event(2, "forged"))
@@ -113,7 +105,6 @@ def test_replaced_entry_with_recomputed_hash_breaks_the_next_link() -> None:
     assert (result.ok, result.first_bad_index, result.reason) == (False, 3, "prev_hash mismatch")
 
 
-# covers: model
 def test_truncation_detected_with_expected_length() -> None:
     chain = _chain()
     truncated = chain[:-1]
@@ -123,7 +114,6 @@ def test_truncation_detected_with_expected_length() -> None:
     assert verify_chain_detailed(chain, expected_length=5).ok is True
 
 
-# covers: model
 def test_head_mismatch_detected() -> None:
     chain = _chain()
     assert verify_chain_detailed(chain, expected_head=chain[-1].hash).ok is True
@@ -134,7 +124,6 @@ def test_head_mismatch_detected() -> None:
     assert verify_chain_detailed(chain[:-1], expected_head=chain[-1].hash).reason == "head mismatch"
 
 
-# covers: model
 def test_append_does_not_mutate_input() -> None:
     chain = _chain(3)
     snapshot = tuple(entry.model_dump_json() for entry in chain)
@@ -145,7 +134,6 @@ def test_append_does_not_mutate_input() -> None:
     assert longer[:3] == chain
 
 
-# covers: model
 def test_same_events_same_hashes() -> None:
     first, second = _chain(), _chain()
     assert [e.model_dump_json() for e in first] == [e.model_dump_json() for e in second]
@@ -154,7 +142,6 @@ def test_same_events_same_hashes() -> None:
     assert entry_hash(GENESIS_HASH, 0, event) != entry_hash(GENESIS_HASH, 1, event)
 
 
-# covers: model
 def test_entry_hash_golden_vector() -> None:
     # Pins the hash input format: f"{prev_hash}\n{index}\n{canonical_json(event)}".
     assert entry_hash(GENESIS_HASH, 0, _event(0)) == _chain(1)[0].hash
@@ -177,7 +164,6 @@ def _tampered_value(entry: AuditEntry, field: str) -> st.SearchStrategy[object]:
     return _different_hex(entry.prev_hash if field == "prev_hash" else entry.hash)
 
 
-# covers: model
 @given(
     st.integers(min_value=0, max_value=4),
     st.sampled_from(("index", "prev_hash", "hash", "event")),
@@ -193,7 +179,6 @@ def test_random_tampering_is_always_detected(
     assert verify_chain((*chain[:position], tampered, *chain[position + 1 :])) is False
 
 
-# covers: model
 def test_chain_helpers_are_not_schema_exports() -> None:
     assert "VerifyResult" not in models.__all__
     assert "verify_chain" not in models.__all__

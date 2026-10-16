@@ -1,20 +1,13 @@
 """Monitor steps, one module per check in `CHECK_ORDER`, and the `STEPS` registry."""
 
 from notary_core.models import CheckName
-from notary_core.models.decision import StepOutcome
-from notary_core.pipeline import Step, StepInput
+from notary_core.pipeline import Step
 from notary_core.steps.budget import check_budget
 from notary_core.steps.confidentiality import check_confidentiality
 from notary_core.steps.corroboration import check_corroboration
 from notary_core.steps.irreversibility import check_irreversibility
 from notary_core.steps.origin import check_origin
 from notary_core.steps.scope import check_scope
-
-
-def not_implemented_step(inp: StepInput) -> StepOutcome | None:
-    """Placeholder for a step whose issue has not landed yet. Replace it in `STEPS`."""
-    raise NotImplementedError("this monitor step is not implemented yet")
-
 
 STEPS: tuple[tuple[CheckName, Step], ...] = (
     ("scope", check_scope),
@@ -24,4 +17,4 @@ STEPS: tuple[tuple[CheckName, Step], ...] = (
     ("confidentiality", check_confidentiality),
     ("budget", check_budget),
 )
-"""The six checks in `CHECK_ORDER`. Each step issue replaces its placeholder."""
+"""The six checks in `CHECK_ORDER`."""

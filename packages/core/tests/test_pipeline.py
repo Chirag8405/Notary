@@ -78,7 +78,7 @@ def six_fakes(overrides: dict[CheckName, Fake] | None = None) -> dict[CheckName,
     return fakes
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_all_pass_gives_allow() -> None:
     decision = run_steps(pipeline(six_fakes()), make_input())
     assert decision.verdict == "ALLOW"
@@ -86,7 +86,7 @@ def test_all_pass_gives_allow() -> None:
     assert all(r.code == "STEP_PASS" and r.outcome == "pass" for r in decision.reasons)
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_block_short_circuits() -> None:
     fakes = six_fakes({"origin": Fake(outcome("BLOCK", "ORIGIN_UNTRUSTED"))})
     decision = run_steps(pipeline(fakes), make_input())
@@ -95,7 +95,7 @@ def test_block_short_circuits() -> None:
     assert [fakes[n].calls for n in CHECK_ORDER] == [1, 1, 1, 0, 0, 0]
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_escalate_does_not_stop_pipeline() -> None:
     fakes = six_fakes(
         {"corroboration": Fake(outcome("ESCALATE", "LEDGER_NOVEL_ESCALATE", card("to")))}
@@ -107,7 +107,7 @@ def test_escalate_does_not_stop_pipeline() -> None:
     assert fakes["budget"].calls == 1
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_block_beats_escalate() -> None:
     fakes = six_fakes(
         {
@@ -121,7 +121,7 @@ def test_block_beats_escalate() -> None:
     assert fakes["budget"].calls == 0
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_prior_escalated_flag_set_for_later_steps() -> None:
     fakes = six_fakes(
         {"corroboration": Fake(outcome("ESCALATE", "LEDGER_NOVEL_ESCALATE", card("to")))}
@@ -180,7 +180,7 @@ def test_empty_steps_rejected() -> None:
         run_steps([], make_input())
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_run_steps_is_deterministic() -> None:
     def run() -> str:
         fakes = six_fakes(
@@ -191,7 +191,7 @@ def test_run_steps_is_deterministic() -> None:
     assert run() == run()
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 def test_run_steps_does_not_mutate_inputs() -> None:
     inp = make_input()
     before = (
@@ -201,7 +201,7 @@ def test_run_steps_does_not_mutate_inputs() -> None:
     assert inp == before
 
 
-# covers: I6
+@pytest.mark.invariant("I6")
 @given(st.sets(st.sampled_from(CHECK_ORDER)))
 def test_any_ordered_subset_of_passing_steps_is_allow(names: set[CheckName]) -> None:
     ordered: list[CheckName] = [n for n in CHECK_ORDER if n in names]
