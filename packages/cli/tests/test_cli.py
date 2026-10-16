@@ -26,4 +26,6 @@ def test_bench_is_stubbed() -> None:
 
 def test_attack_list() -> None:
     result = runner.invoke(app, ["attack", "--list"])
+    assert result.exit_code == 0
     assert result.output.count("\n") == 14
+    assert result.output.splitlines()[0].startswith("A1\t")

@@ -80,3 +80,24 @@ Timestamps are approximate; rehearse and adjust.
 | Web demo                                                   | primary stage surface                                                                    |
 | MCP gateway (`packages/mcp-proxy`)                         | the real integration: a proxy between any agent and its MCP servers; optional short clip |
 | CLI (`notary fuzz\|replay\|bench\|attack`, `packages/cli`) | evidence and reproducibility, not the stage surface                                      |
+
+### CLI usage and exit codes
+
+The CLI computes nothing itself: it calls `notary_world` and `notary_core`, prints deterministic text (no timestamps, no absolute paths) and sets the exit code. `--save-dir` is the only place it writes. Run it with `uv run notary ...` from `packages/cli`.
+
+| Command | What it does |
+| --- | --- |
+| `notary attack --list` | One tab-separated line per attack A1-A14: `id`, name, expected verdict, deciding step |
+| `notary attack ID [--monitor real\|fake] [--json] [--save-dir DIR]` | Run an attack (`A1`-`A14`) or a benign control (`B1`-`B4`) through the monitor and compare every outcome with the fixture; also prints the oracle lights and invariants I1-I6 |
+| `notary attack --all` | Run A1-A14 then B1-B4 and print a table with a summary line |
+| `notary fuzz [--examples N] [--seed S] [--profile ci\|full]` | Fuzz the real monitor with an adversarial LLM, checking I1-I6 after every step; prints the minimized program on a violation |
+| `notary replay RUN.json [--expect-head H] [--expect-length N]` | Print the events of a saved run and verify its audit chain; the anchors detect tail truncation, which the chain alone cannot |
+| `notary bench` | Stub: prints `bench: not implemented yet` |
+
+`--monitor` defaults to `real`; `fake` replays the fixtures' expected verdicts and exists only to test the harness. A real-monitor mismatch is never hidden: the two known deviations (A3, A6) keep `attack A3`, `attack A6` and `attack --all` at exit 1 until CP1 resolves them.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | success: every outcome matches, zero fuzz violations, chain verified |
+| `1` | a verification failed: an outcome mismatch, a fuzz violation, or a broken or truncated audit chain |
+| `2` | usage error, unreadable or invalid input, or not implemented (`bench`) |
