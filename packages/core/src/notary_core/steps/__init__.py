@@ -3,6 +3,7 @@
 from notary_core.models import CheckName
 from notary_core.models.decision import StepOutcome
 from notary_core.pipeline import Step, StepInput
+from notary_core.steps.budget import check_budget
 from notary_core.steps.irreversibility import check_irreversibility
 from notary_core.steps.origin import check_origin
 from notary_core.steps.scope import check_scope
@@ -19,6 +20,6 @@ STEPS: tuple[tuple[CheckName, Step], ...] = (
     ("origin", check_origin),
     ("corroboration", not_implemented_step),
     ("confidentiality", not_implemented_step),
-    ("budget", not_implemented_step),
+    ("budget", check_budget),
 )
 """The six checks in `CHECK_ORDER`. Each step issue replaces its placeholder."""
