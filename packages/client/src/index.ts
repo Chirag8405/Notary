@@ -1,11 +1,11 @@
 export { encodeCommand } from "./commands";
 export { createRestClient, type RestClient } from "./rest";
+export { streamRun } from "./run-session";
 export {
   EventValidationError,
   StreamClosedError,
   parseEvent,
   runStreamUrl,
-  streamRun,
   type StreamOptions,
   type WebSocketFactory,
 } from "./ws";

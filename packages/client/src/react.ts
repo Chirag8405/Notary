@@ -1,7 +1,8 @@
 import type { Event } from "@notary/schema";
 import { useEffect, useState } from "react";
 
-import { streamRun, type WebSocketFactory } from "./ws";
+import { streamRun } from "./run-session";
+import type { WebSocketFactory } from "./ws";
 
 export type RunStreamState =
   | { status: "connecting"; events: readonly Event[] }
