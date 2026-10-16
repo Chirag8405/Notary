@@ -1,10 +1,22 @@
 """Agent runner and world host. For now: replays hard-coded typed scenarios."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
-from notary_world.sample_run import EVENT_ADAPTER, poisoned_bill_events
+from notary_core.models import Event
+from notary_world.golden import EVENT_ADAPTER, golden_streams
 
-SCENARIOS = {"poisoned_bill": poisoned_bill_events}
+
+def _scenarios() -> dict[str, Callable[[], tuple[Event, ...]]]:
+    """Scenario name -> golden stream. `poisoned_bill` is the NOTARY lane run (the default)."""
+    streams = golden_streams()
+    table: dict[str, Callable[[], tuple[Event, ...]]] = {
+        name: (lambda events=events: events) for name, events in streams.items()
+    }
+    table["poisoned_bill"] = table["poisoned_bill.notary"]
+    return table
+
+
+SCENARIOS = _scenarios()
 
 
 class ScenarioNotFoundError(KeyError):

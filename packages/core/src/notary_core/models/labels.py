@@ -53,6 +53,9 @@ Origin = Annotated[
 
 Integrity = Literal["trusted", "untrusted", "endorsed"]
 
+Lane = Literal["undefended", "classifier", "notary"]
+"""Defense configuration of a run: no hooks, classifier pre-filter, or Gateway + monitor."""
+
 
 class SpanPointer(NotaryModel):
     """Points at the span of a source value that a derived value was taken from."""

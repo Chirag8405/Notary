@@ -6,13 +6,20 @@
         "properties": {
           "category": {
             "enum": [
-              "direct_injection",
-              "argument_hijack",
+              "instruction_override",
+              "authority_impersonation",
+              "data_only_poisoning",
+              "action_induction",
               "exfiltration",
+              "staged_long_horizon",
+              "obfuscation",
+              "lookalike",
+              "trust_laundering",
               "tool_poisoning",
-              "confused_deputy",
-              "ledger_poisoning",
-              "endorsement_abuse"
+              "approval_phishing",
+              "side_channel",
+              "text_to_text_deception",
+              "denial_of_utility"
             ],
             "title": "Category",
             "type": "string"
@@ -62,6 +69,39 @@
       "ExpectedOutcome": {
         "additionalProperties": false,
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "STEP_PASS",
+                  "READ_ONLY_UNGATED",
+                  "SCOPE_TOOL_NOT_IN_CONTRACT",
+                  "SCOPE_MANIFEST_MISMATCH",
+                  "SCOPE_PARAM_NOT_IN_CONTRACT",
+                  "IRREVERSIBLE_NOT_AUTHORIZED",
+                  "ORIGIN_UNTRUSTED",
+                  "ORIGIN_UNSOURCED",
+                  "ORIGIN_LITERAL_MISMATCH",
+                  "ORIGIN_SOURCE_MISMATCH",
+                  "LEDGER_EXACT_MATCH",
+                  "LEDGER_LOOKALIKE",
+                  "LEDGER_NOVEL_ESCALATE",
+                  "LEDGER_NOT_FOUND",
+                  "CONF_READER_VIOLATION",
+                  "CONF_URL_NOT_ALLOWED",
+                  "BUDGET_AMOUNT",
+                  "BUDGET_SENDS",
+                  "BUDGET_EGRESS_BYTES",
+                  "BUDGET_APPROVALS_EXHAUSTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
           "deciding_check": {
             "anyOf": [
               {
@@ -93,7 +133,8 @@
         },
         "required": [
           "verdict",
-          "deciding_check"
+          "deciding_check",
+          "code"
         ],
         "title": "ExpectedOutcome",
         "type": "object"

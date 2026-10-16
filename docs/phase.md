@@ -6,20 +6,20 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 
 "Needs" is what a phase must have to start: contracts only (frozen in P0b), never another phase's implementation. "Integrates with" is the real implementation it plugs into later, at a [checkpoint](#integration-checkpoints).
 
-| Phase | Goal                                                                                       | Lane           | Needs (contracts only)                              | Integrates with (real implementation) | Status            |
-| ----- | ------------------------------------------------------------------------------------------ | -------------- | --------------------------------------------------- | ------------------------------------- | ----------------- |
-| P0    | Foundations                                                                                | all            | -                                                   | -                                     | done              |
-| P0b   | Contract freeze + stubs                                                                    | all (A drafts) | P0                                                  | -                                     | next (first hour) |
-| P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | after P0b         |
-| P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | not started       |
-| P3a   | Deterministic pipeline: pure Gateway logic, Value Store, gateway I/O adapter, Output Guard | A              | P0b (Gateway/Value Store interfaces), P1 models     | P1 monitor, P3b (CP2)                 | not started       |
-| P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | not started       |
-| P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | not started       |
-| P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | not started       |
-| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | not started       |
-| P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | not started       |
-| P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started       |
-| P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started       |
+| Phase | Goal                                                                                       | Lane           | Needs (contracts only)                              | Integrates with (real implementation) | Status      |
+| ----- | ------------------------------------------------------------------------------------------ | -------------- | --------------------------------------------------- | ------------------------------------- | ----------- |
+| P0    | Foundations                                                                                | all            | -                                                   | -                                     | done        |
+| P0b   | Contract freeze + stubs                                                                    | all (A drafts) | P0                                                  | -                                     | done        |
+| P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | next        |
+| P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | not started |
+| P3a   | Deterministic pipeline: pure Gateway logic, Value Store, gateway I/O adapter, Output Guard | A              | P0b (Gateway/Value Store interfaces), P1 models     | P1 monitor, P3b (CP2)                 | not started |
+| P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | not started |
+| P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | not started |
+| P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | not started |
+| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | not started |
+| P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | not started |
+| P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started |
+| P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started |
 
 Start immediately after P0b, in parallel: P1, P2 (fixtures, oracle, fuzz harness and CLI against `FakeMonitor`), P3b, P3c, P3d (against contracts), P4 (against golden streams), P6 eval harness plumbing. Only the integration checkpoints and P7 are true blockers.
 
@@ -59,20 +59,22 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 
 - Packages: `packages/core`, `packages/world`
 - Freeze and tag these contracts:
-  - [ ] `decide()` signature
-  - [ ] Event union (server -> client), with a `lane` field (`undefended` | `classifier` | `notary`) and a run id on every event
-  - [ ] Intent Contract and value labels carried in events (`run_started`, `value_labeled`), so UI panels need no other source
-  - [ ] Client -> server command messages: endorsement approve/reject, Hijacked Mode raw tool call, Poison-the-world config, attacker-arena start
-  - [ ] Pure Gateway and Value Store interfaces: label the fields of a tool result into value refs; store/lookup API
-  - [ ] `AgentRunner` interface with two hook points: (a) a pre-filter applied to tool results before the agent sees them; (b) the Gateway/monitor hook. Lanes are configurations of one runner: Undefended = no hooks; Classifier-only = `ClassifierFilter` (supplied by lane B); NOTARY = Gateway + monitor
-  - [ ] Attack-case and fixture format; cassette format, with the lane as part of the cassette key (each lane has its own recordings)
-- [ ] `FakeMonitor` returning each fixture's expected verdict; test-support only, lives in `packages/world`, never imported by `core`
-- [ ] `FakeGateway` stub (test-support, lives in `packages/world`, never imported by `core`)
-- [ ] Name the classifier used for the Classifier-only baseline; document it in `docs/demo.md` and here. If a stand-in, label it in the UI
-- [ ] 3-4 golden event streams as JSON in `packages/world`: poisoned-bill run for A3, one legitimate-bill run, plus one or two more; all three lanes covered
-- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table
+  - [x] `decide()` signature
+  - [x] Event union (server -> client), with a `lane` field (`undefended` | `classifier` | `notary`) and a run id on every event
+  - [x] Intent Contract and value labels carried in events (`run_started`, `value_labeled`), so UI panels need no other source
+  - [x] Client -> server command messages: endorsement approve/reject, Hijacked Mode raw tool call, Poison-the-world config, attacker-arena start
+  - [x] Pure Gateway and Value Store interfaces: label the fields of a tool result into value refs; store/lookup API
+  - [x] `AgentRunner` interface with two hook points: (a) a pre-filter applied to tool results before the agent sees them; (b) the Gateway/monitor hook. Lanes are configurations of one runner: Undefended = no hooks; Classifier-only = `ClassifierFilter` (supplied by lane B); NOTARY = Gateway + monitor
+  - [x] Attack-case and fixture format; cassette format, with the lane as part of the cassette key (each lane has its own recordings)
+- [x] `FakeMonitor` returning each fixture's expected verdict; test-support only, lives in `packages/world`, never imported by `core`
+- [x] `FakeGateway` stub (test-support, lives in `packages/world`, never imported by `core`)
+- [x] Name the classifier used for the Classifier-only baseline; document it in `docs/demo.md` and here. If a stand-in, label it in the UI
+- [x] 3-4 golden event streams as JSON in `packages/world`: poisoned-bill run for A3, one legitimate-bill run, plus one or two more; all three lanes covered
+- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table (names needed)
 - Process: one named owner (lane A) drafts the freeze; others review within a fixed window (TBD). Plan one revision window at CP1.
 - Accept: stubs pass typecheck; golden streams include all three lanes and validate against the generated Zod schema; command messages have Pydantic models and generated Zod; `pnpm schema:check` clean
+- Tag: `contracts-v1` (annotated git tag on the P0b commit). Frozen in `packages/core/src/notary_core/` (`models/`, `monitor.py`, `gateway.py`, `runner.py`) and `packages/world/src/notary_world/` (`models.py`, `cassette.py`, `fakes.py`, `golden.py`).
+- Classifier for the Classifier-only baseline: a **stand-in** heuristic injection filter (regex/keyword rules, not a trained classifier), reported as `RunStarted.classifier` and labeled "stand-in" in the UI. Swap in a real classifier later behind the same `ResultPreFilter` hook. See [demo.md](demo.md#trust-x-ray-appsweb-route-x-ray-components-in-packagesui).
 - Rule: after the freeze, any contract change needs a one-line announcement in the team channel and a green `schema:check` in the same PR.
 - Demo-able: nothing new; unblocks all lanes.
 

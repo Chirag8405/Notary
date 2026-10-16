@@ -4,10 +4,13 @@
 
 import { z } from "zod";
 
-export const ExpectedOutcomeSchema = z.object({ "deciding_check": z.union([z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), z.null()]), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
+export const ArenaStartCommandSchema = z.object({ "lanes": z.array(z.enum(["undefended","classifier","notary"])), "rounds": z.number().int().gte(1).lte(100), "scenario": z.string(), "seed": z.number().int().gte(0), "type": z.literal("arena_start") }).strict().describe("Attacker arena: an LLM attacker iterates `rounds` per lane.");
+export type ArenaStartCommand = z.infer<typeof ArenaStartCommandSchema>;
+
+export const ExpectedOutcomeSchema = z.object({ "code": z.union([z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), z.null()]), "deciding_check": z.union([z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), z.null()]), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
 export type ExpectedOutcome = z.infer<typeof ExpectedOutcomeSchema>;
 
-export const AttackCaseSchema = z.object({ "category": z.enum(["direct_injection","argument_hijack","exfiltration","tool_poisoning","confused_deputy","ledger_poisoning","endorsement_abuse"]), "expected": ExpectedOutcomeSchema, "id": z.enum(["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11","A12","A13","A14"]), "payload": z.string() }).strict();
+export const AttackCaseSchema = z.object({ "category": z.enum(["instruction_override","authority_impersonation","data_only_poisoning","action_induction","exfiltration","staged_long_horizon","obfuscation","lookalike","trust_laundering","tool_poisoning","approval_phishing","side_channel","text_to_text_deception","denial_of_utility"]), "expected": ExpectedOutcomeSchema, "id": z.enum(["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11","A12","A13","A14"]), "payload": z.string() }).strict();
 export type AttackCase = z.infer<typeof AttackCaseSchema>;
 
 export const EmailOriginSchema = z.object({ "kind": z.literal("email") }).strict();
@@ -43,49 +46,49 @@ export type Label = z.infer<typeof LabelSchema>;
 export const ValueRefSchema = z.object({ "content_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "id": z.string(), "label": LabelSchema }).strict().describe("A labeled handle to a value. Raw content never travels through the monitor.");
 export type ValueRef = z.infer<typeof ValueRefSchema>;
 
-export const ToolCallProposalSchema = z.object({ "args": z.record(z.string(), ValueRefSchema), "call_id": z.string(), "tool": z.string() }).strict();
+export const ToolCallProposalSchema = z.object({ "args": z.record(z.string(), ValueRefSchema), "call_id": z.string(), "manifest_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "tool": z.string() }).strict();
 export type ToolCallProposal = z.infer<typeof ToolCallProposalSchema>;
 
-export const CallProposedSchema = z.object({ "proposal": ToolCallProposalSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("call_proposed") }).strict();
+export const CallProposedSchema = z.object({ "lane": z.enum(["undefended","classifier","notary"]), "proposal": ToolCallProposalSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("call_proposed") }).strict();
 export type CallProposed = z.infer<typeof CallProposedSchema>;
 
-export const ReasonSchema = z.object({ "check": z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), "detail": z.string(), "outcome": z.enum(["pass","escalate","fail"]) }).strict();
-export type Reason = z.infer<typeof ReasonSchema>;
-
-export const DecisionSchema = z.object({ "reasons": z.array(ReasonSchema), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
-export type Decision = z.infer<typeof DecisionSchema>;
-
-export const DecisionMadeSchema = z.object({ "call_id": z.string(), "decision": DecisionSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("decision_made") }).strict();
-export type DecisionMade = z.infer<typeof DecisionMadeSchema>;
-
-export const EffectExecutedSchema = z.object({ "call_id": z.string(), "run_id": z.string(), "seq": z.number().int().gte(0), "summary": z.string(), "tool": z.string(), "type": z.literal("effect_executed") }).strict();
-export type EffectExecuted = z.infer<typeof EffectExecutedSchema>;
-
-export const DiffRowSchema = z.object({ "integrity": z.enum(["trusted","untrusted","endorsed"]), "origin": OriginSchema, "param": z.string(), "preview": z.string(), "value_id": z.string() }).strict().describe("One parameter of the proposed call, rendered from its label.");
+export const DiffRowSchema = z.object({ "differing_positions": z.array(z.number().int()), "integrity": z.enum(["trusted","untrusted","endorsed"]), "nearest_ledger_value": z.union([z.string(), z.null()]), "origin": OriginSchema, "param": z.string(), "preview": z.string(), "value_id": z.string() }).strict().describe("One parameter of the proposed call, rendered from its label.");
 export type DiffRow = z.infer<typeof DiffRowSchema>;
 
 export const DiffCardSchema = z.object({ "rows": z.array(DiffRowSchema) }).strict();
 export type DiffCard = z.infer<typeof DiffCardSchema>;
 
+export const ReasonSchema = z.object({ "check": z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), "code": z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), "detail": z.string(), "outcome": z.enum(["pass","escalate","fail"]) }).strict();
+export type Reason = z.infer<typeof ReasonSchema>;
+
+export const DecisionSchema = z.object({ "diff_card": z.union([DiffCardSchema, z.null()]), "reasons": z.array(ReasonSchema), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
+export type Decision = z.infer<typeof DecisionSchema>;
+
+export const DecisionMadeSchema = z.object({ "call_id": z.string(), "decision": DecisionSchema, "lane": z.enum(["undefended","classifier","notary"]), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("decision_made") }).strict();
+export type DecisionMade = z.infer<typeof DecisionMadeSchema>;
+
+export const EffectExecutedSchema = z.object({ "call_id": z.string(), "lane": z.enum(["undefended","classifier","notary"]), "run_id": z.string(), "seq": z.number().int().gte(0), "summary": z.string(), "tool": z.string(), "type": z.literal("effect_executed") }).strict();
+export type EffectExecuted = z.infer<typeof EffectExecutedSchema>;
+
 export const EndorsementSchema = z.object({ "call_id": z.string(), "card": DiffCardSchema, "endorsement_id": z.string(), "sequence": z.number().int().gte(0), "status": z.enum(["pending","approved","rejected"]) }).strict();
 export type Endorsement = z.infer<typeof EndorsementSchema>;
 
-export const EndorsementRequestedSchema = z.object({ "endorsement": EndorsementSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("endorsement_requested") }).strict();
+export const EndorsementRequestedSchema = z.object({ "endorsement": EndorsementSchema, "lane": z.enum(["undefended","classifier","notary"]), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("endorsement_requested") }).strict();
 export type EndorsementRequested = z.infer<typeof EndorsementRequestedSchema>;
 
 export const InvariantResultSchema = z.object({ "detail": z.string(), "id": z.enum(["I1","I2","I3","I4","I5","I6"]), "passed": z.boolean() }).strict();
 export type InvariantResult = z.infer<typeof InvariantResultSchema>;
 
-export const OracleResultSchema = z.object({ "invariants": z.array(InvariantResultSchema) }).strict();
+export const OracleResultSchema = z.object({ "attacker_goal_reached": z.boolean(), "invariants": z.array(InvariantResultSchema), "user_goal_achieved": z.boolean() }).strict();
 export type OracleResult = z.infer<typeof OracleResultSchema>;
 
-export const OracleUpdatedSchema = z.object({ "result": OracleResultSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("oracle_updated") }).strict();
+export const OracleUpdatedSchema = z.object({ "lane": z.enum(["undefended","classifier","notary"]), "result": OracleResultSchema, "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("oracle_updated") }).strict();
 export type OracleUpdated = z.infer<typeof OracleUpdatedSchema>;
 
-export const RunFinishedSchema = z.object({ "outcome": z.enum(["completed","blocked","error"]), "run_id": z.string(), "seq": z.number().int().gte(0), "summary": z.string(), "type": z.literal("run_finished") }).strict();
+export const RunFinishedSchema = z.object({ "lane": z.enum(["undefended","classifier","notary"]), "outcome": z.enum(["completed","blocked","error"]), "run_id": z.string(), "seq": z.number().int().gte(0), "summary": z.string(), "type": z.literal("run_finished") }).strict();
 export type RunFinished = z.infer<typeof RunFinishedSchema>;
 
-export const EffectBudgetSchema = z.object({ "max_effects": z.number().int().gte(0), "max_egress_bytes": z.number().int().gte(0), "max_spend_cents": z.number().int().gte(0) }).strict();
+export const EffectBudgetSchema = z.object({ "max_approvals": z.number().int().gte(0), "max_call_amount_cents": z.number().int().gte(0), "max_effects": z.number().int().gte(0), "max_egress_bytes": z.number().int().gte(0), "max_spend_cents": z.number().int().gte(0) }).strict();
 export type EffectBudget = z.infer<typeof EffectBudgetSchema>;
 
 export const EndorseMarkerSchema = z.object({ "kind": z.literal("endorse") }).strict().describe("Parameter may be untrusted but only after explicit human endorsement.");
@@ -106,16 +109,16 @@ export type NamedSourceMarker = z.infer<typeof NamedSourceMarkerSchema>;
 export const MarkerSchema = z.discriminatedUnion("kind", [LiteralMarkerSchema, NamedSourceMarkerSchema, LedgerMarkerSchema, EndorseMarkerSchema, FreeMarkerSchema]);
 export type Marker = z.infer<typeof MarkerSchema>;
 
-export const ToolScopeSchema = z.object({ "params": z.record(z.string(), MarkerSchema), "tool": z.string() }).strict();
+export const ToolScopeSchema = z.object({ "effect": z.enum(["read","write","irreversible"]), "manifest_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "params": z.record(z.string(), MarkerSchema), "tool": z.string() }).strict();
 export type ToolScope = z.infer<typeof ToolScopeSchema>;
 
-export const IntentContractSchema = z.object({ "allowed_tools": z.array(ToolScopeSchema), "budget": EffectBudgetSchema, "contract_id": z.string(), "user_intent": z.string() }).strict();
+export const IntentContractSchema = z.object({ "allowed_tools": z.array(ToolScopeSchema), "authorized_irreversible": z.array(z.string()), "budget": EffectBudgetSchema, "contract_id": z.string(), "egress_hosts": z.array(z.string()), "user_intent": z.string() }).strict();
 export type IntentContract = z.infer<typeof IntentContractSchema>;
 
-export const RunStartedSchema = z.object({ "contract": IntentContractSchema, "run_id": z.string(), "scenario": z.string(), "seq": z.number().int().gte(0), "type": z.literal("run_started") }).strict();
+export const RunStartedSchema = z.object({ "classifier": z.union([z.string(), z.null()]), "contract": IntentContractSchema, "lane": z.enum(["undefended","classifier","notary"]), "run_id": z.string(), "scenario": z.string(), "seq": z.number().int().gte(0), "type": z.literal("run_started") }).strict();
 export type RunStarted = z.infer<typeof RunStartedSchema>;
 
-export const ValueLabeledSchema = z.object({ "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("value_labeled"), "value": ValueRefSchema }).strict();
+export const ValueLabeledSchema = z.object({ "lane": z.enum(["undefended","classifier","notary"]), "preview": z.string(), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("value_labeled"), "unit": z.union([z.enum(["iban","email","url_host","amount","identifier"]), z.null()]), "value": ValueRefSchema }).strict();
 export type ValueLabeled = z.infer<typeof ValueLabeledSchema>;
 
 export const EventSchema = z.discriminatedUnion("type", [RunStartedSchema, ValueLabeledSchema, CallProposedSchema, DecisionMadeSchema, EndorsementRequestedSchema, EffectExecutedSchema, OracleUpdatedSchema, RunFinishedSchema]);
@@ -124,5 +127,32 @@ export type Event = z.infer<typeof EventSchema>;
 export const AuditEntrySchema = z.object({ "event": EventSchema, "hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "index": z.number().int().gte(0), "prev_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")) }).strict();
 export type AuditEntry = z.infer<typeof AuditEntrySchema>;
 
-export const LedgerEntrySchema = z.object({ "entry_id": z.string(), "key": z.string(), "ledger": z.string(), "value": ValueRefSchema }).strict();
+export const EndorsementDecisionCommandSchema = z.object({ "decision": z.enum(["approve","reject"]), "endorsement_id": z.string(), "run_id": z.string(), "type": z.literal("endorsement_decision") }).strict();
+export type EndorsementDecisionCommand = z.infer<typeof EndorsementDecisionCommandSchema>;
+
+export const HijackedToolCallCommandSchema = z.object({ "args": z.record(z.string(), z.string()), "call_id": z.string(), "run_id": z.string(), "tool": z.string(), "type": z.literal("hijacked_tool_call") }).strict().describe("Hijacked Mode: a judge submits a raw tool call; no LLM is involved.");
+export type HijackedToolCallCommand = z.infer<typeof HijackedToolCallCommandSchema>;
+
+export const PoisonWorldCommandSchema = z.object({ "lanes": z.array(z.enum(["undefended","classifier","notary"])), "payload": z.string(), "scenario": z.string(), "task": z.string(), "type": z.literal("poison_world"), "vector": z.enum(["email","file","web","calendar","slack","tool_description"]) }).strict().describe("Poison-the-world: choose vector, payload and task, then run on the chosen lanes.");
+export type PoisonWorldCommand = z.infer<typeof PoisonWorldCommandSchema>;
+
+export const CommandSchema = z.discriminatedUnion("type", [EndorsementDecisionCommandSchema, HijackedToolCallCommandSchema, PoisonWorldCommandSchema, ArenaStartCommandSchema]);
+export type Command = z.infer<typeof CommandSchema>;
+
+export const UserAuthoredSourceSchema = z.object({ "kind": z.literal("user_authored") }).strict();
+export type UserAuthoredSource = z.infer<typeof UserAuthoredSourceSchema>;
+
+export const UserEndorsedSourceSchema = z.object({ "endorsement_id": z.string(), "kind": z.literal("user_endorsed") }).strict();
+export type UserEndorsedSource = z.infer<typeof UserEndorsedSourceSchema>;
+
+export const LedgerSourceSchema = z.discriminatedUnion("kind", [UserAuthoredSourceSchema, UserEndorsedSourceSchema]);
+export type LedgerSource = z.infer<typeof LedgerSourceSchema>;
+
+export const LedgerEntrySchema = z.object({ "canonical": z.string(), "entry_id": z.string(), "key": z.string(), "ledger": z.string(), "source": LedgerSourceSchema, "unit": z.enum(["iban","email","url_host","amount","identifier"]), "value": ValueRefSchema }).strict();
 export type LedgerEntry = z.infer<typeof LedgerEntrySchema>;
+
+export const ResolvedValueSchema = z.object({ "ref": ValueRefSchema, "text": z.string(), "unit": z.union([z.enum(["iban","email","url_host","amount","identifier"]), z.null()]) }).strict().describe("A stored value with its text (a `ValueRef` only carries a hash; the monitor needs text).");
+export type ResolvedValue = z.infer<typeof ResolvedValueSchema>;
+
+export const SessionStateSchema = z.object({ "approvals_used": z.number().int().gte(0), "effects_used": z.number().int().gte(0), "egress_bytes_used": z.number().int().gte(0), "spent_cents": z.number().int().gte(0) }).strict();
+export type SessionState = z.infer<typeof SessionStateSchema>;

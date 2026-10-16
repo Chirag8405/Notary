@@ -1,5 +1,168 @@
 {
   "$defs": {
+    "DiffCard": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/DiffRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "title": "DiffCard",
+      "type": "object"
+    },
+    "DiffRow": {
+      "additionalProperties": false,
+      "description": "One parameter of the proposed call, rendered from its label.",
+      "properties": {
+        "differing_positions": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "integrity": {
+          "enum": [
+            "trusted",
+            "untrusted",
+            "endorsed"
+          ],
+          "type": "string"
+        },
+        "nearest_ledger_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "param": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "value_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "param",
+        "value_id",
+        "origin",
+        "integrity",
+        "preview",
+        "nearest_ledger_value",
+        "differing_positions"
+      ],
+      "title": "DiffRow",
+      "type": "object"
+    },
+    "EmailOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EmailOrigin",
+      "type": "object"
+    },
+    "FileOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FileOrigin",
+      "type": "object"
+    },
+    "LedgerOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LedgerOrigin",
+      "type": "object"
+    },
+    "LlmOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "llm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LlmOrigin",
+      "type": "object"
+    },
+    "Origin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UserOrigin"
+        },
+        {
+          "$ref": "#/$defs/ToolOrigin"
+        },
+        {
+          "$ref": "#/$defs/EmailOrigin"
+        },
+        {
+          "$ref": "#/$defs/FileOrigin"
+        },
+        {
+          "$ref": "#/$defs/WebOrigin"
+        },
+        {
+          "$ref": "#/$defs/LedgerOrigin"
+        },
+        {
+          "$ref": "#/$defs/LlmOrigin"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "email": "#/$defs/EmailOrigin",
+          "file": "#/$defs/FileOrigin",
+          "ledger": "#/$defs/LedgerOrigin",
+          "llm": "#/$defs/LlmOrigin",
+          "tool": "#/$defs/ToolOrigin",
+          "user": "#/$defs/UserOrigin",
+          "web": "#/$defs/WebOrigin"
+        },
+        "propertyName": "kind"
+      },
+      "title": "Origin"
+    },
     "Reason": {
       "additionalProperties": false,
       "properties": {
@@ -11,6 +174,31 @@
             "corroboration",
             "confidentiality",
             "budget"
+          ],
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "STEP_PASS",
+            "READ_ONLY_UNGATED",
+            "SCOPE_TOOL_NOT_IN_CONTRACT",
+            "SCOPE_MANIFEST_MISMATCH",
+            "SCOPE_PARAM_NOT_IN_CONTRACT",
+            "IRREVERSIBLE_NOT_AUTHORIZED",
+            "ORIGIN_UNTRUSTED",
+            "ORIGIN_UNSOURCED",
+            "ORIGIN_LITERAL_MISMATCH",
+            "ORIGIN_SOURCE_MISMATCH",
+            "LEDGER_EXACT_MATCH",
+            "LEDGER_LOOKALIKE",
+            "LEDGER_NOVEL_ESCALATE",
+            "LEDGER_NOT_FOUND",
+            "CONF_READER_VIOLATION",
+            "CONF_URL_NOT_ALLOWED",
+            "BUDGET_AMOUNT",
+            "BUDGET_SENDS",
+            "BUDGET_EGRESS_BYTES",
+            "BUDGET_APPROVALS_EXHAUSTED"
           ],
           "type": "string"
         },
@@ -29,15 +217,72 @@
       "required": [
         "check",
         "outcome",
+        "code",
         "detail"
       ],
       "title": "Reason",
+      "type": "object"
+    },
+    "ToolOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "tool",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ToolOrigin",
+      "type": "object"
+    },
+    "UserOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserOrigin",
+      "type": "object"
+    },
+    "WebOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "web",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WebOrigin",
       "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "diff_card": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DiffCard"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "reasons": {
       "items": {
         "$ref": "#/$defs/Reason"
@@ -55,7 +300,8 @@
   },
   "required": [
     "verdict",
-    "reasons"
+    "reasons",
+    "diff_card"
   ],
   "title": "Decision",
   "type": "object"

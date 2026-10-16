@@ -30,7 +30,7 @@ TS direction is enforced by `eslint-plugin-boundaries` (`packages/config-eslint/
   `packages/core/tests/test_core_purity.py` and an import-linter contract enforce this.
 - **Types originate in Pydantic.** Never hand-edit generated files (`packages/schema/json/**`,
   `packages/schema/src/generated/**`, `packages/client/openapi.json`, `packages/client/src/generated/**`,
-  `packages/world/fixtures/events/**`). Change the model in `notary_core`, then run `pnpm schema:generate`.
+  `packages/world/fixtures/streams/**`, `packages/world/fixtures/commands/**`). Change the model in `notary_core`, then run `pnpm schema:generate`.
   If a generator produces poor output, fix the Pydantic model (or the Pydantic-side schema generator), not the output.
 - No `any` in TypeScript (`@typescript-eslint/no-explicit-any` is an error). No `Any` in Python (pyright strict + ruff ban on `typing.Any`).
 - All models: `extra="forbid"`, `frozen=True`, strict, discriminated unions with a literal `type`/`kind`.
@@ -60,6 +60,12 @@ Use `uv run --no-sync` inside package scripts (parallel `uv run` calls corrupt t
 6. **budget** — the call fits the remaining effect budget
 
 Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherwise ALLOW. (Not implemented yet: stubs raise `NotImplementedError`.)
+
+## Workflow
+
+- Never commit to `main` directly. Branch from `main` (`p<phase>/<slug>`, e.g. `p1/ledger`), open a pull request, merge only after review.
+- One PR per issue; put `Closes #<n>` in the PR body. Contract changes (label `contract-change`) need the announcement from phase.md P0b.
+- Run the commands under "Commands" before pushing; the CI workflow is currently removed, so the PR author is the gate.
 
 ## Docs
 

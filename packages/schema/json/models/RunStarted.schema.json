@@ -3,6 +3,14 @@
     "EffectBudget": {
       "additionalProperties": false,
       "properties": {
+        "max_approvals": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_call_amount_cents": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "max_effects": {
           "minimum": 0,
           "type": "integer"
@@ -19,7 +27,9 @@
       "required": [
         "max_effects",
         "max_spend_cents",
-        "max_egress_bytes"
+        "max_egress_bytes",
+        "max_call_amount_cents",
+        "max_approvals"
       ],
       "title": "EffectBudget",
       "type": "object"
@@ -63,11 +73,23 @@
           },
           "type": "array"
         },
+        "authorized_irreversible": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "budget": {
           "$ref": "#/$defs/EffectBudget"
         },
         "contract_id": {
           "type": "string"
+        },
+        "egress_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "user_intent": {
           "type": "string"
@@ -77,7 +99,9 @@
         "contract_id",
         "user_intent",
         "allowed_tools",
-        "budget"
+        "budget",
+        "egress_hosts",
+        "authorized_irreversible"
       ],
       "title": "IntentContract",
       "type": "object"
@@ -182,6 +206,18 @@
     "ToolScope": {
       "additionalProperties": false,
       "properties": {
+        "effect": {
+          "enum": [
+            "read",
+            "write",
+            "irreversible"
+          ],
+          "type": "string"
+        },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "params": {
           "additionalProperties": {
             "$ref": "#/$defs/Marker"
@@ -194,7 +230,9 @@
       },
       "required": [
         "tool",
-        "params"
+        "params",
+        "manifest_hash",
+        "effect"
       ],
       "title": "ToolScope",
       "type": "object"
@@ -203,8 +241,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "classifier": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "contract": {
       "$ref": "#/$defs/IntentContract"
+    },
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
     },
     "run_id": {
       "type": "string"
@@ -223,10 +279,12 @@
   },
   "required": [
     "run_id",
+    "lane",
     "seq",
     "type",
     "scenario",
-    "contract"
+    "contract",
+    "classifier"
   ],
   "title": "RunStarted",
   "type": "object"

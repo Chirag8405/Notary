@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "UserAuthoredSource": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user_authored",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserAuthoredSource",
+      "type": "object"
+    },
+    "UserEndorsedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "endorsement_id": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "user_endorsed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "endorsement_id"
+      ],
+      "title": "UserEndorsedSource",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/UserAuthoredSource"
+    },
+    {
+      "$ref": "#/$defs/UserEndorsedSource"
+    }
+  ],
+  "discriminator": {
+    "mapping": {
+      "user_authored": "#/$defs/UserAuthoredSource",
+      "user_endorsed": "#/$defs/UserEndorsedSource"
+    },
+    "propertyName": "kind"
+  },
+  "title": "LedgerSource"
+}

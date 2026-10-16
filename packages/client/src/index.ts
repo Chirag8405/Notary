@@ -1,3 +1,4 @@
+export { encodeCommand } from "./commands";
 export { createRestClient, type RestClient } from "./rest";
 export {
   EventValidationError,

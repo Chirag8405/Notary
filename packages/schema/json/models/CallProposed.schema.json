@@ -170,6 +170,10 @@
         "call_id": {
           "type": "string"
         },
+        "manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "tool": {
           "type": "string"
         }
@@ -177,6 +181,7 @@
       "required": [
         "call_id",
         "tool",
+        "manifest_hash",
         "args"
       ],
       "title": "ToolCallProposal",
@@ -255,6 +260,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
+    },
     "proposal": {
       "$ref": "#/$defs/ToolCallProposal"
     },
@@ -272,6 +285,7 @@
   },
   "required": [
     "run_id",
+    "lane",
     "seq",
     "type",
     "proposal"

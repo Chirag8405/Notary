@@ -240,6 +240,10 @@
     "call_id": {
       "type": "string"
     },
+    "manifest_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
     "tool": {
       "type": "string"
     }
@@ -247,6 +251,7 @@
   "required": [
     "call_id",
     "tool",
+    "manifest_hash",
     "args"
   ],
   "title": "ToolCallProposal",

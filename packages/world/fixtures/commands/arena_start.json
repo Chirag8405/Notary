@@ -1,0 +1,10 @@
+{
+  "type": "arena_start",
+  "scenario": "poisoned_bill",
+  "rounds": 5,
+  "lanes": [
+    "classifier",
+    "notary"
+  ],
+  "seed": 1
+}

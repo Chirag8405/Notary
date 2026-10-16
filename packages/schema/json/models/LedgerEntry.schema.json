@@ -82,6 +82,24 @@
       "title": "LedgerOrigin",
       "type": "object"
     },
+    "LedgerSource": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UserAuthoredSource"
+        },
+        {
+          "$ref": "#/$defs/UserEndorsedSource"
+        }
+      ],
+      "discriminator": {
+        "mapping": {
+          "user_authored": "#/$defs/UserAuthoredSource",
+          "user_endorsed": "#/$defs/UserEndorsedSource"
+        },
+        "propertyName": "kind"
+      },
+      "title": "LedgerSource"
+    },
     "LlmOrigin": {
       "additionalProperties": false,
       "properties": {
@@ -176,6 +194,38 @@
       "title": "ToolOrigin",
       "type": "object"
     },
+    "UserAuthoredSource": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user_authored",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserAuthoredSource",
+      "type": "object"
+    },
+    "UserEndorsedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "endorsement_id": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "user_endorsed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "endorsement_id"
+      ],
+      "title": "UserEndorsedSource",
+      "type": "object"
+    },
     "UserOrigin": {
       "additionalProperties": false,
       "properties": {
@@ -231,6 +281,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "canonical": {
+      "type": "string"
+    },
     "entry_id": {
       "type": "string"
     },
@@ -238,6 +291,19 @@
       "type": "string"
     },
     "ledger": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/LedgerSource"
+    },
+    "unit": {
+      "enum": [
+        "iban",
+        "email",
+        "url_host",
+        "amount",
+        "identifier"
+      ],
       "type": "string"
     },
     "value": {
@@ -248,7 +314,10 @@
     "entry_id",
     "ledger",
     "key",
-    "value"
+    "value",
+    "unit",
+    "canonical",
+    "source"
   ],
   "title": "LedgerEntry",
   "type": "object"

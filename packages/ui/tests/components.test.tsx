@@ -1,15 +1,13 @@
 import { EventSchema, OracleResultSchema } from "@notary/schema";
 import { cleanup, render, screen } from "@testing-library/react";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DecisionStream, OracleLights, ThreeLaneView } from "../src";
 
-const dir = resolve(import.meta.dirname, "../../world/fixtures/events");
-const events = readdirSync(dir)
-  .sort()
-  .map((name) => EventSchema.parse(JSON.parse(readFileSync(resolve(dir, name), "utf8"))));
+const file = resolve(import.meta.dirname, "../../world/fixtures/streams/poisoned_bill.notary.json");
+const events = EventSchema.array().parse(JSON.parse(readFileSync(file, "utf8")));
 
 afterEach(cleanup);
 
@@ -17,7 +15,7 @@ describe("components", () => {
   it("DecisionStream renders one row per event", () => {
     render(<DecisionStream events={events} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(events.length);
-    expect(screen.getByText(/BLOCK for c2/)).toBeTruthy();
+    expect(screen.getByText(/ESCALATE for c2/)).toBeTruthy();
   });
 
   it("OracleLights shows six lights", () => {

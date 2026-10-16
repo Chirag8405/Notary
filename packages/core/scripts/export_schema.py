@@ -13,7 +13,7 @@ from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue, models_jso
 from pydantic_core import core_schema
 
 from notary_core import models
-from notary_core.models import Event, Marker, NotaryModel, Origin
+from notary_core.models import Command, Event, LedgerSource, Marker, NotaryModel, Origin
 
 JsonObject = dict[str, object]
 
@@ -21,6 +21,8 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "schema" / "json"
 REF_TEMPLATE = "#/$defs/{model}"
 ABSTRACT_BASES = {"NotaryModel", "EventBase"}
 UNION_ALIASES: dict[str, TypeAdapter[object]] = {
+    "Command": TypeAdapter(Command),
+    "LedgerSource": TypeAdapter(LedgerSource),
     "Event": TypeAdapter(Event),
     "Marker": TypeAdapter(Marker),
     "Origin": TypeAdapter(Origin),

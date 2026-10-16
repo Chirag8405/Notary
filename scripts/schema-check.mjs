@@ -21,7 +21,8 @@ const GENERATED = [
   "packages/schema/src/generated",
   "packages/client/openapi.json",
   "packages/client/src/generated",
-  "packages/world/fixtures/events",
+  "packages/world/fixtures/streams",
+  "packages/world/fixtures/commands",
 ];
 
 const STEPS = [

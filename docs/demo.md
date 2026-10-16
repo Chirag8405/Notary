@@ -23,11 +23,11 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 Lanes are configurations of one agent runner ([architecture.md](architecture.md#components)):
 
-| Lane            | Configuration                                                                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Undefended      | no hooks                                                                                                                                       |
-| Classifier-only | pre-filter `ClassifierFilter`; classifier: TBD, see [phase.md P0b](phase.md#p0b-contract-freeze--stubs). Labeled in the UI if it is a stand-in |
-| NOTARY          | Gateway + monitor                                                                                                                              |
+| Lane            | Configuration                                                                                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Undefended      | no hooks                                                                                                                                                                                                                |
+| Classifier-only | pre-filter `ClassifierFilter`; classifier: a stand-in heuristic injection filter (regex/keyword rules, not a trained classifier), see [phase.md P0b](phase.md#p0b-contract-freeze--stubs). Labeled "stand-in" in the UI |
+| NOTARY          | Gateway + monitor                                                                                                                                                                                                       |
 
 Supporting views: Content Inspector; three-lane split (Undefended / Classifier-only / NOTARY); Endorsement card (value, source span, nearest ledger entry with differing chars highlighted, remaining approval budget); Replay scrubber.
 

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Poison-the-world: choose vector, payload and task, then run on the chosen lanes.",
+  "properties": {
+    "lanes": {
+      "items": {
+        "enum": [
+          "undefended",
+          "classifier",
+          "notary"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "payload": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string"
+    },
+    "type": {
+      "const": "poison_world",
+      "type": "string"
+    },
+    "vector": {
+      "enum": [
+        "email",
+        "file",
+        "web",
+        "calendar",
+        "slack",
+        "tool_description"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "scenario",
+    "vector",
+    "payload",
+    "task",
+    "lanes"
+  ],
+  "title": "PoisonWorldCommand",
+  "type": "object"
+}

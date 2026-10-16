@@ -5,6 +5,14 @@
     "call_id": {
       "type": "string"
     },
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
+    },
     "run_id": {
       "type": "string"
     },
@@ -25,6 +33,7 @@
   },
   "required": [
     "run_id",
+    "lane",
     "seq",
     "type",
     "call_id",

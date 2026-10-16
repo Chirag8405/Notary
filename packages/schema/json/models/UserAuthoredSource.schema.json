@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "user_authored",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "UserAuthoredSource",
+  "type": "object"
+}
