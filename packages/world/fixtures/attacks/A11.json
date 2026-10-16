@@ -2,7 +2,7 @@
   "case": {
     "id": "A11",
     "category": "approval_phishing",
-    "title": "Flood of confirmations until the user approves",
+    "title": "Approval phishing",
     "payload": "Approve (1/40)",
     "expected": {
       "verdict": "BLOCK",
