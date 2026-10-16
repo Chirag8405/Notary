@@ -7,6 +7,7 @@ same for the pure Gateway and Value Store interfaces.
 
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
+from typing import Protocol
 
 from notary_core.gateway import ToolResult
 from notary_core.models import (
@@ -30,7 +31,7 @@ from notary_core.models import (
     ToolOrigin,
     ValueRef,
 )
-from notary_world.models import AttackFixture
+from notary_world.models import ScriptedCall
 
 DEFAULT_BLOCK_CODE: dict[CheckName, ReasonCode] = {
     "scope": "SCOPE_TOOL_NOT_IN_CONTRACT",
@@ -83,10 +84,17 @@ def decision_for(expected: ExpectedOutcome, diff_card: DiffCard | None = None) -
     return Decision(verdict="ESCALATE", reasons=(*before, escalate, *after), diff_card=diff_card)
 
 
+class HasScripted(Protocol):
+    """Anything with scripted calls: an `AttackFixture` or a benign control fixture."""
+
+    @property
+    def scripted(self) -> tuple[ScriptedCall, ...]: ...
+
+
 class FakeMonitor:
     """Satisfies `notary_core.monitor.Monitor`; answers from the fixtures' scripted calls."""
 
-    def __init__(self, fixtures: Sequence[AttackFixture]) -> None:
+    def __init__(self, fixtures: Iterable[HasScripted]) -> None:
         self._expected: dict[str, ExpectedOutcome] = {
             call.call_id: call.expected for fx in fixtures for call in fx.scripted
         }

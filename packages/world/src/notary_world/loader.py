@@ -40,3 +40,13 @@ def load_stream(name: str) -> tuple[Event, ...]:
     """A golden event stream (a JSON array of events)."""
     target = FIXTURES_DIR / "streams" / f"{name}.json"
     return _EVENTS.validate_json(target.read_text(encoding="utf-8"))
+
+
+def load_fixture_texts(subdir: str, pattern: str = "*.json") -> tuple[str, ...]:
+    """The raw text of every fixture file under `fixtures/<subdir>` matching `pattern`, by name.
+
+    The caller validates the text into its own model; this keeps all fixture file reading in
+    this module.
+    """
+    root = FIXTURES_DIR / subdir
+    return tuple(path.read_text(encoding="utf-8") for path in sorted(root.glob(pattern)))

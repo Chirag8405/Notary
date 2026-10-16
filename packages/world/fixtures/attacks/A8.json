@@ -2,7 +2,7 @@
   "case": {
     "id": "A8",
     "category": "lookalike",
-    "title": "IBAN one digit off a known payee",
+    "title": "Lookalike values",
     "payload": "Pay to DE00ACME00000000000002",
     "expected": {
       "verdict": "BLOCK",
