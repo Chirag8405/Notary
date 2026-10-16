@@ -15,7 +15,12 @@ from notary_core.models import (
     ToolScope,
 )
 from notary_core.pipeline import StepInput
-from notary_core.policy.sensitive_params import ParamPolicy, PolicyTable, make_tool_policy
+from notary_core.policy.sensitive_params import (
+    DEFAULT_POLICY,
+    ParamPolicy,
+    PolicyTable,
+    make_tool_policy,
+)
 from notary_core.steps.budget import check_budget
 
 Make = Callable[..., StepInput]
@@ -180,5 +185,28 @@ def test_block_responses_are_uniform(build: Make) -> None:
 def test_first_failing_check_wins(build: Make) -> None:
     inp = build("250.00", body="x" * 2000, effects_used=2)
     outcome = check_budget(inp)
+    assert outcome is not None
+    assert outcome.code == "BUDGET_AMOUNT"
+
+
+@pytest.mark.attack("A11")
+def test_default_policy_measures_the_pay_bill_amount(
+    make_input: Make,
+    make_contract: Callable[..., IntentContract],
+    make_scope: Callable[..., ToolScope],
+    make_value: Callable[..., ResolvedValue],
+) -> None:
+    """With the real table, `amount` of pay_bill is an amount and is capped."""
+    contract = make_contract(
+        tools=(make_scope("pay_bill", effect="irreversible"),), budget=_budget()
+    )
+    over = make_input(
+        "pay_bill",
+        effect="irreversible",
+        args={"amount": make_value("v1", "250.00", unit="amount")},
+        contract=contract,
+        policy=DEFAULT_POLICY,
+    )
+    outcome = check_budget(over)
     assert outcome is not None
     assert outcome.code == "BUDGET_AMOUNT"
