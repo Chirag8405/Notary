@@ -6,11 +6,12 @@ checks the consistency of the authority with the entry, not whether an
 endorsement exists; that belongs to the Endorsement Service.
 """
 
+from collections.abc import Sequence
 from typing import Annotated, Literal
 
 from pydantic import Field
 
-from notary_core.models import LedgerEntry, NotaryModel
+from notary_core.models import DecisionUnit, LedgerEntry, NotaryModel
 
 Ledger = tuple[LedgerEntry, ...]
 
@@ -46,3 +47,29 @@ WriteAuthority = Annotated[
 
 class LedgerClosureError(Exception):
     """A write was refused; the message is one of the fixed ERR_* constants."""
+
+
+def entries_for(
+    ledger: Sequence[LedgerEntry], unit: DecisionUnit, ledger_name: str | None = None
+) -> Ledger:
+    """Entries of `unit` (and of `ledger_name` when given), in ledger order."""
+    return tuple(
+        e for e in ledger if e.unit == unit and (ledger_name is None or e.ledger == ledger_name)
+    )
+
+
+def find_exact(
+    ledger: Sequence[LedgerEntry],
+    unit: DecisionUnit,
+    canonical: str,
+    ledger_name: str | None = None,
+) -> LedgerEntry | None:
+    """First entry whose canonical form equals `canonical`.
+
+    The caller must pass an already-canonical string: nothing is canonicalized or
+    folded here, and there is no lookalike matching (see notary_core.lookalike).
+    """
+    for e in entries_for(ledger, unit, ledger_name):
+        if e.canonical == canonical:
+            return e
+    return None
