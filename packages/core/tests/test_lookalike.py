@@ -4,7 +4,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from notary_core.lookalike import normalize_for_match, osa_distance
+from notary_core.lookalike import (
+    LOOKALIKE_CONFIG,
+    is_lookalike,
+    nearest_known,
+    normalize_for_match,
+    osa_distance,
+)
 from notary_core.models import DecisionUnit
 
 HOST: DecisionUnit = "url_host"
@@ -113,3 +119,206 @@ def test_osa_empty_and_negative_limit() -> None:
     assert osa_distance("", "abc", 2) == 3
     assert osa_distance("abc", "abd", -3) == 1
     assert osa_distance("abc", "abc", -3) == 0
+
+
+def _swap_last_chars(iban: str, tail: str) -> str:
+    return iban[: -len(tail)] + tail
+
+
+@pytest.mark.attack("A8")
+def test_iban_one_digit_off_is_lookalike() -> None:
+    m = is_lookalike("iban", "DE89370400440532013001", [IBAN])
+    assert m is not None
+    assert m.known == IBAN
+    assert m.distance == 1
+    assert m.confusable_equal is False
+
+
+@pytest.mark.attack("A8")
+def test_iban_two_edits_still_lookalike_but_three_not() -> None:
+    two = is_lookalike("iban", _swap_last_chars(IBAN, "11"), [IBAN])
+    assert two is not None
+    assert two.distance == 2
+    assert is_lookalike("iban", _swap_last_chars(IBAN, "111"), [IBAN]) is None
+
+
+@pytest.mark.attack("A8")
+def test_iban_different_length_not_lookalike() -> None:
+    assert is_lookalike("iban", IBAN[:-1], [IBAN]) is None
+
+
+@pytest.mark.attack("A8")
+def test_paypa1_domain_is_lookalike() -> None:
+    m = is_lookalike(HOST, "paypa1.com", ["paypal.com"])
+    assert m is not None
+    assert m.confusable_equal is True
+    assert m.distance == 0
+
+
+@pytest.mark.attack("A8")
+def test_one_edit_domain_is_lookalike() -> None:
+    m = is_lookalike(HOST, "paypall.com", ["paypal.com"])
+    assert m is not None
+    assert m.distance == 1
+    assert m.confusable_equal is False
+
+
+@pytest.mark.attack("A8")
+def test_genuinely_different_value_is_not_lookalike() -> None:
+    assert is_lookalike(HOST, "acme.example", ["paypal.com"]) is None
+    assert is_lookalike("iban", "GB82WEST12345698765432", [IBAN]) is None
+
+
+@pytest.mark.attack("A8")
+def test_short_values_need_confusable_equality() -> None:
+    assert is_lookalike(HOST, "a.com", ["b.com"]) is None
+
+
+@pytest.mark.attack("A8")
+def test_exact_match_is_not_a_lookalike() -> None:
+    assert is_lookalike(HOST, "paypal.com", ["paypal.com"]) is None
+
+
+@pytest.mark.attack("A8")
+def test_transposition_counts_as_one_edit() -> None:
+    m = is_lookalike(HOST, "paypla.com", ["paypal.com"])
+    assert m is not None
+    assert m.distance == 1
+
+
+@pytest.mark.attack("A8")
+def test_differing_positions_reported() -> None:
+    m = is_lookalike(HOST, "paypa1.com", ["paypal.com"])
+    assert m is not None
+    assert m.differing_positions == (5,)
+    iban = is_lookalike("iban", "DE89370400440532013001", [IBAN])
+    assert iban is not None
+    assert iban.differing_positions == (21,)
+
+
+@pytest.mark.invariant("I6")
+def test_is_lookalike_is_deterministic() -> None:
+    known = ["paypal.com", "paypa1.net"]
+    assert is_lookalike(HOST, "paypall.com", known) == is_lookalike(HOST, "paypall.com", known)
+    assert nearest_known(HOST, "paypall.com", known) == nearest_known(HOST, "paypall.com", known)
+
+
+@pytest.mark.attack("A8")
+def test_nearest_known_returns_closest_even_when_far() -> None:
+    result = nearest_known(HOST, "completely-different.org", ["paypal.com", "completely.org"])
+    assert result is not None
+    assert result[0] == "completely.org"
+    assert result[1]
+    assert all(0 <= i < len("completely-different.org") for i in result[1])
+
+
+@pytest.mark.attack("A8")
+def test_nearest_known_empty_known_is_none() -> None:
+    assert nearest_known(HOST, "paypal.com", []) is None
+
+
+@pytest.mark.attack("A8")
+def test_nearest_known_returns_exact_match_at_distance_zero() -> None:
+    assert nearest_known(HOST, "paypal.com", ["paypa1.net", "paypal.com"]) == ("paypal.com", ())
+
+
+@pytest.mark.attack("A8")
+def test_config_covers_every_decision_unit() -> None:
+    assert set(LOOKALIKE_CONFIG) == set(get_args(DecisionUnit))
+
+
+@pytest.mark.attack("A8")
+@pytest.mark.parametrize("unit", get_args(DecisionUnit))
+def test_config_fold_flag_matches_normalizer(unit: DecisionUnit) -> None:
+    folds = normalize_for_match(unit, "1") == normalize_for_match(unit, "l")
+    assert LOOKALIKE_CONFIG[unit].fold_confusables is folds
+
+
+@pytest.mark.attack("A8")
+def test_iban_zero_vs_letter_o_is_edit_not_confusable() -> None:
+    m = is_lookalike("iban", IBAN[:-1] + "O", [IBAN])
+    assert m is not None
+    assert m.distance == 1
+    assert m.confusable_equal is False
+
+
+@pytest.mark.attack("A8")
+def test_amount_is_never_a_lookalike() -> None:
+    assert is_lookalike("amount", "120.00", ["120.01", "120.00", "1200.00"]) is None
+
+
+@pytest.mark.attack("A8")
+def test_smallest_distance_wins_and_ties_go_first() -> None:
+    best = is_lookalike(HOST, "paypa1.com", ["paypall.com", "paypal.com"])
+    assert best is not None
+    assert best.known == "paypal.com"
+    assert best.distance == 0
+    tie = is_lookalike(HOST, "paypal.com", ["paypall.com", "paypaal.com"])
+    assert tie is not None
+    assert tie.known == "paypall.com"
+
+
+@pytest.mark.attack("A8")
+def test_differing_positions_for_missing_character() -> None:
+    m = is_lookalike(HOST, "paypal.com", ["paypall.com"])
+    assert m is not None
+    assert m.differing_positions
+    assert all(0 <= i < len("paypal.com") for i in m.differing_positions)
+    assert nearest_known(HOST, "", ["paypal.com"]) == ("paypal.com", ())
+
+
+@pytest.mark.attack("A8")
+def test_differing_positions_long_strings_not_junked() -> None:
+    known = "ab" * 150
+    candidate = known[:150] + "z" + known[150:]
+    first = nearest_known("identifier", candidate, [known])
+    assert first == (known, (150,))
+    assert nearest_known("identifier", candidate, [known]) == first
+
+
+@pytest.mark.attack("A8")
+def test_idn_homoglyph_host_is_lookalike() -> None:
+    candidate = "p\u0430ypal.com".encode("idna").decode("ascii")
+    assert candidate.startswith("xn--")
+    m = is_lookalike(HOST, candidate, ["paypal.com"])
+    assert m is not None
+    assert m.confusable_equal is True
+    assert m.known == "paypal.com"
+
+
+@pytest.mark.attack("A8")
+def test_idn_homoglyph_email_is_lookalike() -> None:
+    domain = "p\u0430ypal.com".encode("idna").decode("ascii")
+    m = is_lookalike("email", "user@" + domain, ["user@paypal.com"])
+    assert m is not None
+    assert m.confusable_equal is True
+
+
+@pytest.mark.attack("A8")
+def test_plain_ascii_idn_unaffected() -> None:
+    assert is_lookalike(HOST, "xn--bcher-kva.de", ["xn--bcher-kva.de"]) is None
+    # Decoded, "b\u00fccher.de" is one edit from "bucher.de", so it is flagged.
+    m = is_lookalike(HOST, "xn--bcher-kva.de", ["bucher.de"])
+    assert m is not None
+    assert (m.distance, m.confusable_equal) == (1, False)
+
+
+@pytest.mark.attack("A8")
+@given(
+    st.sampled_from(get_args(DecisionUnit)),
+    st.text(),
+    st.lists(st.text(), max_size=4),
+)
+def test_is_lookalike_and_nearest_known_never_raise(
+    unit: DecisionUnit, candidate: str, known: list[str]
+) -> None:
+    match = is_lookalike(unit, candidate, known)
+    if match is not None:
+        assert match.distance >= 0
+        assert all(0 <= i < len(candidate) for i in match.differing_positions)
+    nearest = nearest_known(unit, candidate, known)
+    if nearest is None:
+        assert not known
+    else:
+        assert nearest[0] in known
+        assert all(0 <= i < len(candidate) for i in nearest[1])
