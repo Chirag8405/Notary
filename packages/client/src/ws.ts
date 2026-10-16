@@ -1,6 +1,8 @@
 import { EventSchema, type Event } from "@notary/schema";
 import type { ZodError } from "zod";
 
+import type { components } from "./generated/api";
+
 /** Thrown when a WebSocket message is not a valid NOTARY `Event`. */
 export class EventValidationError extends Error {
   override readonly name = "EventValidationError";
@@ -44,68 +46,73 @@ export interface StreamOptions {
   webSocket?: WebSocketFactory;
 }
 
-export function runStreamUrl(baseUrl: string, scenario: string): string {
-  const url = new URL(`/ws/runs/${encodeURIComponent(scenario)}`, baseUrl);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  return url.toString();
+/** The lane of a run: both unions come from the generated types, never from a hand-written copy. */
+export type RunLane = Event["lane"];
+export type RunMode = components["schemas"]["ModeList"]["modes"][number];
+
+/** Keyed by the union, so a lane or mode the schema adds fails to compile here until listed. */
+const LANES: Readonly<Record<RunLane, true>> = { undefended: true, classifier: true, notary: true };
+const MODES: Readonly<Record<RunMode, true>> = { golden: true, cassette: true, live: true };
+
+export interface RunOptions {
+  lane?: RunLane;
+  mode?: RunMode;
+  signal?: AbortSignal;
+  webSocket?: WebSocketFactory;
 }
 
 /**
- * Stream the typed events of a run. Every message is validated with the Zod `Event` schema;
- * an invalid message makes the iterator throw `EventValidationError`.
+ * The stream URL of a run: `ws://host/ws/runs/<scenario>?lane=...&mode=...`. The query holds only
+ * the parameters that were given, lane first. `lane` and `mode` are checked at run time too,
+ * because a cast could otherwise put arbitrary text into the query.
  */
-export async function* streamRun(
+export function runStreamUrl(
   baseUrl: string,
   scenario: string,
-  options: StreamOptions = {},
-): AsyncGenerator<Event, void, undefined> {
-  const factory = options.webSocket ?? ((url: string) => new WebSocket(url));
-  const socket = factory(runStreamUrl(baseUrl, scenario));
+  options: Pick<RunOptions, "lane" | "mode"> = {},
+): string {
+  const { lane, mode } = options;
+  if (lane !== undefined && !Object.hasOwn(LANES, lane)) {
+    throw new RangeError(`unknown run lane: ${JSON.stringify(lane)}`);
+  }
+  if (mode !== undefined && !Object.hasOwn(MODES, mode)) {
+    throw new RangeError(`unknown run mode: ${JSON.stringify(mode)}`);
+  }
+  const url = new URL(`/ws/runs/${encodeURIComponent(scenario)}`, baseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const query = [
+    ...(lane === undefined ? [] : [`lane=${lane}`]),
+    ...(mode === undefined ? [] : [`mode=${mode}`]),
+  ].join("&");
+  return query === "" ? url.toString() : `${url.toString()}?${query}`;
+}
 
-  const queue: (Event | Error | "done")[] = [];
-  let wake: (() => void) | undefined;
-  const push = (item: Event | Error | "done"): void => {
-    queue.push(item);
-    wake?.();
-  };
+export type CloseKind =
+  | "done"
+  | "bad_request"
+  | "unknown_scenario"
+  | "run_conflict"
+  | "unsupported_command"
+  | "mode_unavailable"
+  | "other";
 
-  socket.addEventListener("message", (message: MessageEvent<unknown>) => {
-    try {
-      push(parseEvent(String(message.data)));
-    } catch (error) {
-      push(error instanceof Error ? error : new Error(String(error)));
-      socket.close();
-    }
-  });
-  socket.addEventListener("close", (closed: CloseEvent) => {
-    push(
-      closed.code === 1000 || closed.code === 1005
-        ? "done"
-        : new StreamClosedError(closed.code, closed.reason),
-    );
-  });
-  socket.addEventListener("error", () => {
-    push(new StreamClosedError(1006, "connection error"));
-  });
-  options.signal?.addEventListener("abort", () => {
-    push("done");
-    socket.close();
-  });
-
-  try {
-    for (;;) {
-      const next = queue.shift();
-      if (next === undefined) {
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-        });
-        continue;
-      }
-      if (next === "done") return;
-      if (next instanceof Error) throw next;
-      yield next;
-    }
-  } finally {
-    socket.close();
+/** Name the close codes the server uses: 4400, 4404, 4409, 4422 and 4501 (1000 and 1005 end a run). */
+export function describeClose(code: number): CloseKind {
+  switch (code) {
+    case 1000:
+    case 1005:
+      return "done";
+    case 4400:
+      return "bad_request";
+    case 4404:
+      return "unknown_scenario";
+    case 4409:
+      return "run_conflict";
+    case 4422:
+      return "unsupported_command";
+    case 4501:
+      return "mode_unavailable";
+    default:
+      return "other";
   }
 }

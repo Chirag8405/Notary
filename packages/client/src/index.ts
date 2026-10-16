@@ -1,11 +1,24 @@
 export { encodeCommand } from "./commands";
-export { createRestClient, type RestClient } from "./rest";
+export {
+  createRestClient,
+  getAnchor,
+  getPendingEndorsements,
+  listModes,
+  type Anchor,
+  type PendingList,
+  type RestClient,
+} from "./rest";
+export { openRun, streamRun, type RunSession } from "./run-session";
 export {
   EventValidationError,
   StreamClosedError,
+  describeClose,
   parseEvent,
   runStreamUrl,
-  streamRun,
+  type CloseKind,
+  type RunLane,
+  type RunMode,
+  type RunOptions,
   type StreamOptions,
   type WebSocketFactory,
 } from "./ws";

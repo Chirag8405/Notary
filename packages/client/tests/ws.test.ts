@@ -9,6 +9,7 @@ import {
   runStreamUrl,
   streamRun,
 } from "../src";
+import { describeClose } from "../src/ws";
 
 const streams = resolve(import.meta.dirname, "../../world/fixtures/streams");
 const validMessages = (
@@ -92,5 +93,66 @@ describe("encodeCommand", () => {
     expect(() =>
       encodeCommand({ type: "arena_start", scenario: "s", rounds: 0, lanes: [], seed: 1 }),
     ).toThrow();
+  });
+});
+
+describe("runStreamUrl options", () => {
+  it("keeps the old form when no options are given [I6]", () => {
+    expect(runStreamUrl("http://localhost:8000", "poisoned_bill")).toBe(
+      "ws://localhost:8000/ws/runs/poisoned_bill",
+    );
+    expect(runStreamUrl("http://localhost:8000", "poisoned_bill", {})).toBe(
+      "ws://localhost:8000/ws/runs/poisoned_bill",
+    );
+  });
+
+  it("adds lane and mode, in that order, and maps https to wss [I6]", () => {
+    expect(
+      runStreamUrl("http://h:8000", "poisoned_bill", { mode: "cassette", lane: "classifier" }),
+    ).toBe("ws://h:8000/ws/runs/poisoned_bill?lane=classifier&mode=cassette");
+    expect(runStreamUrl("https://h.example", "s", { lane: "notary", mode: "golden" })).toBe(
+      "wss://h.example/ws/runs/s?lane=notary&mode=golden",
+    );
+    expect(runStreamUrl("http://h", "s", { mode: "live" })).toBe("ws://h/ws/runs/s?mode=live");
+    expect(runStreamUrl("http://h", "s", { lane: "undefended" })).toBe(
+      "ws://h/ws/runs/s?lane=undefended",
+    );
+  });
+
+  it("percent-encodes the scenario and tolerates a trailing slash [I6]", () => {
+    expect(runStreamUrl("http://h:8000/", "a/b c?d", { lane: "notary" })).toBe(
+      "ws://h:8000/ws/runs/a%2Fb%20c%3Fd?lane=notary",
+    );
+    expect(runStreamUrl("http://h:8000/", "s")).toBe("ws://h:8000/ws/runs/s");
+  });
+
+  it("rejects a lane or mode that is not one of the named ones [I6]", () => {
+    const badLane = "notary&mode=live" as unknown as "notary";
+    const badMode = "golden#x" as unknown as "golden";
+    expect(() => runStreamUrl("http://h", "s", { lane: badLane })).toThrow(RangeError);
+    expect(() => runStreamUrl("http://h", "s", { mode: badMode })).toThrow(RangeError);
+    expect(() =>
+      runStreamUrl("http://h", "s", { lane: "toString" as unknown as "notary" }),
+    ).toThrow(RangeError);
+  });
+});
+
+describe("describeClose", () => {
+  it("maps every close code the server uses [I6]", () => {
+    expect(describeClose(1000)).toBe("done");
+    expect(describeClose(1005)).toBe("done");
+    expect(describeClose(4400)).toBe("bad_request");
+    expect(describeClose(4404)).toBe("unknown_scenario");
+    expect(describeClose(4409)).toBe("run_conflict");
+    expect(describeClose(4422)).toBe("unsupported_command");
+    expect(describeClose(4501)).toBe("mode_unavailable");
+    expect(describeClose(4999)).toBe("other");
+    expect(describeClose(1006)).toBe("other");
+  });
+
+  it("agrees with StreamClosedError, which keeps the raw code [I6]", () => {
+    const error = new StreamClosedError(4501, "mode unavailable");
+    expect(error.code).toBe(4501);
+    expect(describeClose(error.code)).toBe("mode_unavailable");
   });
 });
