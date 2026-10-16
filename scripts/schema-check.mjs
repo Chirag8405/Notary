@@ -59,7 +59,10 @@ function restore(before, after) {
 const before = snapshot();
 try {
   for (const [cmd, args] of STEPS) {
-    execFileSync(cmd, args, { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+    // On Windows pnpm is a .cmd/.ps1 shim that execFileSync cannot spawn without a shell. The
+    // arguments are constant strings, so the shell adds no injection risk.
+    const shell = process.platform === "win32" && cmd === "pnpm";
+    execFileSync(cmd, args, { cwd: root, shell, stdio: ["ignore", "ignore", "inherit"] });
   }
 } catch (error) {
   restore(before, snapshot());

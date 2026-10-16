@@ -20,13 +20,13 @@ def main() -> None:
         stale.unlink()
     for name, events in golden_streams().items():
         payload = _STREAM.dump_json(events, indent=2).decode("utf-8")
-        (OUT / f"{name}.json").write_text(payload + "\n", encoding="utf-8")
+        (OUT / f"{name}.json").write_text(payload + "\n", encoding="utf-8", newline="\n")
     COMMANDS.mkdir(parents=True, exist_ok=True)
     for stale in COMMANDS.glob("*.json"):
         stale.unlink()
     for name, command in sample_commands().items():
         payload = COMMAND_ADAPTER.dump_json(command, indent=2).decode("utf-8")
-        (COMMANDS / f"{name}.json").write_text(payload + "\n", encoding="utf-8")
+        (COMMANDS / f"{name}.json").write_text(payload + "\n", encoding="utf-8", newline="\n")
     sys.stdout.write(f"wrote {len(golden_streams())} golden streams and commands\n")
 
 
