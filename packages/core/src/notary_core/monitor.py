@@ -62,8 +62,8 @@ def decide(
     A tool whose effective effect is `read` has no side effect and no outbound channel, so after
     step 1 passes it is allowed at once with a single `READ_ONLY_UNGATED` reason.
 
-    Steps 3-6 are still placeholders that raise `NotImplementedError`; once all steps land this
-    function must never raise for structurally valid input (it fails closed with BLOCK).
+    Meant to never raise for structurally valid input (anything it cannot decide fails closed with
+    BLOCK); the CP1 fuzz run is what verifies that.
     """
     scope = next((t for t in contract.allowed_tools if t.tool == proposal.tool), None)
     inp = StepInput(

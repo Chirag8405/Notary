@@ -10,7 +10,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | ----- | ------------------------------------------------------------------------------------------ | -------------- | --------------------------------------------------- | ------------------------------------- | ----------- |
 | P0    | Foundations                                                                                | all            | -                                                   | -                                     | done        |
 | P0b   | Contract freeze + stubs                                                                    | all (A drafts) | P0                                                  | -                                     | done        |
-| P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | next        |
+| P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | done        |
 | P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | not started |
 | P3a   | Deterministic pipeline: pure Gateway logic, Value Store, gateway I/O adapter, Output Guard | A              | P0b (Gateway/Value Store interfaces), P1 models     | P1 monitor, P3b (CP2)                 | not started |
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | not started |
@@ -81,12 +81,12 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 ## P1 Core (lane A)
 
 - Packages: `packages/core`
-- [ ] Monitor `decide()` with the 6-step order ([architecture.md](architecture.md#monitor-decision-order)); reason codes enumerated in the model
-- [ ] Sensitive-parameter table and offline floor defaults (the trusted base)
-- [ ] Review: two people review the sensitive-parameter table
-- [ ] Ledger (writes only via user-authored / user-endorsed), contract monotonicity
+- [x] Monitor `decide()` with the 6-step order ([architecture.md](architecture.md#monitor-decision-order)); reason codes enumerated in the model
+- [x] Sensitive-parameter table and offline floor defaults (the trusted base)
+- [x] Review: two people review the sensitive-parameter table
+- [x] Ledger (writes only via user-authored / user-endorsed), contract monotonicity
 - [x] Audit hash chain + `verify_chain`
-- [ ] Unit tests citing I/A IDs
+- [x] Unit tests citing I/A IDs
 - Accept: `cd packages/core && uv run pytest`; `pnpm schema:check` after any model change
 - Demo-able: nothing visual; unit tests pass. The fuzz result (P2, CP1) is the proof artifact.
 

@@ -59,7 +59,7 @@ Use `uv run --no-sync` inside package scripts (parallel `uv run` calls corrupt t
 5. **confidentiality** — egress / readers: data may not flow to non-readers
 6. **budget** — the call fits the remaining effect budget
 
-Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherwise ALLOW. (Not implemented yet: stubs raise `NotImplementedError`.)
+Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherwise ALLOW.
 
 ## Workflow
 
