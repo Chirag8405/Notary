@@ -1,7 +1,6 @@
 """Step 3: every argument exists in the Value Store, is intact and satisfies its marker."""
 
-import hashlib
-
+from notary_core.canon import sha256_hex
 from notary_core.models import Marker, Origin, ResolvedValue, ToolOrigin, ValueRef
 from notary_core.models.decision import StepOutcome
 from notary_core.pipeline import StepInput
@@ -15,11 +14,20 @@ def _block(code: str, detail: str) -> StepOutcome:
     )
 
 
-def origin_name(origin: Origin) -> str:
-    """The name a `named_source` marker compares against: a tool's name, else the origin kind."""
+ORIGIN_KINDS: frozenset[str] = frozenset({"user", "tool", "email", "file", "web", "ledger", "llm"})
+"""Every `Origin.kind`. A bare `named_source` name that equals one of these means that origin."""
+
+
+def origin_matches_source(origin: Origin, source: str) -> bool:
+    """Whether `origin` is the origin a `named_source` marker's `source` names.
+
+    A tool origin matches its tool name; every other origin matches its kind. A tool named like
+    an origin kind (a tool called `email`) never matches, so it cannot pass for that origin
+    (fail closed); the bare name stays reserved for the origin kind.
+    """
     if isinstance(origin, ToolOrigin):
-        return origin.name
-    return origin.kind
+        return origin.name == source and source not in ORIGIN_KINDS
+    return origin.kind == source
 
 
 def literal_text(value: str | int | bool) -> str:
@@ -55,7 +63,7 @@ def _marker_failure(marker: Marker, resolved: ResolvedValue) -> StepOutcome | No
                 "ORIGIN_LITERAL_MISMATCH", "argument differs from the value in the request"
             )
     elif marker.kind == "named_source":
-        if origin_name(label.origin) != marker.source:
+        if not origin_matches_source(label.origin, marker.source):
             return _block("ORIGIN_SOURCE_MISMATCH", "argument does not come from the named source")
         if label.integrity != "trusted":
             return _block("ORIGIN_UNTRUSTED", "argument from the named source is not trusted")
@@ -69,8 +77,7 @@ def _integrity_failure(
     """The value must be the stored one, hash-intact, with a span that resolves."""
     if resolved.ref != ref:
         return _block("ORIGIN_UNSOURCED", "argument does not match the stored value")
-    digest = hashlib.sha256(resolved.text.encode("utf-8")).hexdigest()
-    if digest != resolved.ref.content_hash:
+    if sha256_hex(resolved.text) != resolved.ref.content_hash:
         return _block("ORIGIN_UNSOURCED", "content hash mismatch")
     if not _span_resolves(inp, resolved):
         return _block("ORIGIN_UNSOURCED", "span does not resolve")

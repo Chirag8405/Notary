@@ -3,9 +3,11 @@
 import hashlib
 from collections.abc import Callable
 from dataclasses import replace
+from typing import get_args
 
 import pytest
 
+from notary_core.canon import sha256_hex
 from notary_core.models import (
     DecisionUnit,
     EndorseMarker,
@@ -18,6 +20,7 @@ from notary_core.models import (
     LlmOrigin,
     Marker,
     NamedSourceMarker,
+    Origin,
     ResolvedValue,
     SpanPointer,
     ToolOrigin,
@@ -33,7 +36,12 @@ from notary_core.policy.sensitive_params import (
     make_tool_policy,
 )
 from notary_core.provenance import derive_label
-from notary_core.steps.origin import check_origin, literal_text, origin_name
+from notary_core.steps.origin import (
+    ORIGIN_KINDS,
+    check_origin,
+    literal_text,
+    origin_matches_source,
+)
 
 IBAN = "DE89370400440532013000"
 ATTACKER_IBAN = "GB29NWBK60161331926819"
@@ -91,9 +99,19 @@ def test_helpers() -> None:
     assert literal_text(False) == "false"
     assert literal_text(42) == "42"
     assert literal_text("abc") == "abc"
-    assert origin_name(ToolOrigin(kind="tool", name="contacts")) == "contacts"
-    assert origin_name(UserOrigin(kind="user")) == "user"
-    assert origin_name(LlmOrigin(kind="llm")) == "llm"
+    contacts = ToolOrigin(kind="tool", name="contacts")
+    assert origin_matches_source(contacts, "contacts")
+    assert not origin_matches_source(contacts, "tool")
+    assert origin_matches_source(UserOrigin(kind="user"), "user")
+    assert origin_matches_source(LlmOrigin(kind="llm"), "llm")
+    assert not origin_matches_source(LlmOrigin(kind="llm"), "user")
+
+
+def test_origin_kinds_cover_every_origin_class() -> None:
+    kinds: set[str] = set()
+    for cls in get_args(get_args(Origin)[0]):
+        kinds.update(get_args(cls.model_fields["kind"].annotation))
+    assert kinds == ORIGIN_KINDS
 
 
 @pytest.mark.invariant("I2")
@@ -398,3 +416,72 @@ def test_does_not_mutate_inputs(pay_input: Callable[..., StepInput], make_value:
     before = (dict(inp.values), inp.proposal.model_dump_json())
     check_origin(inp)
     assert (dict(inp.values), inp.proposal.model_dump_json()) == before
+
+
+@pytest.mark.attack("A3")
+@pytest.mark.parametrize("kind", ["email", "user", "llm", "tool"])
+def test_tool_named_like_an_origin_kind_does_not_match(
+    pay_input: Callable[..., StepInput], make_value: MakeValue, kind: str
+) -> None:
+    """A tool called `email` must not satisfy `named_source: email`, nor the reverse."""
+    marker = NamedSourceMarker(kind="named_source", source=kind)
+    lookalike = _payee(make_value, origin=f"tool:{kind}")
+    assert _block_code(pay_input({"payee": marker}, payee=lookalike))[0] == "ORIGIN_SOURCE_MISMATCH"
+
+
+@pytest.mark.attack("A3")
+@pytest.mark.parametrize(("origin", "source"), [("tool:contacts", "contacts"), ("email", "email")])
+def test_genuine_named_sources_still_match(
+    pay_input: Callable[..., StepInput], make_value: MakeValue, origin: str, source: str
+) -> None:
+    marker = NamedSourceMarker(kind="named_source", source=source)
+    payee = _payee(make_value, origin=origin)
+    assert check_origin(pay_input({"payee": marker}, payee=payee)) is None
+
+
+@pytest.mark.invariant("I2")
+def test_lone_surrogate_with_mismatching_hash_is_blocked_not_raised(
+    pay_input: Callable[..., StepInput], make_value: MakeValue
+) -> None:
+    text = "DE89\ud800370400440532013000"
+    lenient_hash = _sha(text.encode("utf-8", errors="replace").decode("utf-8"))
+    value = make_value("v-payee", IBAN, unit="iban").model_copy(update={"text": text})
+    value = value.model_copy(
+        update={"ref": value.ref.model_copy(update={"content_hash": lenient_hash})}
+    )
+    inp = _with_values(pay_input({"payee": LEDGER}, payee=value), value)
+    assert _block_code(inp) == ("ORIGIN_UNSOURCED", "content hash mismatch")
+
+
+@pytest.mark.invariant("I2")
+def test_lone_surrogate_hashed_consistently_does_not_raise(
+    pay_input: Callable[..., StepInput], make_value: MakeValue
+) -> None:
+    text = "DE89\ud800370400440532013000"
+    base = make_value("v-payee", IBAN, unit="iban")
+    ref = base.ref.model_copy(update={"content_hash": sha256_hex(text)})
+    value = base.model_copy(update={"text": text, "ref": ref})
+    assert check_origin(_with_values(pay_input({"payee": LEDGER}, payee=value), value)) is None
+    literal = LiteralMarker(kind="literal", value=IBAN)
+    inp = _with_values(pay_input({"payee": literal}, payee=value), value)
+    assert _block_code(inp)[0] == "ORIGIN_LITERAL_MISMATCH"
+
+
+@pytest.mark.invariant("I2")
+def test_scope_none_falls_back_to_the_policy_floor(
+    pay_input: Callable[..., StepInput], make_value: MakeValue
+) -> None:
+    """Without a scope (step 1 would block) the table floor alone decides; it never raises."""
+    payee = _payee(make_value, origin="email", integrity="untrusted")
+    inp = replace(pay_input({"payee": FREE}, payee=payee), scope=None)
+    assert check_origin(inp) is None  # floor `ledger` defers an untrusted payee to step 4
+    floor = NamedSourceMarker(kind="named_source", source="contacts")
+    policy: PolicyTable = {
+        "send_money": make_tool_policy(
+            "irreversible", {"payee": ParamPolicy(unit="iban", floor=floor, kind="destination")}
+        )
+    }
+    strict = replace(pay_input({"payee": FREE}, policy=policy, payee=payee), scope=None)
+    assert _block_code(strict)[0] == "ORIGIN_SOURCE_MISMATCH"
+    unknown = replace(inp, policy={})  # unknown tool: floor `endorse` also defers
+    assert check_origin(unknown) is None
