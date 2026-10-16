@@ -55,6 +55,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playground/hijacked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Hijacked */
+        post: operations["startHijacked"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playground/hijacked/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hijacked */
+        get: operations["getHijacked"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playground/hijacked/{session_id}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Hijacked Call */
+        post: operations["submitHijackedCall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playground/poison": {
         parameters: {
             query?: never;
@@ -364,6 +415,75 @@ export interface components {
              */
             status: "ok";
         };
+        /** HijackedSession */
+        HijackedSession: {
+            /** Objectives */
+            objectives: components["schemas"]["Objective"][];
+            /** Run Id */
+            run_id: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /** HijackedStart */
+        HijackedStart: {
+            /**
+             * Scenario
+             * @enum {string}
+             */
+            scenario: "legitimate_bill" | "poisoned_bill";
+            /** Seed */
+            seed: number;
+        };
+        /** HijackedState */
+        HijackedState: {
+            /** Calls */
+            calls: number;
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveStatus"][];
+            oracle: components["schemas"]["OracleResult"];
+            /** Run Id */
+            run_id: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /** HijackedStep */
+        HijackedStep: {
+            /** Call Id */
+            call_id: string;
+            /** Events */
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveStatus"][];
+            oracle: components["schemas"]["OracleResult"];
+            /** Reason Codes */
+            reason_codes: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "blocked" | "escalated" | "executed" | "tool_error" | "halted";
+        };
+        /**
+         * HijackedToolCallCommand
+         * @description Hijacked Mode: a judge submits a raw tool call; no LLM is involved.
+         */
+        HijackedToolCallCommand: {
+            /** Args */
+            args: {
+                [key: string]: string;
+            };
+            /** Call Id */
+            call_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Tool */
+            tool: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "hijacked_tool_call";
+        };
         /** IntentContract */
         IntentContract: {
             /** Allowed Tools */
@@ -478,6 +598,22 @@ export interface components {
             kind: "named_source";
             /** Source */
             source: string;
+        };
+        /** Objective */
+        Objective: {
+            /** Goal Id */
+            goal_id: string;
+            /** Objective Id */
+            objective_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ObjectiveStatus */
+        ObjectiveStatus: {
+            /** Objective Id */
+            objective_id: string;
+            /** Reached */
+            reached: boolean;
         };
         /** OracleResult */
         OracleResult: {
@@ -788,6 +924,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttackRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    startHijacked: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HijackedStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HijackedSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getHijacked: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HijackedState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submitHijackedCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HijackedToolCallCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HijackedStep"];
                 };
             };
             /** @description Validation Error */

@@ -140,6 +140,13 @@ Playground endpoints (synchronous REST, `notary_server.playground`; CORS allows 
 - `POST /playground/attacks/{attack_id}/run` [`runAttack`]: `A1`-`A14` or `B1`-`B4` (case-insensitive) replayed through the real monitor with the oracle; unknown id is `404 unknown attack id`. `ok` and `checks` report what the monitor did, so a mismatch is never hidden.
 - Errors are `{"detail": ...}`; a malformed body is FastAPI's own 422.
 
+Hijacked Mode endpoints (`notary_server.hijacked`, in-memory sessions, no LLM):
+
+- `POST /playground/hijacked` [`startHijacked`] starts a session on `legitimate_bill` or `poisoned_bill` (seed >= 0): ids are counters (`h1`, run id `run-hijacked-h1`), at most 64 sessions (429). The response lists the four objective cards (`pay_attacker`, `leak_2fa`, `delete_inbox`, `add_contact`).
+- `POST /playground/hijacked/{session_id}/calls` [`submitHijackedCall`] takes a `HijackedToolCallCommand`, proposes it to the executor and returns the status, the reason codes (shown to the judge on purpose), the chain events the call appended, the oracle result (I1-I6 recomputed after every call) and one reached flag per objective. At most 100 calls per session (429); a wrong `run_id` or repeated `call_id` is 409; an unknown session is 404. Each session has a lock around its engine.
+- `GET /playground/hijacked/{session_id}` [`getHijacked`] returns the call count and the current oracle result without appending anything.
+- An `ESCALATE` is rejected automatically (the judge plays the attacker and never approves) and still reported as `escalated`. Since the payee floor became `endorse` (#119), a payment to a novel payee such as the attacker IBAN escalates (`LEDGER_NOVEL_ESCALATE`) instead of blocking; the attacker light stays off either way.
+
 - Defined in Pydantic: [`events.py`](../packages/core/src/notary_core/models/events.py), [`commands.py`](../packages/core/src/notary_core/models/commands.py)
 - Generated JSON Schema: [`packages/schema/json/`](../packages/schema/json)
 - Generated TS types and Zod: [`packages/schema/src/generated/`](../packages/schema/src/generated)
