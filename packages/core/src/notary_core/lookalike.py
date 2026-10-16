@@ -5,6 +5,10 @@ confusables data. Lookalikes beyond this table are not normalized to the same
 skeleton (threat model A8, "lookalikes beyond the normalizer").
 """
 
+import unicodedata
+
+from notary_core.models import DecisionUnit
+
 CONFUSABLES: dict[str, str] = {
     "0": "o",
     "1": "l",
@@ -36,3 +40,38 @@ CONFUSABLES: dict[str, str] = {
 
 # Applied after the single-character mapping, pair by pair, left to right.
 MULTI_CONFUSABLES: tuple[tuple[str, str], ...] = (("rn", "m"), ("vv", "w"), ("cl", "d"))
+
+_MAX_PASSES = 16
+_EXACT_UNITS: frozenset[DecisionUnit] = frozenset({"iban", "amount"})
+
+
+def _reduced_step(s: str) -> str:
+    folded = unicodedata.normalize("NFKC", s).casefold()
+    return "".join(
+        ch
+        for ch in folded
+        if unicodedata.category(ch) != "Cf" and not unicodedata.category(ch).startswith("Z")
+    )
+
+
+def _full_step(s: str) -> str:
+    mapped = "".join(CONFUSABLES.get(ch, ch) for ch in _reduced_step(s))
+    for old, new in MULTI_CONFUSABLES:
+        mapped = mapped.replace(old, new)
+    return mapped
+
+
+def normalize_for_match(unit: DecisionUnit, s: str) -> str:
+    """Skeleton of `s` for near-match comparison; a fixed point of the unit's step.
+
+    iban and amount keep digits and letters significant, so they use only NFKC,
+    casefold and invisible-character removal.
+    """
+    step = _reduced_step if unit in _EXACT_UNITS else _full_step
+    value = s
+    for _ in range(_MAX_PASSES):
+        nxt = step(value)
+        if nxt == value:
+            break
+        value = nxt
+    return value
