@@ -186,11 +186,8 @@ def test_fake_monitor_agrees_with_every_implemented_fixture(attack_id: AttackId)
 @pytest.mark.attack("A3")
 def test_real_monitor_agrees_except_known_deviations() -> None:
     mismatching = {call for attack_id in IMPLEMENTED_ATTACKS for call in _mismatches(attack_id)}
-    implemented = {
-        k for k in KNOWN_REAL_MONITOR_DEVIATIONS if k.split(".")[0] in IMPLEMENTED_ATTACKS
-    }
-    assert mismatching == implemented
-    assert implemented == {"A3.c1", "A6.c3"}
+    assert mismatching == set(KNOWN_REAL_MONITOR_DEVIATIONS)
+    assert mismatching == {"A3.c1", "A6.c3"}
     assert all(reason for reason in KNOWN_REAL_MONITOR_DEVIATIONS.values())
 
 
@@ -300,16 +297,17 @@ def test_run_attack_is_byte_identical_across_runs() -> None:
 
 
 @pytest.mark.attack("A1")
-def test_get_setup_rejects_attacks_without_a_setup() -> None:
+def test_all_fourteen_are_implemented() -> None:
+    assert IMPLEMENTED_ATTACKS == ALL_IDS
     assert set(ATTACK_SETUPS) == set(IMPLEMENTED_ATTACKS)
     with pytest.raises(AttackNotFoundError):
-        get_setup("A8")
+        get_setup("A99")
 
 
 @pytest.mark.attack("A5")
 def test_attack_scenarios_are_dispatchable_but_not_golden_scenarios() -> None:
     assert SCENARIO_IDS == ("legitimate_bill", "poisoned_bill")
-    assert ATTACK_SCENARIO_IDS == ("summary_email", "multi_source_bill")
+    assert ATTACK_SCENARIO_IDS == ("summary_email", "multi_source_bill", "contact_phish")
     for scenario_id in ATTACK_SCENARIO_IDS:
         scenario = get_scenario(scenario_id)
         assert scenario.scenario_id == scenario_id
