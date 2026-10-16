@@ -117,3 +117,22 @@ class ArgumentResolver:
         )
         ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(raw))
         return ResolvedValue(ref=ref, unit=unit, text=raw)
+
+
+def canonical_args(
+    args: Mapping[str, ResolvedValue], units: Mapping[str, DecisionUnit | None]
+) -> dict[str, str]:
+    """The argument text a tool receives, in sorted parameter order.
+
+    The monitor judges `canonicalize(unit, text).value` (never `.valid`), so the tool must run on
+    that same text, or check and use disagree. The unit is the PARAMETER's (`units`, a missing key
+    means none), never the stored value's, which may differ. Identifiers and free text pass
+    unchanged: a contact name keeps its case, so that check-versus-use gap is accepted by design.
+    Keys of `units` that are not in `args` are ignored.
+    """
+    out: dict[str, str] = {}
+    for param in sorted(args):
+        unit = units.get(param)
+        text = args[param].text
+        out[param] = canonicalize(unit, text).value if unit in CANONICAL_TOOL_UNITS else text
+    return out
