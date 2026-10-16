@@ -96,6 +96,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [ ] Seeded world (bank, inbox, calendar, files, Slack) with reset
 - [ ] A1-A14 fixtures aligned to the [taxonomy](threat-model.md#attack-taxonomy-and-stops), each with expected verdict and deciding step; runs against `FakeMonitor` until CP1
 - [ ] Oracle in `packages/world`: I1-I6 plus attacker-goal and user-goal predicates; it diffs world state, `core` stays pure and only holds the `OracleResult` model
+  - Readers use the encoding decided in #40 (`"*"` = public, `()` = nobody, join = intersection; always normalized via `normalize_readers` in `notary_core.provenance`); integrity order is untrusted < endorsed < trusted, and `endorsed` never admits a guarded value by label alone (see [decisions.md](decisions.md)).
 - [ ] Hypothesis fuzz harness asserting I1-I5 after every step (runs against `FakeMonitor` until CP1)
 - [ ] Hijacked Mode runner (raw tool calls, no LLM)
 - [ ] **Classifier-only** baseline: lane B owns the `ClassifierFilter` (a pure function from content to filtered content plus flags; classifier: see P0b) and its eval wrapper. It plugs into lane C's runner through the frozen pre-filter hook and needs no agent loop of its own
@@ -109,6 +110,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Packages: `packages/core` (pure logic only), `packages/mcp-proxy` (I/O adapter; see [decisions.md](decisions.md))
 - [ ] Gateway: pure labeling and field-splitting logic
 - [ ] Value Store
+  - Readers use the encoding decided in #40 (`"*"` = public, `()` = nobody, join = intersection; always normalized via `normalize_readers` in `notary_core.provenance`); integrity order is untrusted < endorsed < trusted, and `endorsed` never admits a guarded value by label alone (see [decisions.md](decisions.md)).
 - [ ] Gateway I/O adapter in `packages/mcp-proxy` (calls the pure logic in `core`), after the pure logic; lane C consumes it
 - [ ] Output Guard (A13); pure sentence-provenance logic in `core`. Last: after CP2; not needed for stage-script steps 1-5; first thing cut
 - Needs P0b interfaces and P1 models.
