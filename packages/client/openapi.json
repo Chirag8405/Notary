@@ -1633,6 +1633,51 @@
         "title": "OracleUpdated",
         "type": "object"
       },
+      "PendingEndorsement": {
+        "additionalProperties": false,
+        "properties": {
+          "card_text": {
+            "title": "Card Text",
+            "type": "string"
+          },
+          "endorsement": {
+            "$ref": "#/components/schemas/Endorsement"
+          },
+          "remaining_approvals": {
+            "title": "Remaining Approvals",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "endorsement",
+          "card_text",
+          "remaining_approvals"
+        ],
+        "title": "PendingEndorsement",
+        "type": "object"
+      },
+      "PendingList": {
+        "additionalProperties": false,
+        "properties": {
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/PendingEndorsement"
+            },
+            "title": "Pending",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "PendingList",
+        "type": "object"
+      },
       "PoisonResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2548,6 +2593,45 @@
           }
         },
         "summary": "Run Anchor"
+      }
+    },
+    "/runs/{run_id}/endorsements": {
+      "get": {
+        "operationId": "listEndorsements",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Endorsements"
       }
     },
     "/scenarios": {

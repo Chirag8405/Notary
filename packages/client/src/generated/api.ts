@@ -174,6 +174,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/endorsements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Endorsements */
+        get: operations["listEndorsements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenarios": {
         parameters: {
             query?: never;
@@ -738,6 +755,21 @@ export interface components {
              */
             type: "oracle_updated";
         };
+        /** PendingEndorsement */
+        PendingEndorsement: {
+            /** Card Text */
+            card_text: string;
+            endorsement: components["schemas"]["Endorsement"];
+            /** Remaining Approvals */
+            remaining_approvals: number;
+            /** Run Id */
+            run_id: string;
+        };
+        /** PendingList */
+        PendingList: {
+            /** Pending */
+            pending: components["schemas"]["PendingEndorsement"][];
+        };
         /** PoisonResponse */
         PoisonResponse: {
             /** Runs */
@@ -1236,6 +1268,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Anchor"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listEndorsements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingList"];
                 };
             };
             /** @description Validation Error */
