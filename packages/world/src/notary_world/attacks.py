@@ -44,16 +44,8 @@ ATTACK_NAMES: Mapping[AttackId, str] = MappingProxyType(
 )
 """The "Attack" column of docs/threat-model.md, verbatim."""
 
-KNOWN_REAL_MONITOR_DEVIATIONS: Mapping[str, str] = MappingProxyType(
-    {
-        "A3.c1": (
-            "real decide() returns BLOCK LEDGER_NOT_FOUND: the payee floor is ledger(payees), so "
-            "a novel payee never escalates (threat-model A3 says it escalates with a diff card)"
-        ),
-        "A6.c3": "same as A3.c1: the assembled attacker IBAN is a novel payee",
-    }
-)
-"""Call ids whose real-monitor outcome differs from the taxonomy; CP1 empties this table."""
+KNOWN_REAL_MONITOR_DEVIATIONS: Mapping[str, str] = MappingProxyType({})
+"""Call ids whose real-monitor outcome differs from the taxonomy (empty since CP1)."""
 
 
 class AttackNotFoundError(KeyError):

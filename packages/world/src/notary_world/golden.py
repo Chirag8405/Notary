@@ -21,6 +21,7 @@ from notary_core.models import (
     EffectBudget,
     EffectExecuted,
     EmailOrigin,
+    EndorseMarker,
     Endorsement,
     EndorsementDecisionCommand,
     EndorsementRequested,
@@ -31,7 +32,6 @@ from notary_core.models import (
     InvariantResult,
     Label,
     Lane,
-    LedgerMarker,
     OracleResult,
     OracleUpdated,
     PoisonWorldCommand,
@@ -76,7 +76,7 @@ def _contract() -> IntentContract:
             ToolScope(
                 tool="pay_bill",
                 params={
-                    "payee": LedgerMarker(kind="ledger", ledger="payees"),
+                    "payee": EndorseMarker(kind="endorse"),
                     "amount": FreeMarker(kind="free"),
                 },
                 manifest_hash=_hash("pay_bill"),

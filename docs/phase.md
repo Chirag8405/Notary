@@ -11,7 +11,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P0    | Foundations                                                                                | all            | -                                                   | -                                     | done        |
 | P0b   | Contract freeze + stubs                                                                    | all (A drafts) | P0                                                  | -                                     | done        |
 | P1    | Core: monitor, ledger, audit chain, parameter table                                        | A              | P0b                                                 | P2 (CP1), P3a, P3b (CP2)              | done        |
-| P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | not started |
+| P2    | World, attacks, oracle, fuzz, Hijacked Mode, `ClassifierFilter`, CLI                       | B              | P0b (`FakeMonitor`, fixture and cassette formats)   | P1 (CP1)                              | done        |
 | P3a   | Deterministic pipeline: pure Gateway logic, Value Store, gateway I/O adapter, Output Guard | A              | P0b (Gateway/Value Store interfaces), P1 models     | P1 monitor, P3b (CP2)                 | not started |
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | not started |
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | not started |
@@ -93,14 +93,14 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 ## P2 World + attacks + oracle + fuzz + Hijacked Mode + Classifier-only baseline + CLI (lane B)
 
 - Packages: `packages/world`, `packages/cli`
-- [ ] Seeded world (bank, inbox, calendar, files, Slack) with reset
-- [ ] A1-A14 fixtures aligned to the [taxonomy](threat-model.md#attack-taxonomy-and-stops), each with expected verdict and deciding step; runs against `FakeMonitor` until CP1
-- [ ] Oracle in `packages/world`: I1-I6 plus attacker-goal and user-goal predicates; it diffs world state, `core` stays pure and only holds the `OracleResult` model
+- [x] Seeded world (bank, inbox, calendar, files, Slack) with reset
+- [x] A1-A14 fixtures aligned to the [taxonomy](threat-model.md#attack-taxonomy-and-stops), each with expected verdict and deciding step; runs against the real monitor (`FakeMonitor` only unit-tests the harness)
+- [x] Oracle in `packages/world`: I1-I6 plus attacker-goal and user-goal predicates; it diffs world state, `core` stays pure and only holds the `OracleResult` model
   - Readers use the encoding decided in #40 (`"*"` = public, `()` = nobody, join = intersection; always normalized via `normalize_readers` in `notary_core.provenance`); integrity order is untrusted < endorsed < trusted, and `endorsed` never admits a guarded value by label alone (see [decisions.md](decisions.md)).
-- [ ] Hypothesis fuzz harness asserting I1-I5 after every step (runs against `FakeMonitor` until CP1)
-- [ ] Hijacked Mode runner (raw tool calls, no LLM)
-- [ ] **Classifier-only** baseline: lane B owns the `ClassifierFilter` (a pure function from content to filtered content plus flags; classifier: see P0b) and its eval wrapper. It plugs into lane C's runner through the frozen pre-filter hook and needs no agent loop of its own
-- [ ] `notary replay`, `notary fuzz`, `notary attack` implemented (`bench` may stay stubbed)
+- [x] Hypothesis fuzz harness asserting I1-I5 after every step (runs against the real monitor; `FakeMonitor` is not used)
+- [x] Hijacked Mode runner (raw tool calls, no LLM)
+- [x] **Classifier-only** baseline: lane B owns the `ClassifierFilter` (a pure function from content to filtered content plus flags; classifier: see P0b) and its eval wrapper. It plugs into lane C's runner through the frozen pre-filter hook and needs no agent loop of its own
+- [x] `notary replay`, `notary fuzz`, `notary attack` implemented (`bench` may stay stubbed)
 - Accept: `cd packages/world && uv run pytest`; `uv run notary attack --list` prints A1-A14; after CP1, `uv run notary fuzz` reports zero violations
 - Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
 - Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.

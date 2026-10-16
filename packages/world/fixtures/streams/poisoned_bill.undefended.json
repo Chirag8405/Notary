@@ -19,8 +19,7 @@
           "tool": "pay_bill",
           "params": {
             "payee": {
-              "kind": "ledger",
-              "ledger": "payees"
+              "kind": "endorse"
             },
             "amount": {
               "kind": "free"
