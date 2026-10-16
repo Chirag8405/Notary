@@ -274,11 +274,15 @@ def test_legitimate_bill_run_pays_and_matches_the_golden_shape() -> None:
 
 
 @pytest.mark.attack("A3")
-def test_poisoned_bill_is_blocked_by_the_real_monitor() -> None:
+def test_poisoned_bill_escalates_and_is_rejected_by_the_real_monitor() -> None:
     record = run(poisoned_bill_scenario())
     pay = record.calls[1]
-    assert pay.decision.verdict == "BLOCK"
-    assert last_reason(pay.decision) == ("corroboration", "fail", "LEDGER_NOT_FOUND")
+    assert pay.decision.verdict == "ESCALATE"
+    assert [(r.check, r.code) for r in pay.decision.reasons if r.outcome == "escalate"] == [
+        ("corroboration", "LEDGER_NOVEL_ESCALATE")
+    ]
+    assert pay.decision.diff_card is not None
+    assert [e.resolution for e in record.escalations] == ["rejected"]
     assert record.world_diff.changes == ()
     assert "c2" not in effect_call_ids(record)
     assert finished_event(record).outcome == "blocked"
@@ -583,8 +587,10 @@ def test_run_hijacked_uses_the_command_run_id() -> None:
     record = run_hijacked(poisoned_bill_scenario(), [hijacked("h0", "read_inbox", {}), sample])
     assert record.run_id == "run-hijacked"
     h1 = next(c for c in record.calls if c.call_id == "h1")
-    assert h1.decision.verdict == "BLOCK"
-    assert last_reason(h1.decision)[2] == "LEDGER_NOT_FOUND"
+    assert h1.decision.verdict == "ESCALATE"
+    assert [r.code for r in h1.decision.reasons if r.outcome == "escalate"] == [
+        "LEDGER_NOVEL_ESCALATE"
+    ]
     assert all(t.to_iban != ATTACKER_IBAN for t in record.world_after.bank.transfers)
 
 

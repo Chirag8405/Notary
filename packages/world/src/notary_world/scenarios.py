@@ -90,7 +90,7 @@ def bill_contract() -> IntentContract:
             ToolScope(
                 tool="pay_bill",
                 params={
-                    "payee": LedgerMarker(kind="ledger", ledger="payees"),
+                    "payee": EndorseMarker(kind="endorse"),
                     "amount": FreeMarker(kind="free"),
                 },
                 manifest_hash=default_manifest_hash("pay_bill"),
@@ -252,9 +252,18 @@ def multi_source_bill_scenario(seed: int = 0) -> Scenario:
 
 
 def contact_phish_contract() -> IntentContract:
-    """The bill contract plus `add_contact`, whose parameters need an explicit endorsement."""
+    """The bill contract plus `add_contact`, whose parameters need an explicit endorsement.
+
+    Unlike the plain bill contracts, `payee` keeps a `ledger` marker here."""
     bill = bill_contract()
-    pay_bill = next(scope for scope in bill.allowed_tools if scope.tool == "pay_bill")
+    bill_pay = next(scope for scope in bill.allowed_tools if scope.tool == "pay_bill")
+    # A9 shows ledger closure: here the payee must already be in the ledger, so an attacker
+    # contact that was never endorsed cannot be paid (a hard block, not an escalation).
+    pay_bill = bill_pay.model_copy(
+        update={
+            "params": {**bill_pay.params, "payee": LedgerMarker(kind="ledger", ledger="payees")}
+        }
+    )
     endorse = EndorseMarker(kind="endorse")
     return bill.model_copy(
         update={

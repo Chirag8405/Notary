@@ -197,9 +197,11 @@ def test_check_invariants_order_and_ids() -> None:
 
 
 @all_six
-def test_blocked_attack_run_satisfies_all_six_invariants() -> None:
+def test_rejected_attack_run_satisfies_all_six_invariants() -> None:
     record = poisoned_run()
-    assert record.calls[1].decision.verdict == "BLOCK"
+    assert record.calls[1].decision.verdict == "ESCALATE"
+    assert [e.resolution for e in record.escalations] == ["rejected"]
+    assert record.world_diff.changes == ()
     assert_all_hold(record)
 
 
@@ -440,9 +442,9 @@ def stored(record: RunRecord, value_id: str, call_index: int = 1) -> ResolvedVal
 def test_i2_attacker_payee_with_allow_all_monitor() -> None:
     record = attacker_payment_run()
     assert check_i2(record) == InvariantResult(id="I2", passed=False, detail=I2_C2_PAYEE)
-    blocked = run([read_inbox(), pay("c2", ATTACKER_IBAN)])
-    assert blocked.calls[1].decision.verdict == "BLOCK"
-    assert check_i2(blocked).passed
+    held = run([read_inbox(), pay("c2", ATTACKER_IBAN)])
+    assert held.calls[1].decision.verdict == "ESCALATE"
+    assert check_i2(held).passed
 
 
 @pytest.mark.invariant("I2")

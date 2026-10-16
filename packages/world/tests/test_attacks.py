@@ -184,10 +184,10 @@ def test_fake_monitor_agrees_with_every_implemented_fixture(attack_id: AttackId)
 
 
 @pytest.mark.attack("A3")
-def test_real_monitor_agrees_except_known_deviations() -> None:
+def test_real_monitor_agrees_with_every_fixture() -> None:
     mismatching = {call for attack_id in IMPLEMENTED_ATTACKS for call in _mismatches(attack_id)}
-    assert mismatching == set(KNOWN_REAL_MONITOR_DEVIATIONS)
-    assert mismatching == {"A3.c1", "A6.c3"}
+    assert mismatching == set()
+    assert dict(KNOWN_REAL_MONITOR_DEVIATIONS) == {}
     assert all(reason for reason in KNOWN_REAL_MONITOR_DEVIATIONS.values())
 
 

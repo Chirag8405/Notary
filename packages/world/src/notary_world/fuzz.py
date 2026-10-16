@@ -246,7 +246,6 @@ def _scope(tool: str, params: Mapping[str, Marker]) -> ToolScope:
 
 def _fuzz_scopes() -> tuple[ToolScope, ...]:
     contacts: Marker = LedgerMarker(kind="ledger", ledger="contacts")
-    payees: Marker = LedgerMarker(kind="ledger", ledger="payees")
     endorse: Marker = EndorseMarker(kind="endorse")
     return (
         _scope("read_inbox", {}),
@@ -263,7 +262,7 @@ def _fuzz_scopes() -> tuple[ToolScope, ...]:
         ),
         _scope("create_event", {"attendees": contacts, "title": _FREE, "description": _FREE}),
         _scope("add_contact", {"name": endorse, "iban": endorse, "email": endorse}),
-        _scope("pay_bill", {"payee": payees, "amount": _FREE, "reference": _FREE}),
+        _scope("pay_bill", {"payee": endorse, "amount": _FREE, "reference": _FREE}),
         _scope(
             "send_money",
             {

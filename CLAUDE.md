@@ -43,6 +43,7 @@ pnpm install && uv sync          # once, from a clean clone
 pnpm dev                         # server (:8000) + web (:3000), open /x-ray
 pnpm schema:generate             # core -> JSON Schema -> TS types + Zod; OpenAPI -> client types; event fixtures
 pnpm schema:check                # regenerate and fail on drift (restores files when it fails)
+pnpm --filter @notary/cli cp1    # CP1 proof: notary attack --all and notary fuzz (ci profile)
 ```
 
 **Before committing run:** `pnpm schema:generate && pnpm turbo run lint typecheck test build && pnpm schema:check`.
