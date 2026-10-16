@@ -1,6 +1,8 @@
 """Canonical JSON and hashing helpers. Shared by the audit chain and the contract digest."""
 
 import json
+from decimal import Decimal
+from typing import cast
 
 import pytest
 from builders import contract
@@ -64,10 +66,58 @@ def test_canonical_hash_stable_across_equal_models() -> None:
     assert canonical_hash(changed) != canonical_hash(first)
 
 
+def _reversed_copy(value: object) -> object:
+    """Deep copy with every dict rebuilt in reversed insertion order."""
+    if isinstance(value, dict):
+        items = cast(dict[str, object], value).items()
+        return {key: _reversed_copy(item) for key, item in reversed(list(items))}
+    if isinstance(value, list):
+        return [_reversed_copy(item) for item in cast(list[object], value)]
+    return value
+
+
+# covers: I5
+def test_non_str_keys_rejected() -> None:
+    with pytest.raises(TypeError, match="keys must be str"):
+        canonical_json({1: "x"})
+    with pytest.raises(TypeError, match="keys must be str"):
+        canonical_json({None: "x"})
+    with pytest.raises(TypeError, match="keys must be str"):
+        canonical_json([{"a": {True: 1}}])
+
+
+# covers: I5
+def test_non_json_types_rejected() -> None:
+    for value in ({1}, b"x", Decimal("1"), object()):
+        with pytest.raises(TypeError, match="not allowed in canonical JSON"):
+            canonical_json(value)
+        with pytest.raises(TypeError, match="not allowed in canonical JSON"):
+            canonical_json({"a": [value]})
+
+
+# covers: I5
+def test_bool_and_int_hash_differently() -> None:
+    assert canonical_json(True) == "true"
+    assert canonical_json(1) == "1"
+    assert sha256_hex(canonical_json(True)) != sha256_hex(canonical_json(1))
+    assert canonical_json({"a": True}) != canonical_json({"a": 1})
+
+
+# covers: I5
+def test_lone_surrogate_hashes_deterministically() -> None:
+    expected = "91a681b998555fb475479817b126c94e57e52011fa1842c5d188795a4a05226b"
+    assert sha256_hex("\ud800") == expected
+    assert sha256_hex("\ud800") == sha256_hex("\ud800")
+    assert sha256_hex(canonical_json({"k": "\ud800"})) == sha256_hex(
+        canonical_json({"k": "\ud800"})
+    )
+
+
 # covers: I5
 @given(JSON_VALUES)
 def test_canonical_json_is_deterministic(value: object) -> None:
     text = canonical_json(value)
+    assert text == canonical_json(_reversed_copy(value))
     assert text == canonical_json(value)
     assert json.loads(text) == value
     # Re-serializing the parsed result is a fixed point.
