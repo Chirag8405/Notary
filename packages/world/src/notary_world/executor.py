@@ -578,17 +578,36 @@ def _escalate(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcom
     return engine, judged.outcome("escalated", endorsement_id=endorsement_id)
 
 
+CANONICAL_TOOL_UNITS: frozenset[DecisionUnit] = frozenset({"iban", "email", "url_host", "amount"})
+"""Units whose canonical form is what a world tool receives."""
+
+
+def judged_tool_args(tool: str, args: Sequence[ArgRecord]) -> dict[str, str]:
+    """The argument text a world tool receives for the judged values, in sorted param order.
+
+    The monitor judges `canonicalize(unit, text).value` (never `.valid`), so the tool must receive
+    that same canonical form; otherwise what was judged is not what runs. Validity does not gate
+    it: the demo IBANs fail mod-97 on purpose and are still compared by their canonical value.
+    Identifiers are display text (a contact name keeps its case), so they pass unchanged and the
+    check-versus-use gap remains for them by design. The real Gateway (P3a, lane A) is the
+    long-term owner of this mapping; the oracle's world replay (issue #98) must use this function.
+    """
+    out: dict[str, str] = {}
+    for record in sorted(args, key=lambda a: a.param):
+        unit = param_unit(tool, record.param)
+        text = record.value.text
+        out[record.param] = canonicalize(unit, text).value if unit in CANONICAL_TOOL_UNITS else text
+    return out
+
+
 def _execute(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcome]:
-    """Run the world tool on exactly the texts the monitor judged, then label its output."""
+    """Run the world tool on the canonical form of the judged values, then label its output."""
     proposal = judged.proposal
     call_id = proposal.call_id
-    args: dict[str, str] = {}
-    for param, ref in sorted(proposal.args.items()):
-        value = _lookup(engine, ref.id)
-        if value is None:
-            raise ValueError("judged value missing from the store")
-        args[param] = value.text
-    result = call_tool(engine.world, proposal.tool, args)
+    records = _arg_records(engine, proposal)
+    if len(records) != len(proposal.args):
+        raise ValueError("judged value missing from the store")
+    result = call_tool(engine.world, proposal.tool, judged_tool_args(proposal.tool, records))
     if result.error is not None:
         engine = _record(engine, judged, "tool_error", error=result.error)
         return engine, judged.outcome("tool_error", error=result.error)
