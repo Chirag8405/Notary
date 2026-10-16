@@ -29,6 +29,7 @@ from notary_server.commands import (
     CommandRejected,
     CommandRouter,
 )
+from notary_server.endorsement import EndorsementBroker, PendingList
 from notary_server.hijacked import (
     HijackedError,
     HijackedSession,
@@ -142,9 +143,12 @@ def create_app(
     anchors: AnchorStore | None = None,
     attacker_llm: AttackerFactory | None = None,
     arena_max_rounds: int = 10,
+    broker: EndorsementBroker | None = None,
 ) -> FastAPI:
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
+    if broker is not None:
+        command_router.register("endorsement_decision", broker.handler())
     playground = PlaygroundService(lane_runner)
     hijacked_sessions = HijackedSessions() if hijacked is None else hijacked
     anchor_store = AnchorStore() if anchors is None else anchors
@@ -209,6 +213,10 @@ def create_app(
     def run_attack(attack_id: str) -> AttackRunResponse:
         return playground.run_attack(attack_id)
 
+    @app.get("/runs/{run_id}/endorsements", operation_id="listEndorsements")
+    def run_endorsements(run_id: str) -> PendingList:
+        return PendingList(pending=() if broker is None else broker.pending(run_id))
+
     @app.get("/runs/{run_id}/anchor", operation_id="getAnchor")
     def run_anchor(run_id: str) -> Anchor:
         anchor = anchor_store.get(run_id)
@@ -232,6 +240,12 @@ def create_app(
             return
 
         progress = _Progress()
+
+        def release_run() -> None:
+            """A run that is no longer watched must not wait for a human: reject its cards."""
+            if broker is not None and progress.run_id is not None:
+                broker.cancel_run(progress.run_id)
+
         async with anyio.create_task_group() as group:
 
             async def send() -> None:
@@ -240,13 +254,14 @@ def create_app(
                 except KeyError:
                     await websocket.close(code=CLOSE_UNKNOWN_SCENARIO, reason="unknown scenario")
                 except (WebSocketDisconnect, WebSocketDisconnected):
-                    pass
+                    release_run()
                 else:
                     await websocket.close()
                 group.cancel_scope.cancel()
 
             async def receive() -> None:
                 rejected = await _receive_commands(websocket, command_router, request, progress)
+                release_run()
                 if rejected is not None:
                     await websocket.close(code=rejected.code, reason=rejected.reason)
                 group.cancel_scope.cancel()
