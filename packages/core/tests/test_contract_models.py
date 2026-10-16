@@ -12,6 +12,8 @@ from notary_core.models import (
     EffectBudget,
     Event,
     ExpectedOutcome,
+    LedgerEntry,
+    LedgerSource,
     SessionState,
     ToolScope,
 )
@@ -202,3 +204,80 @@ def test_every_event_carries_run_id_and_lane() -> None:
     adapter: TypeAdapter[Event] = TypeAdapter(Event)
     with pytest.raises(ValidationError):
         adapter.validate_json('{"type":"run_finished","run_id":"r","seq":0}')
+
+
+def test_resolved_value_allows_hash_mismatch() -> None:
+    from notary_core.models import Label, ResolvedValue, UserOrigin, ValueRef
+
+    label = Label(
+        origin=UserOrigin(kind="user"), integrity="trusted", readers=("*",), span_pointer=None
+    )
+    ref = ValueRef(id="v", label=label, content_hash=sha("real text"))
+    value = ResolvedValue(ref=ref, unit=None, text="tampered text")
+    assert value.ref.content_hash != sha(value.text)
+
+
+def test_ledger_source_is_discriminated_and_has_no_tool_result_kind() -> None:
+    adapter: TypeAdapter[LedgerSource] = TypeAdapter(LedgerSource)
+    assert adapter.validate_python({"kind": "user_authored"}).kind == "user_authored"
+    assert adapter.validate_python({"kind": "user_endorsed", "endorsement_id": "e"}).kind == (
+        "user_endorsed"
+    )
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"kind": "tool_result"})
+
+
+def test_ledger_entry_requires_unit_canonical_and_source() -> None:
+    with pytest.raises(ValidationError):
+        LedgerEntry.model_validate({"entry_id": "e", "ledger": "payees", "key": "k"})
+    fields = set(LedgerEntry.model_fields)
+    assert {"unit", "canonical", "source"} <= fields
+
+
+def test_diff_row_has_explicit_nearest_value_and_positions() -> None:
+    from notary_core.models import DiffRow, UserOrigin
+
+    row = DiffRow(
+        param="payee",
+        value_id="v",
+        origin=UserOrigin(kind="user"),
+        integrity="untrusted",
+        preview="DE00X",
+        nearest_ledger_value=None,
+        differing_positions=(),
+    )
+    assert row.differing_positions == ()
+    with pytest.raises(ValidationError):
+        DiffRow.model_validate({"param": "p", "value_id": "v", "preview": "x"})
+
+
+def test_decide_has_the_five_argument_signature_and_is_still_a_stub() -> None:
+    import inspect
+
+    from notary_core.monitor import decide
+
+    assert list(inspect.signature(decide).parameters) == [
+        "contract", "proposal", "values", "ledger", "session",
+    ]  # fmt: skip
+    with pytest.raises(NotImplementedError):
+        decide(contract(), None, {}, (), None)  # pyright: ignore[reportArgumentType]
+
+
+def test_budget_fields_non_negative() -> None:
+    with pytest.raises(ValidationError):
+        EffectBudget.model_validate({**budget().model_dump(), "max_effects": -1})
+
+
+def test_contract_rejects_authorized_irreversible_for_non_irreversible_tool() -> None:
+    with pytest.raises(ValidationError):
+        contract(tools=(scope("a", "write"),), authorized=("a",))
+
+
+def test_contract_rejects_authorized_irreversible_for_unknown_tool() -> None:
+    with pytest.raises(ValidationError):
+        contract(tools=(), authorized=("ghost",))
+
+
+def test_session_state_non_negative() -> None:
+    with pytest.raises(ValidationError):
+        SessionState(spent_cents=0, effects_used=-1, egress_bytes_used=0, approvals_used=0)
