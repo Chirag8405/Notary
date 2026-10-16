@@ -2,6 +2,8 @@ from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 from builders import allow_all_monitor, contract_with, rebuild_chain, types_collapsed
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from notary_core.audit import append, verify_chain
 from notary_core.canon import sha256_hex
@@ -15,6 +17,7 @@ from notary_core.models import (
     AuditEntry,
     Decision,
     DecisionMade,
+    DecisionUnit,
     DiffCard,
     DiffRow,
     EffectExecuted,
@@ -37,18 +40,22 @@ from notary_core.models import (
     ValueLabeled,
 )
 from notary_core.monitor import Monitor
-from notary_world.cast import ATTACKER_EMAIL, ATTACKER_IBAN, BILLER_IBAN
+from notary_world.cast import ATTACKER_EMAIL, ATTACKER_IBAN, BILL_AMOUNT, BILLER_IBAN
 from notary_world.executor import (
     PREVIEW_LIMIT,
     CallOutcome,
+    DecisionInputs,
     EscalationMode,
     RefusalRecord,
     RunEngine,
     RunRecord,
     ScriptedApprovals,
+    default_monitor,
     execute_run,
     finish,
     propose,
+    record_so_far,
+    resolve_escalation,
     run_hijacked,
     start_run,
     update_contract,
@@ -65,7 +72,7 @@ from notary_world.scenarios import (
     poisoned_bill_scenario,
 )
 from notary_world.state import WorldState, snapshot
-from notary_world.tools import RawToolCall, default_manifest_hash
+from notary_world.tools import TOOL_SPECS, RawToolCall, default_manifest_hash
 
 AuditAppend = Callable[[Sequence[AuditEntry], Event], tuple[AuditEntry, ...]]
 
@@ -606,3 +613,280 @@ def test_monitor_exception_propagates() -> None:
 
     with pytest.raises(RuntimeError, match=r"^monitor broke$"):
         run(legitimate_bill_scenario(), monitor=broken)
+
+
+# Safety and property tests for the maintainer clarifications
+
+
+@pytest.mark.invariant("I1")
+def test_duplicate_call_id_is_rejected() -> None:
+    scenario = legitimate_bill_scenario()
+    engine, _ = propose(engine_for(scenario), scenario.calls[0])
+    before = record_so_far(engine).model_dump_json()
+    with pytest.raises(ValueError, match=r"^duplicate call id$"):
+        propose(engine, scenario.calls[0])
+    assert record_so_far(engine).model_dump_json() == before
+    with pytest.raises(ValueError, match=r"^hijacked call ids must be unique$"):
+        run_hijacked(
+            poisoned_bill_scenario(),
+            [hijacked("h0", "read_inbox", {}), hijacked("h0", "read_inbox", {})],
+        )
+
+
+@pytest.mark.invariant("I1")
+def test_value_id_collision_raises() -> None:
+    def colliding(
+        *,
+        call_id: str,
+        tool: str,
+        param: str,
+        raw: str,
+        unit: DecisionUnit | None,
+        store: Mapping[str, ResolvedValue],
+    ) -> ResolvedValue:
+        stored = store["v-request"]
+        return stored.model_copy(update={"text": raw})
+
+    scenario = legitimate_bill_scenario()
+    engine = start_run(
+        run_id="run-test",
+        scenario=scenario.scenario_id,
+        request=scenario.user_request,
+        world=scenario.world,
+        contract=scenario.contract,
+        ledger=scenario.ledger,
+        resolver=colliding,
+    )
+    before = record_so_far(engine).model_dump_json()
+    with pytest.raises(ValueError, match=r"^value id collision$"):
+        propose(engine, scenario.calls[1])
+    assert record_so_far(engine).model_dump_json() == before
+
+
+def pay(payee: str, call_id: str = "c2") -> RawToolCall:
+    return RawToolCall(
+        call_id=call_id, tool="pay_bill", args={"payee": payee, "amount": BILL_AMOUNT}
+    )
+
+
+JUDGED_PAYEES = (
+    f" {BILLER_IBAN} ",
+    " de00acme00000000000001 ",
+    "DE00ACME0000​0000000001",
+)
+
+
+@pytest.mark.invariant("I1")
+@pytest.mark.invariant("I2")
+@pytest.mark.parametrize("payee", JUDGED_PAYEES)
+def test_tool_runs_on_the_judged_texts(payee: str) -> None:
+    scenario = legitimate_bill_scenario()
+    record = run(scenario, [scenario.calls[0], pay(payee)])
+    call = record.calls[1]
+    assert call.decision.verdict == "ALLOW"
+    judged = next(a.value.text for a in call.args if a.param == "payee")
+    transfer = record.world_after.bank.transfers[-1]
+    assert transfer.transfer_id == "t1"
+    assert transfer.to_iban == judged.strip()
+
+
+@pytest.mark.invariant("I2")
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the resolver keeps model-authored text as typed and the monitor accepts it by its "
+        "canonical form, so the transfer goes to the non-canonical text"
+    ),
+)
+@pytest.mark.parametrize("payee", JUDGED_PAYEES[1:])
+def test_judged_payee_executes_as_the_canonical_iban(payee: str) -> None:
+    scenario = legitimate_bill_scenario()
+    record = run(scenario, [scenario.calls[0], pay(payee)])
+    assert record.calls[1].decision.verdict == "ALLOW"
+    assert record.world_after.bank.transfers[-1].to_iban == BILLER_IBAN
+
+
+@pytest.mark.invariant("I1")
+def test_failed_effect_append_commits_the_effect_and_halts() -> None:
+    audit = failing_append(lambda e: isinstance(e, EffectExecuted) and e.call_id == "c2")
+    record = run(legitimate_bill_scenario(), audit_append=audit)
+    assert ("transfer", "t1", "added") in [
+        (c.entity, c.key, c.kind) for c in record.world_diff.changes
+    ]
+    pay_record = record.calls[1]
+    assert (pay_record.status, pay_record.effect_index) == ("executed", None)
+    assert record.halted == "audit append failed"
+    assert finished_event(record).outcome == "error"
+
+
+@pytest.mark.invariant("I1")
+def test_failed_value_append_runs_nothing() -> None:
+    audit = failing_append(lambda e: isinstance(e, ValueLabeled) and e.value.id == "c2.arg.payee")
+    record = run(legitimate_bill_scenario(), audit_append=audit)
+    assert record.halted == "audit append failed"
+    assert record.world_diff.changes == ()
+    assert [e.call_id for e in record.events if isinstance(e, DecisionMade)] == ["c1"]
+    assert [c.call_id for c in record.calls] == ["c1"]
+
+
+def approve_with(monitor: Monitor) -> RunRecord:
+    return run(
+        contact_scenario(),
+        [add_contact("a1", "Alpha Consulting")],
+        monitor=monitor,
+        escalation="approve_all",
+    )
+
+
+def assert_approval_refused(record: RunRecord, reason: str) -> None:
+    assert record.refusals == (RefusalRecord(step=2, kind="ledger_write", reason=reason),)
+    assert record.session.approvals_used == 0
+    assert [s.cause for s in record.ledger_snapshots] == ["initial"]
+    assert [e.resolution for e in record.escalations] == ["rejected"]
+    assert [c.phase for c in record.calls] == ["initial"]
+    assert record.world_diff.changes == ()
+
+
+@pytest.mark.invariant("I4")
+def test_failed_approval_is_all_or_nothing() -> None:
+    record = approve_with(escalating_monitor("name", "Alpha Consulting"))
+    assert_approval_refused(record, "entry is not in canonical form")
+
+
+@pytest.mark.invariant("I4")
+def test_approval_row_for_unknown_param_is_refused() -> None:
+    record = approve_with(escalating_monitor("nope", "alpha consulting"))
+    assert_approval_refused(record, "approval row does not match the proposal")
+
+
+@pytest.mark.attack("A11")
+def test_escalation_round_cap() -> None:
+    record = approve_with(escalating_monitor("name", "alpha consulting"))
+    assert len(record.escalations) == 9
+    assert [e.resolution for e in record.escalations] == ["approved"] * 8 + ["rejected"]
+    assert record.escalations[0].ledger_entry_ids == ("led-e1-name",)
+    assert all(e.ledger_entry_ids == () for e in record.escalations[1:])
+
+
+@pytest.mark.invariant("I1")
+def test_finished_engine_rejects_operations() -> None:
+    scenario = legitimate_bill_scenario()
+    engine, record = finish(engine_for(scenario))
+    entry = make_ledger_entry("payee-new", "payees", "New", "DE00NEW0000000000000001", "iban")
+    attempts: tuple[Callable[[], object], ...] = (
+        lambda: finish(engine),
+        lambda: propose(engine, scenario.calls[0]),
+        lambda: resolve_escalation(engine, "e1", "approve"),
+        lambda: write_ledger(engine, entry, UserAuthoredAuthority(kind="user_authored")),
+        lambda: update_contract(engine, scenario.contract),
+    )
+    for attempt in attempts:
+        with pytest.raises(ValueError, match=r"^run already finished$"):
+            attempt()
+    assert record_so_far(engine) == record
+
+
+@pytest.mark.invariant("I1")
+def test_halted_engine_ignores_other_operations() -> None:
+    engine = engine_for(legitimate_bill_scenario(), failing_append(lambda e: True))
+    assert engine.halted == "audit append failed"
+    assert engine.chain == ()
+    entry = make_ledger_entry("payee-new", "payees", "New", "DE00NEW0000000000000001", "iban")
+    assert resolve_escalation(engine, "e1", "approve") == (engine, None)
+    assert write_ledger(engine, entry, UserAuthoredAuthority(kind="user_authored")) == (
+        engine,
+        False,
+    )
+    assert update_contract(engine, bill_contract()) == (engine, False)
+    assert engine.refusals == ()
+
+
+@pytest.mark.invariant("I6")
+def test_arg_order_does_not_change_the_record() -> None:
+    scenario = legitimate_bill_scenario()
+    forward = RawToolCall(
+        call_id="c2", tool="pay_bill", args={"amount": BILL_AMOUNT, "payee": BILLER_IBAN}
+    )
+    backward = RawToolCall(
+        call_id="c2", tool="pay_bill", args={"payee": BILLER_IBAN, "amount": BILL_AMOUNT}
+    )
+    first = run(scenario, [scenario.calls[0], forward])
+    second = run(scenario, [scenario.calls[0], backward])
+    assert first.model_dump_json() == second.model_dump_json()
+
+
+def replay(inputs: DecisionInputs) -> Decision:
+    values = {v.ref.id: v for v in inputs.values}
+    return default_monitor()(
+        inputs.contract, inputs.proposal, values, inputs.ledger, inputs.session
+    )
+
+
+@pytest.mark.invariant("I6")
+def test_decision_inputs_replay_to_the_same_decision() -> None:
+    records = (
+        run(legitimate_bill_scenario()),
+        run(poisoned_bill_scenario()),
+        run(contact_scenario(), [add_contact("a1", "Alpha Consulting")], escalation="approve_all"),
+    )
+    for record in records:
+        for call in record.calls:
+            assert replay(call.inputs) == call.decision
+
+
+@pytest.mark.invariant("I1")
+def test_events_property_matches_chain() -> None:
+    record = run(legitimate_bill_scenario(), oracle=dummy_oracle)
+    assert record.events == tuple(entry.event for entry in record.chain)
+
+
+ARG_POOL = (
+    ATTACKER_IBAN,
+    ATTACKER_EMAIL,
+    BILLER_IBAN,
+    BILL_AMOUNT,
+    "Pay my December bill",
+    "secrets/api_keys.txt",
+    "hello",
+    "",
+    " ​ ",
+    "9999999",
+)
+TOOL_NAMES = (*(spec.name for spec in TOOL_SPECS), "nope", "exfiltrate")
+PARAM_NAMES = tuple(sorted({p.name for spec in TOOL_SPECS for p in spec.params} | {"extra"}))
+
+raw_calls = st.lists(
+    st.tuples(
+        st.sampled_from(TOOL_NAMES),
+        st.dictionaries(st.sampled_from(PARAM_NAMES), st.sampled_from(ARG_POOL), max_size=4),
+    ),
+    max_size=6,
+)
+
+
+@pytest.mark.invariant("I6")
+@pytest.mark.invariant("I1")
+@pytest.mark.attack("A3")
+@settings(max_examples=50, deadline=None)
+@given(raw_calls)
+def test_hijacked_runs_keep_the_invariants_checkable(
+    calls: list[tuple[str, dict[str, str]]],
+) -> None:
+    commands = [hijacked("h0", "read_inbox", {})] + [
+        hijacked(f"h{i}", tool, args) for i, (tool, args) in enumerate(calls, start=1)
+    ]
+    record = run_hijacked(poisoned_bill_scenario(), commands)
+    assert verify_chain(record.chain)
+    events = record.events
+    for j, event in enumerate(events):
+        if isinstance(event, EffectExecuted):
+            assert any(
+                isinstance(e, DecisionMade)
+                and e.call_id == event.call_id
+                and e.decision.verdict == "ALLOW"
+                for e in events[:j]
+            )
+    world = record.world_after
+    outbound = [t.model_dump_json() for t in world.bank.transfers]
+    outbound += [m.model_dump_json() for m in world.sent_mails]
+    assert not any(ATTACKER_IBAN in text or ATTACKER_EMAIL in text for text in outbound)
