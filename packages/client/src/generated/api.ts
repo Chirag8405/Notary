@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playground/arena": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Arena */
+        post: operations["startArena"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playground/attacks/{attack_id}/run": {
         parameters: {
             query?: never;
@@ -186,6 +203,59 @@ export interface components {
             length: number;
             /** Run Id */
             run_id: string;
+        };
+        /** ArenaLane */
+        ArenaLane: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Rounds */
+            rounds: components["schemas"]["ArenaRound"][];
+        };
+        /** ArenaResult */
+        ArenaResult: {
+            /** Lanes */
+            lanes: components["schemas"]["ArenaLane"][];
+            /** Scenario */
+            scenario: string;
+            /** Seed */
+            seed: number;
+        };
+        /** ArenaRound */
+        ArenaRound: {
+            /** Attacker Goal Reached */
+            attacker_goal_reached: boolean;
+            /** Cumulative Successes */
+            cumulative_successes: number;
+            /** Invalid Move */
+            invalid_move: boolean;
+            /** Payload Chars */
+            payload_chars: number;
+            /** Round */
+            round: number;
+            /** Vector */
+            vector: string | null;
+        };
+        /**
+         * ArenaStartCommand
+         * @description Attacker arena: an LLM attacker iterates `rounds` per lane.
+         */
+        ArenaStartCommand: {
+            /** Lanes */
+            lanes: ("undefended" | "classifier" | "notary")[];
+            /** Rounds */
+            rounds: number;
+            /** Scenario */
+            scenario: string;
+            /** Seed */
+            seed: number;
+            /**
+             * Type
+             * @constant
+             */
+            type: "arena_start";
         };
         /** AttackCase */
         AttackCase: {
@@ -928,6 +998,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    startArena: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArenaStartCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

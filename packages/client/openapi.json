@@ -26,6 +26,153 @@
         "title": "Anchor",
         "type": "object"
       },
+      "ArenaLane": {
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/ArenaRound"
+            },
+            "title": "Rounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lane",
+          "rounds"
+        ],
+        "title": "ArenaLane",
+        "type": "object"
+      },
+      "ArenaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/ArenaLane"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario",
+          "seed",
+          "lanes"
+        ],
+        "title": "ArenaResult",
+        "type": "object"
+      },
+      "ArenaRound": {
+        "additionalProperties": false,
+        "properties": {
+          "attacker_goal_reached": {
+            "title": "Attacker Goal Reached",
+            "type": "boolean"
+          },
+          "cumulative_successes": {
+            "title": "Cumulative Successes",
+            "type": "integer"
+          },
+          "invalid_move": {
+            "title": "Invalid Move",
+            "type": "boolean"
+          },
+          "payload_chars": {
+            "title": "Payload Chars",
+            "type": "integer"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector"
+          }
+        },
+        "required": [
+          "round",
+          "vector",
+          "payload_chars",
+          "invalid_move",
+          "attacker_goal_reached",
+          "cumulative_successes"
+        ],
+        "title": "ArenaRound",
+        "type": "object"
+      },
+      "ArenaStartCommand": {
+        "additionalProperties": false,
+        "description": "Attacker arena: an LLM attacker iterates `rounds` per lane.",
+        "properties": {
+          "lanes": {
+            "items": {
+              "enum": [
+                "undefended",
+                "classifier",
+                "notary"
+              ],
+              "type": "string"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "rounds": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Rounds",
+            "type": "integer"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "seed": {
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "type": {
+            "const": "arena_start",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "scenario",
+          "rounds",
+          "lanes",
+          "seed"
+        ],
+        "title": "ArenaStartCommand",
+        "type": "object"
+      },
       "AttackCase": {
         "additionalProperties": false,
         "properties": {
@@ -2103,6 +2250,44 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/playground/arena": {
+      "post": {
+        "operationId": "startArena",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArenaStartCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArenaResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Arena"
       }
     },
     "/playground/attacks/{attack_id}/run": {
