@@ -6,13 +6,22 @@ fixtures consume. Every operation is a pure function of an immutable `RunEngine`
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
+from notary_core.audit import append
 from notary_core.canon import sha256_hex
+from notary_core.gateway import GatewayLabeler
 from notary_core.models import (
     AuditEntry,
+    CallProposed,
     Decision,
+    DecisionMade,
     DecisionUnit,
+    DiffCard,
+    EffectExecuted,
+    Endorsement,
+    EndorsementRequested,
     Event,
     IntentContract,
     Label,
@@ -22,17 +31,30 @@ from notary_core.models import (
     NotaryModel,
     OracleResult,
     ResolvedValue,
+    RunStarted,
     SessionState,
     SpanPointer,
     ToolCallProposal,
+    UserOrigin,
+    ValueLabeled,
     ValueRef,
 )
+from notary_core.monitor import Monitor, decide
+from notary_core.policy.sensitive_params import PolicyTable
 from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_readers
+from notary_core.session import with_effect
 from notary_core.units import canonicalize
+from notary_world.fakes import FakeGateway
 from notary_world.state import WorldDiff, WorldState
 from notary_world.tools import (
     EffectRecord,
+    RawToolCall,
+    as_gateway_results,
+    param_unit,
+    tool_manifest_hash,
+    world_policy,
 )
+from notary_world.tools import call as call_tool
 
 MIN_MATCH_LEN: int = 4
 """Shortest text the resolver matches inside a stored value."""
@@ -234,3 +256,446 @@ class DefaultArgResolver:
         )
         ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(raw))
         return ResolvedValue(ref=ref, unit=unit, text=raw)
+
+
+PendingEscalation = tuple[str, RawToolCall, ToolCallProposal]
+EventFactory = Callable[[str, Lane, int], Event]
+"""Builds an event from `(run_id, lane, seq)`."""
+
+
+@dataclass(frozen=True, slots=True)
+class RunEngine:
+    """Immutable run state; every operation returns a new engine."""
+
+    run_id: str
+    lane: Lane
+    scenario: str
+    request: str
+    world_before: WorldState
+    world: WorldState
+    contract: IntentContract
+    ledger: tuple[LedgerEntry, ...]
+    session: SessionState
+    store: tuple[ResolvedValue, ...]
+    """Sorted by `ref.id`."""
+    chain: tuple[AuditEntry, ...]
+    calls: tuple[CallRecord, ...]
+    escalations: tuple[EscalationRecord, ...]
+    pending: tuple[PendingEscalation, ...]
+    contract_snapshots: tuple[ContractSnapshot, ...]
+    ledger_snapshots: tuple[LedgerSnapshot, ...]
+    refusals: tuple[RefusalRecord, ...]
+    step: int
+    halted: str | None
+    finished: bool
+    monitor: Monitor
+    gateway: GatewayLabeler
+    resolver: ArgResolver
+    audit_append: AuditAppend
+
+
+def default_monitor(policy: PolicyTable | None = None) -> Monitor:
+    """The real `decide`, with `world_policy()` unless a policy table is given."""
+    table = world_policy() if policy is None else policy
+
+    def monitor(
+        contract: IntentContract,
+        proposal: ToolCallProposal,
+        values: Mapping[str, ResolvedValue],
+        ledger: Sequence[LedgerEntry],
+        session: SessionState,
+    ) -> Decision:
+        return decide(contract, proposal, values, ledger, session, policy=table)
+
+    return monitor
+
+
+def _emit(engine: RunEngine, make: EventFactory) -> RunEngine:
+    """Append one event; a failing append halts the engine and leaves the chain unchanged."""
+    event = make(engine.run_id, engine.lane, len(engine.chain))
+    try:
+        chain = engine.audit_append(engine.chain, event)
+    except Exception:
+        return replace(engine, halted=engine.halted or HALT_AUDIT)
+    return replace(engine, chain=chain)
+
+
+def _store_dict(engine: RunEngine) -> dict[str, ResolvedValue]:
+    """A fresh mapping in id order; the engine's tuple is never exposed."""
+    return {v.ref.id: v for v in engine.store}
+
+
+def _lookup(engine: RunEngine, value_id: str) -> ResolvedValue | None:
+    return next((v for v in engine.store if v.ref.id == value_id), None)
+
+
+def _add_value(engine: RunEngine, value: ResolvedValue) -> RunEngine:
+    """Announce and store a value; a value joins the store only after its event is appended."""
+    existing = _lookup(engine, value.ref.id)
+    if existing is not None:
+        if existing != value:
+            raise ValueError("value id collision")
+        return engine
+
+    def make(run_id: str, lane: Lane, seq: int) -> Event:
+        return ValueLabeled(
+            type="value_labeled",
+            run_id=run_id,
+            lane=lane,
+            seq=seq,
+            value=value.ref,
+            unit=value.unit,
+            preview=value.text[:PREVIEW_LIMIT],
+        )
+
+    emitted = _emit(engine, make)
+    if emitted.halted is not None:
+        return emitted
+    store = tuple(sorted((*engine.store, value), key=lambda v: v.ref.id))
+    return replace(emitted, store=store)
+
+
+def start_run(
+    *,
+    run_id: str,
+    scenario: str,
+    request: str,
+    world: WorldState,
+    contract: IntentContract,
+    ledger: Sequence[LedgerEntry],
+    session: SessionState | None = None,
+    lane: Lane = "notary",
+    monitor: Monitor | None = None,
+    gateway: GatewayLabeler | None = None,
+    resolver: ArgResolver | None = None,
+    audit_append: AuditAppend = append,
+) -> RunEngine:
+    """A new engine with the user request stored and `run_started` as chain entry 0."""
+    request_value = ResolvedValue(
+        ref=ValueRef(
+            id=REQUEST_VALUE_ID,
+            label=Label(
+                origin=UserOrigin(kind="user"),
+                integrity="trusted",
+                readers=("*",),
+                span_pointer=None,
+            ),
+            content_hash=sha256_hex(request),
+        ),
+        unit=None,
+        text=request,
+    )
+    entries = tuple(ledger)
+    engine = RunEngine(
+        run_id=run_id,
+        lane=lane,
+        scenario=scenario,
+        request=request,
+        world_before=world,
+        world=world,
+        contract=contract,
+        ledger=entries,
+        session=session
+        or SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
+        store=(request_value,),
+        chain=(),
+        calls=(),
+        escalations=(),
+        pending=(),
+        contract_snapshots=(ContractSnapshot(step=0, cause="initial", contract=contract),),
+        ledger_snapshots=(LedgerSnapshot(step=0, cause="initial", ledger=entries),),
+        refusals=(),
+        step=0,
+        halted=None,
+        finished=False,
+        monitor=monitor or default_monitor(),
+        gateway=gateway or FakeGateway(),
+        resolver=resolver or DefaultArgResolver(),
+        audit_append=audit_append,
+    )
+    return _emit(
+        engine,
+        lambda run, lane_, seq: RunStarted(
+            type="run_started",
+            run_id=run,
+            lane=lane_,
+            seq=seq,
+            scenario=scenario,
+            contract=contract,
+            classifier=None,
+        ),
+    )
+
+
+def _halted(call_id: str, engine: RunEngine, decision: Decision | None = None) -> CallOutcome:
+    return CallOutcome(
+        call_id=call_id,
+        status="halted",
+        decision=decision,
+        endorsement_id=None,
+        error=engine.halted,
+    )
+
+
+def _inputs(engine: RunEngine, proposal: ToolCallProposal) -> DecisionInputs:
+    return DecisionInputs(
+        contract=engine.contract,
+        proposal=proposal,
+        values=engine.store,
+        ledger=engine.ledger,
+        session=engine.session,
+    )
+
+
+def _arg_records(engine: RunEngine, proposal: ToolCallProposal) -> tuple[ArgRecord, ...]:
+    out: list[ArgRecord] = []
+    for param, ref in sorted(proposal.args.items()):
+        value = _lookup(engine, ref.id)
+        if value is not None:
+            out.append(ArgRecord(param=param, value=value))
+    return tuple(out)
+
+
+def _decide(
+    engine: RunEngine, proposal: ToolCallProposal
+) -> tuple[RunEngine, DecisionInputs, Decision, int]:
+    """Ask the monitor and append `decision_made` (write-ahead); halts if the append fails."""
+    inputs = _inputs(engine, proposal)
+    decision = engine.monitor(
+        engine.contract, proposal, _store_dict(engine), engine.ledger, engine.session
+    )
+    decision_index = len(engine.chain)
+    engine = _emit(
+        engine,
+        lambda run, lane, seq: DecisionMade(
+            type="decision_made",
+            run_id=run,
+            lane=lane,
+            seq=seq,
+            call_id=proposal.call_id,
+            decision=decision,
+        ),
+    )
+    return engine, inputs, decision, decision_index
+
+
+@dataclass(frozen=True, slots=True)
+class _Judged:
+    """A decided proposal whose `decision_made` entry is already in the chain."""
+
+    call: RawToolCall
+    proposal: ToolCallProposal
+    phase: Literal["initial", "after_approval"]
+    inputs: DecisionInputs
+    decision: Decision
+    decision_index: int
+
+    def outcome(
+        self,
+        status: CallStatus,
+        *,
+        endorsement_id: str | None = None,
+        error: str | None = None,
+    ) -> CallOutcome:
+        return CallOutcome(
+            call_id=self.proposal.call_id,
+            status=status,
+            decision=self.decision,
+            endorsement_id=endorsement_id,
+            error=error,
+        )
+
+
+def _record(
+    engine: RunEngine,
+    judged: _Judged,
+    status: CallStatus,
+    *,
+    effect: EffectRecord | None = None,
+    error: str | None = None,
+    effect_index: int | None = None,
+) -> RunEngine:
+    record = CallRecord(
+        call_id=judged.proposal.call_id,
+        phase=judged.phase,
+        tool=judged.proposal.tool,
+        args=_arg_records(engine, judged.proposal),
+        inputs=judged.inputs,
+        decision=judged.decision,
+        status=status,
+        effect=effect,
+        error=error,
+        decision_index=judged.decision_index,
+        effect_index=effect_index,
+    )
+    return replace(engine, calls=(*engine.calls, record))
+
+
+def _escalate(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcome]:
+    """Record the escalation as pending, then announce it."""
+    call_id = judged.proposal.call_id
+    k = len(engine.escalations) + 1
+    endorsement_id = f"e{k}"
+    endorsement = Endorsement(
+        endorsement_id=endorsement_id,
+        call_id=call_id,
+        card=judged.decision.diff_card or DiffCard(rows=()),
+        status="pending",
+        sequence=k - 1,
+    )
+    escalation = EscalationRecord(
+        endorsement_id=endorsement_id, call_id=call_id, resolution="pending", ledger_entry_ids=()
+    )
+    engine = replace(
+        engine,
+        escalations=(*engine.escalations, escalation),
+        pending=(*engine.pending, (endorsement_id, judged.call, judged.proposal)),
+    )
+    engine = _emit(
+        engine,
+        lambda run, lane, seq: EndorsementRequested(
+            type="endorsement_requested",
+            run_id=run,
+            lane=lane,
+            seq=seq,
+            endorsement=endorsement,
+        ),
+    )
+    if engine.halted is not None:
+        return engine, _halted(call_id, engine, judged.decision)
+    return engine, judged.outcome("escalated", endorsement_id=endorsement_id)
+
+
+def _execute(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcome]:
+    """Run the world tool on exactly the texts the monitor judged, then label its output."""
+    proposal = judged.proposal
+    call_id = proposal.call_id
+    args: dict[str, str] = {}
+    for param, ref in sorted(proposal.args.items()):
+        value = _lookup(engine, ref.id)
+        if value is None:
+            raise ValueError("judged value missing from the store")
+        args[param] = value.text
+    result = call_tool(engine.world, proposal.tool, args)
+    if result.error is not None:
+        engine = _record(engine, judged, "tool_error", error=result.error)
+        return engine, judged.outcome("tool_error", error=result.error)
+    effect = result.effect
+    session = engine.session
+    if effect is not None and effect.effect != "read":
+        session = with_effect(
+            session, spent_cents=effect.spent_cents, egress_bytes=effect.egress_bytes
+        )
+    # The world change, the session update and the call record are committed together; a failed
+    # `effect_executed` append cannot undo an effect that really happened, so it only halts.
+    engine = replace(engine, world=result.new_state, session=session)
+    if effect is None:
+        engine = _record(engine, judged, "executed")
+    else:
+        effect_index = len(engine.chain)
+        summary = effect.summary
+        engine = _emit(
+            engine,
+            lambda run, lane, seq: EffectExecuted(
+                type="effect_executed",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                call_id=call_id,
+                tool=proposal.tool,
+                summary=summary,
+            ),
+        )
+        engine = _record(
+            engine,
+            judged,
+            "executed",
+            effect=effect,
+            effect_index=None if engine.halted is not None else effect_index,
+        )
+    for core_result, readers in as_gateway_results(call_id, result):
+        for value in engine.gateway(core_result, readers=readers):
+            if engine.halted is not None:
+                break
+            engine = _add_value(engine, value)
+    if engine.halted is not None:
+        return engine, _halted(call_id, engine, judged.decision)
+    return engine, judged.outcome("executed")
+
+
+def _apply(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcome]:
+    """Act on a recorded decision: BLOCK records, ESCALATE asks the user, ALLOW executes."""
+    match judged.decision.verdict:
+        case "BLOCK":
+            engine = _record(engine, judged, "blocked")
+            return engine, judged.outcome("blocked")
+        case "ESCALATE":
+            engine = _record(engine, judged, "escalated")
+            return _escalate(engine, judged)
+        case "ALLOW":
+            return _execute(engine, judged)
+
+
+def _judge(
+    engine: RunEngine,
+    call: RawToolCall,
+    proposal: ToolCallProposal,
+    phase: Literal["initial", "after_approval"],
+) -> tuple[RunEngine, CallOutcome]:
+    """Decide, append the decision write-ahead, then act on it; no tool runs if the append fails."""
+    engine, inputs, decision, decision_index = _decide(engine, proposal)
+    if engine.halted is not None:
+        return engine, _halted(proposal.call_id, engine)
+    judged = _Judged(
+        call=call,
+        proposal=proposal,
+        phase=phase,
+        inputs=inputs,
+        decision=decision,
+        decision_index=decision_index,
+    )
+    return _apply(engine, judged)
+
+
+def _check_open(engine: RunEngine) -> None:
+    if engine.finished:
+        raise ValueError("run already finished")
+
+
+def propose(engine: RunEngine, call: RawToolCall) -> tuple[RunEngine, CallOutcome]:
+    """Label the arguments, propose, decide (write-ahead) and run the tool only on ALLOW."""
+    if engine.halted is not None:
+        return engine, _halted(call.call_id, engine)
+    _check_open(engine)
+    if any(record.call_id == call.call_id for record in engine.calls):
+        raise ValueError("duplicate call id")
+    engine = replace(engine, step=engine.step + 1)
+    refs: dict[str, ValueRef] = {}
+    for param, raw in sorted(call.args.items()):
+        value = engine.resolver(
+            call_id=call.call_id,
+            tool=call.tool,
+            param=param,
+            raw=raw,
+            unit=param_unit(call.tool, param),
+            store=_store_dict(engine),
+        )
+        engine = _add_value(engine, value)
+        if engine.halted is not None:
+            return engine, _halted(call.call_id, engine)
+        refs[param] = value.ref
+    proposal = ToolCallProposal(
+        call_id=call.call_id,
+        tool=call.tool,
+        manifest_hash=tool_manifest_hash(engine.world, call.tool),
+        args=refs,
+    )
+    engine = _emit(
+        engine,
+        lambda run, lane, seq: CallProposed(
+            type="call_proposed", run_id=run, lane=lane, seq=seq, proposal=proposal
+        ),
+    )
+    if engine.halted is not None:
+        return engine, _halted(call.call_id, engine)
+    return _judge(engine, call, proposal, "initial")
