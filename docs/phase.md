@@ -85,7 +85,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [ ] Sensitive-parameter table and offline floor defaults (the trusted base)
 - [ ] Review: two people review the sensitive-parameter table
 - [ ] Ledger (writes only via user-authored / user-endorsed), contract monotonicity
-- [ ] Audit hash chain + `verify_chain`
+- [x] Audit hash chain + `verify_chain`
 - [ ] Unit tests citing I/A IDs
 - Accept: `cd packages/core && uv run pytest`; `pnpm schema:check` after any model change
 - Demo-able: nothing visual; unit tests pass. The fuzz result (P2, CP1) is the proof artifact.

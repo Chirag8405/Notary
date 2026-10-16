@@ -4,7 +4,7 @@ from notary_core.models.attack import (
     ATTACK_CATEGORY as ATTACK_CATEGORY_IDS,
 )
 from notary_core.models.attack import AttackCase, AttackCategory, AttackId, ExpectedOutcome
-from notary_core.models.audit import AuditEntry, verify_chain
+from notary_core.models.audit import AuditEntry
 from notary_core.models.commands import (
     ArenaStartCommand,
     Command,
@@ -146,5 +146,4 @@ __all__ = [
     "ValueRef",
     "Verdict",
     "WebOrigin",
-    "verify_chain",
 ]

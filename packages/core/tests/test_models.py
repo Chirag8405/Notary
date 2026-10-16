@@ -10,7 +10,6 @@ from notary_core.models import (
     Label,
     UserOrigin,
     ValueRef,
-    verify_chain,
 )
 from notary_core.monitor import decide
 
@@ -67,8 +66,6 @@ def test_check_order() -> None:
 
 
 def test_stubs_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        verify_chain([])
     with pytest.raises(NotImplementedError):
         decide(None, None, {}, (), None)  # pyright: ignore[reportArgumentType]
 
