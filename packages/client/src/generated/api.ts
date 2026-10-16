@@ -38,6 +38,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playground/attacks/{attack_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Attack */
+        post: operations["runAttack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playground/poison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Poison World */
+        post: operations["poisonWorld"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/modes": {
         parameters: {
             query?: never;
@@ -94,6 +128,198 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** AttackRunResponse */
+        AttackRunResponse: {
+            /** Attack Id */
+            attack_id: string;
+            /** Checks */
+            checks: components["schemas"]["CheckSummary"][];
+            /** Deferred */
+            deferred: boolean;
+            /** Events */
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            /** Name */
+            name: string;
+            /** Ok */
+            ok: boolean;
+            oracle: components["schemas"]["OracleResult"];
+        };
+        /** CallProposed */
+        CallProposed: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            proposal: components["schemas"]["ToolCallProposal"];
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "call_proposed";
+        };
+        /** CheckSummary */
+        CheckSummary: {
+            actual: components["schemas"]["ExpectedOutcome"] | null;
+            /** Call Id */
+            call_id: string;
+            expected: components["schemas"]["ExpectedOutcome"];
+            /** Matches */
+            matches: boolean;
+            /** Tool */
+            tool: string;
+        };
+        /** Decision */
+        Decision: {
+            diff_card: components["schemas"]["DiffCard"] | null;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "ALLOW" | "ESCALATE" | "BLOCK";
+        };
+        /** DecisionMade */
+        DecisionMade: {
+            /** Call Id */
+            call_id: string;
+            decision: components["schemas"]["Decision"];
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "decision_made";
+        };
+        /** DiffCard */
+        DiffCard: {
+            /** Rows */
+            rows: components["schemas"]["DiffRow"][];
+        };
+        /**
+         * DiffRow
+         * @description One parameter of the proposed call, rendered from its label.
+         */
+        DiffRow: {
+            /** Differing Positions */
+            differing_positions: number[];
+            /**
+             * Integrity
+             * @enum {string}
+             */
+            integrity: "trusted" | "untrusted" | "endorsed";
+            /** Nearest Ledger Value */
+            nearest_ledger_value: string | null;
+            /** Origin */
+            origin: components["schemas"]["UserOrigin"] | components["schemas"]["ToolOrigin"] | components["schemas"]["EmailOrigin"] | components["schemas"]["FileOrigin"] | components["schemas"]["WebOrigin"] | components["schemas"]["LedgerOrigin"] | components["schemas"]["LlmOrigin"];
+            /** Param */
+            param: string;
+            /** Preview */
+            preview: string;
+            /** Value Id */
+            value_id: string;
+        };
+        /** EffectBudget */
+        EffectBudget: {
+            /** Max Approvals */
+            max_approvals: number;
+            /** Max Call Amount Cents */
+            max_call_amount_cents: number;
+            /** Max Effects */
+            max_effects: number;
+            /** Max Egress Bytes */
+            max_egress_bytes: number;
+            /** Max Spend Cents */
+            max_spend_cents: number;
+        };
+        /** EffectExecuted */
+        EffectExecuted: {
+            /** Call Id */
+            call_id: string;
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /** Summary */
+            summary: string;
+            /** Tool */
+            tool: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "effect_executed";
+        };
+        /** EmailOrigin */
+        EmailOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "email";
+        };
+        /**
+         * EndorseMarker
+         * @description Parameter may be untrusted but only after explicit human endorsement.
+         */
+        EndorseMarker: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "endorse";
+        };
+        /** Endorsement */
+        Endorsement: {
+            /** Call Id */
+            call_id: string;
+            card: components["schemas"]["DiffCard"];
+            /** Endorsement Id */
+            endorsement_id: string;
+            /** Sequence */
+            sequence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+        };
+        /** EndorsementRequested */
+        EndorsementRequested: {
+            endorsement: components["schemas"]["Endorsement"];
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "endorsement_requested";
+        };
         /** ExpectedOutcome */
         ExpectedOutcome: {
             /** Code */
@@ -106,6 +332,30 @@ export interface components {
              */
             verdict: "ALLOW" | "ESCALATE" | "BLOCK";
         };
+        /** FileOrigin */
+        FileOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "file";
+        };
+        /**
+         * FreeMarker
+         * @description Parameter is unconstrained by the contract.
+         */
+        FreeMarker: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "free";
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** Health */
         Health: {
             /**
@@ -114,15 +364,362 @@ export interface components {
              */
             status: "ok";
         };
+        /** IntentContract */
+        IntentContract: {
+            /** Allowed Tools */
+            allowed_tools: components["schemas"]["ToolScope"][];
+            /** Authorized Irreversible */
+            authorized_irreversible: string[];
+            budget: components["schemas"]["EffectBudget"];
+            /** Contract Id */
+            contract_id: string;
+            /** Egress Hosts */
+            egress_hosts: string[];
+            /** User Intent */
+            user_intent: string;
+        };
+        /** InvariantResult */
+        InvariantResult: {
+            /** Detail */
+            detail: string;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "I1" | "I2" | "I3" | "I4" | "I5" | "I6";
+            /** Passed */
+            passed: boolean;
+        };
+        /** Label */
+        Label: {
+            /**
+             * Integrity
+             * @enum {string}
+             */
+            integrity: "trusted" | "untrusted" | "endorsed";
+            /** Origin */
+            origin: components["schemas"]["UserOrigin"] | components["schemas"]["ToolOrigin"] | components["schemas"]["EmailOrigin"] | components["schemas"]["FileOrigin"] | components["schemas"]["WebOrigin"] | components["schemas"]["LedgerOrigin"] | components["schemas"]["LlmOrigin"];
+            /** Readers */
+            readers: string[];
+            span_pointer: components["schemas"]["SpanPointer"] | null;
+        };
+        /** LaneRun */
+        LaneRun: {
+            /** Attacker Goal Reached */
+            attacker_goal_reached: boolean | null;
+            /** Events */
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Run Id */
+            run_id: string;
+            /** User Goal Achieved */
+            user_goal_achieved: boolean | null;
+        };
+        /**
+         * LedgerMarker
+         * @description Parameter must resolve to an entry of the named ledger.
+         */
+        LedgerMarker: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ledger";
+            /** Ledger */
+            ledger: string;
+        };
+        /** LedgerOrigin */
+        LedgerOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ledger";
+        };
+        /**
+         * LiteralMarker
+         * @description Parameter must equal this exact value.
+         */
+        LiteralMarker: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "literal";
+            /** Value */
+            value: string | number | boolean;
+        };
+        /** LlmOrigin */
+        LlmOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "llm";
+        };
         /** ModeList */
         ModeList: {
             /** Modes */
             modes: ("golden" | "cassette" | "live")[];
         };
+        /**
+         * NamedSourceMarker
+         * @description Parameter must come from a named source (e.g. a contact book entry).
+         */
+        NamedSourceMarker: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "named_source";
+            /** Source */
+            source: string;
+        };
+        /** OracleResult */
+        OracleResult: {
+            /** Attacker Goal Reached */
+            attacker_goal_reached: boolean;
+            /** Invariants */
+            invariants: components["schemas"]["InvariantResult"][];
+            /** User Goal Achieved */
+            user_goal_achieved: boolean;
+        };
+        /** OracleUpdated */
+        OracleUpdated: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            result: components["schemas"]["OracleResult"];
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "oracle_updated";
+        };
+        /** PoisonResponse */
+        PoisonResponse: {
+            /** Runs */
+            runs: components["schemas"]["LaneRun"][];
+            /** Scenario Id */
+            scenario_id: string;
+        };
+        /**
+         * PoisonWorldCommand
+         * @description Poison-the-world: choose vector, payload and task, then run on the chosen lanes.
+         */
+        PoisonWorldCommand: {
+            /** Lanes */
+            lanes: ("undefended" | "classifier" | "notary")[];
+            /** Payload */
+            payload: string;
+            /** Scenario */
+            scenario: string;
+            /** Task */
+            task: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "poison_world";
+            /**
+             * Vector
+             * @enum {string}
+             */
+            vector: "email" | "file" | "web" | "calendar" | "slack" | "tool_description";
+        };
+        /** Reason */
+        Reason: {
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "scope" | "irreversibility" | "origin" | "corroboration" | "confidentiality" | "budget";
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "STEP_PASS" | "READ_ONLY_UNGATED" | "SCOPE_TOOL_NOT_IN_CONTRACT" | "SCOPE_MANIFEST_MISMATCH" | "SCOPE_PARAM_NOT_IN_CONTRACT" | "IRREVERSIBLE_NOT_AUTHORIZED" | "ORIGIN_UNTRUSTED" | "ORIGIN_UNSOURCED" | "ORIGIN_LITERAL_MISMATCH" | "ORIGIN_SOURCE_MISMATCH" | "LEDGER_EXACT_MATCH" | "LEDGER_LOOKALIKE" | "LEDGER_NOVEL_ESCALATE" | "LEDGER_NOT_FOUND" | "CONF_READER_VIOLATION" | "CONF_URL_NOT_ALLOWED" | "BUDGET_AMOUNT" | "BUDGET_SENDS" | "BUDGET_EGRESS_BYTES" | "BUDGET_APPROVALS_EXHAUSTED";
+            /** Detail */
+            detail: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "pass" | "escalate" | "fail";
+        };
+        /** RunFinished */
+        RunFinished: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "completed" | "blocked" | "error";
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /** Summary */
+            summary: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "run_finished";
+        };
+        /** RunStarted */
+        RunStarted: {
+            /** Classifier */
+            classifier: string | null;
+            contract: components["schemas"]["IntentContract"];
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Run Id */
+            run_id: string;
+            /** Scenario */
+            scenario: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "run_started";
+        };
         /** ScenarioList */
         ScenarioList: {
             /** Scenarios */
             scenarios: string[];
+        };
+        /**
+         * SpanPointer
+         * @description Points at the span of a source value that a derived value was taken from.
+         */
+        SpanPointer: {
+            /** End */
+            end: number;
+            /** Source Value Id */
+            source_value_id: string;
+            /** Start */
+            start: number;
+        };
+        /** ToolCallProposal */
+        ToolCallProposal: {
+            /** Args */
+            args: {
+                [key: string]: components["schemas"]["ValueRef"];
+            };
+            /** Call Id */
+            call_id: string;
+            /** Manifest Hash */
+            manifest_hash: string;
+            /** Tool */
+            tool: string;
+        };
+        /** ToolOrigin */
+        ToolOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tool";
+            /** Name */
+            name: string;
+        };
+        /** ToolScope */
+        ToolScope: {
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "read" | "write" | "irreversible";
+            /** Manifest Hash */
+            manifest_hash: string;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["LiteralMarker"] | components["schemas"]["NamedSourceMarker"] | components["schemas"]["LedgerMarker"] | components["schemas"]["EndorseMarker"] | components["schemas"]["FreeMarker"];
+            };
+            /** Tool */
+            tool: string;
+        };
+        /** UserOrigin */
+        UserOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "user";
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+        /** ValueLabeled */
+        ValueLabeled: {
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /** Preview */
+            preview: string;
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "value_labeled";
+            /** Unit */
+            unit: ("iban" | "email" | "url_host" | "amount" | "identifier") | null;
+            value: components["schemas"]["ValueRef"];
+        };
+        /**
+         * ValueRef
+         * @description A labeled handle to a value. Raw content never travels through the monitor.
+         */
+        ValueRef: {
+            /** Content Hash */
+            content_hash: string;
+            /** Id */
+            id: string;
+            label: components["schemas"]["Label"];
+        };
+        /** WebOrigin */
+        WebOrigin: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "web";
         };
     };
     responses: never;
@@ -169,6 +766,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    runAttack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttackRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poisonWorld: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoisonWorldCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
