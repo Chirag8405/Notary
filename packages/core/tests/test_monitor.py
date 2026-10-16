@@ -16,6 +16,7 @@ from notary_core.monitor import decide
 from notary_core.policy.sensitive_params import PolicyTable, make_tool_policy
 from notary_core.steps import STEPS, not_implemented_step
 from notary_core.steps.budget import check_budget
+from notary_core.steps.confidentiality import check_confidentiality
 from notary_core.steps.irreversibility import check_irreversibility
 from notary_core.steps.origin import check_origin
 from notary_core.steps.scope import check_scope
@@ -118,5 +119,6 @@ def test_steps_registry_uses_real_steps_where_they_exist() -> None:
     assert registry["scope"] is check_scope
     assert registry["irreversibility"] is check_irreversibility
     assert registry["origin"] is check_origin
+    assert registry["confidentiality"] is check_confidentiality
     assert registry["budget"] is check_budget
-    assert all(registry[name] is not_implemented_step for name in CHECK_ORDER[3:5])
+    assert all(registry[name] is not_implemented_step for name in CHECK_ORDER[3:4])
