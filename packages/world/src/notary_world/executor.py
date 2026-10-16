@@ -30,6 +30,7 @@ from notary_core.models import (
     Endorsement,
     EndorsementRequested,
     Event,
+    HijackedToolCallCommand,
     IntentContract,
     Label,
     Lane,
@@ -37,7 +38,9 @@ from notary_core.models import (
     LlmOrigin,
     NotaryModel,
     OracleResult,
+    OracleUpdated,
     ResolvedValue,
+    RunFinished,
     RunStarted,
     SessionState,
     SpanPointer,
@@ -53,7 +56,8 @@ from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_
 from notary_core.session import with_approval, with_effect
 from notary_core.units import canonicalize
 from notary_world.fakes import FakeGateway
-from notary_world.state import WorldDiff, WorldState
+from notary_world.scenarios import Scenario
+from notary_world.state import WorldDiff, WorldState, diff
 from notary_world.tools import (
     EffectRecord,
     RawToolCall,
@@ -856,3 +860,158 @@ def update_contract(engine: RunEngine, new: IntentContract) -> tuple[RunEngine, 
             engine, contract=new, contract_snapshots=(*engine.contract_snapshots, snapshot)
         )
     return engine, True
+
+
+def record_so_far(engine: RunEngine) -> RunRecord:
+    """The run as it stands; appends nothing."""
+    return RunRecord(
+        run_id=engine.run_id,
+        lane=engine.lane,
+        scenario=engine.scenario,
+        user_request=engine.request,
+        world_before=engine.world_before,
+        world_after=engine.world,
+        world_diff=diff(engine.world_before, engine.world),
+        chain=engine.chain,
+        calls=engine.calls,
+        escalations=engine.escalations,
+        contract_snapshots=engine.contract_snapshots,
+        ledger_snapshots=engine.ledger_snapshots,
+        refusals=engine.refusals,
+        values=engine.store,
+        session=engine.session,
+        halted=engine.halted,
+    )
+
+
+def _run_outcome(engine: RunEngine) -> tuple[Literal["completed", "blocked", "error"], str]:
+    if engine.halted is not None:
+        return "error", f"halted: {engine.halted}"
+    if any(r.status == "tool_error" for r in engine.calls):
+        return "error", "tool error"
+    last: dict[str, CallRecord] = {r.call_id: r for r in engine.calls}
+    held = sum(1 for r in last.values() if r.status in ("blocked", "escalated"))
+    if held:
+        return "blocked", f"{held} call(s) not executed"
+    return "completed", "all calls executed"
+
+
+def finish(engine: RunEngine, *, oracle: OracleFn | None = None) -> tuple[RunEngine, RunRecord]:
+    """Append `oracle_updated` (when an oracle is given) and `run_finished`; returns the record."""
+    _check_open(engine)
+    if engine.halted is None and oracle is not None:
+        result = oracle(record_so_far(engine))
+        engine = _emit(
+            engine,
+            lambda run, lane, seq: OracleUpdated(
+                type="oracle_updated", run_id=run, lane=lane, seq=seq, result=result
+            ),
+        )
+    outcome, summary = _run_outcome(engine)
+    engine = _emit(
+        engine,
+        lambda run, lane, seq: RunFinished(
+            type="run_finished",
+            run_id=run,
+            lane=lane,
+            seq=seq,
+            outcome=outcome,
+            summary=summary,
+        ),
+    )
+    engine = replace(engine, finished=True)
+    return engine, record_so_far(engine)
+
+
+def _approves(mode: EscalationMode, call_id: str) -> bool:
+    if isinstance(mode, ScriptedApprovals):
+        return call_id in mode.approve
+    return mode == "approve_all"
+
+
+def execute_run(
+    *,
+    scenario: str,
+    run_id: str,
+    request: str,
+    world: WorldState,
+    contract: IntentContract,
+    ledger: Sequence[LedgerEntry],
+    calls: Sequence[RawToolCall],
+    session: SessionState | None = None,
+    lane: Lane = "notary",
+    monitor: Monitor | None = None,
+    gateway: GatewayLabeler | None = None,
+    resolver: ArgResolver | None = None,
+    escalation: EscalationMode = "reject",
+    oracle: OracleFn | None = None,
+    audit_append: AuditAppend = append,
+) -> RunRecord:
+    """Run every call in order, resolving each escalation at once as `escalation` says."""
+    engine = start_run(
+        run_id=run_id,
+        scenario=scenario,
+        request=request,
+        world=world,
+        contract=contract,
+        ledger=ledger,
+        session=session,
+        lane=lane,
+        monitor=monitor,
+        gateway=gateway,
+        resolver=resolver,
+        audit_append=audit_append,
+    )
+    for call in calls:
+        engine, outcome = propose(engine, call)
+        approvals = 0
+        while outcome.status == "escalated" and outcome.endorsement_id is not None:
+            approve = _approves(escalation, call.call_id) and approvals < MAX_ESCALATION_ROUNDS
+            if approve:
+                approvals += 1
+            engine, resolved = resolve_escalation(
+                engine, outcome.endorsement_id, "approve" if approve else "reject"
+            )
+            if resolved is None:
+                break
+            outcome = resolved
+    return finish(engine, oracle=oracle)[1]
+
+
+def run_hijacked(
+    scenario: Scenario,
+    commands: Sequence[HijackedToolCallCommand],
+    *,
+    monitor: Monitor | None = None,
+    gateway: GatewayLabeler | None = None,
+    resolver: ArgResolver | None = None,
+    escalation: EscalationMode = "reject",
+    oracle: OracleFn | None = None,
+    audit_append: AuditAppend = append,
+) -> RunRecord:
+    """Hijacked Mode: a judge's raw tool calls run against the scenario, no LLM involved."""
+    if not commands:
+        raise ValueError("no commands")
+    run_id = commands[0].run_id
+    if any(c.run_id != run_id for c in commands):
+        raise ValueError("hijacked commands must share one run_id")
+    call_ids = [c.call_id for c in commands]
+    if len(set(call_ids)) != len(call_ids):
+        raise ValueError("hijacked call ids must be unique")
+    return execute_run(
+        scenario=scenario.scenario_id,
+        run_id=run_id,
+        request=scenario.user_request,
+        world=scenario.world,
+        contract=scenario.contract,
+        ledger=scenario.ledger,
+        session=scenario.session,
+        calls=[RawToolCall(call_id=c.call_id, tool=c.tool, args=c.args) for c in commands],
+        lane="notary",
+        monitor=monitor,
+        gateway=gateway,
+        resolver=resolver,
+        escalation=escalation,
+        oracle=oracle,
+        audit_append=audit_append,
+    )
