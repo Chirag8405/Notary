@@ -251,16 +251,15 @@ def test_diff_row_has_explicit_nearest_value_and_positions() -> None:
         DiffRow.model_validate({"param": "p", "value_id": "v", "preview": "x"})
 
 
-def test_decide_has_the_five_argument_signature_and_is_still_a_stub() -> None:
+def test_decide_keeps_the_five_positional_arguments_and_adds_a_keyword_policy() -> None:
     import inspect
 
     from notary_core.monitor import decide
 
-    assert list(inspect.signature(decide).parameters) == [
-        "contract", "proposal", "values", "ledger", "session",
-    ]  # fmt: skip
-    with pytest.raises(NotImplementedError):
-        decide(contract(), None, {}, (), None)  # pyright: ignore[reportArgumentType]
+    params = inspect.signature(decide).parameters
+    positional = [n for n, p in params.items() if p.kind is not inspect.Parameter.KEYWORD_ONLY]
+    assert positional == ["contract", "proposal", "values", "ledger", "session"]
+    assert params["policy"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_budget_fields_non_negative() -> None:
