@@ -15,6 +15,7 @@ from types import MappingProxyType
 from pydantic import ValidationError
 
 from notary_core.audit import verify_chain
+from notary_core.contract import widening_reasons
 from notary_core.ledger import find_exact
 from notary_core.models import (
     DecisionMade,
@@ -27,6 +28,7 @@ from notary_core.models import (
     Marker,
     NotaryModel,
     ResolvedValue,
+    RunStarted,
 )
 from notary_core.policy.sensitive_params import (
     ParamPolicy,
@@ -440,3 +442,41 @@ def check_i4(run: RunRecord) -> InvariantResult:
     if any(_has_duplicates(s.ledger) for s in run.ledger_snapshots):
         return _fail("I4", I4_DUPLICATE)
     return _ok("I4")
+
+
+# I5
+
+
+def _safe_reason(reason: str) -> str:
+    """A widening reason keeps its fixed prefix; the run-derived name after it is sanitized."""
+    prefix, sep, name = reason.rpartition(": ")
+    return f"{prefix}{sep}{_safe(name)}" if sep else _safe(reason)
+
+
+def _widened(reasons: Sequence[str]) -> InvariantResult:
+    return _fail("I5", I5_WIDENED.format(reasons="; ".join(_safe_reason(r) for r in reasons)))
+
+
+def check_i5(run: RunRecord) -> InvariantResult:
+    """Contract monotonicity, from the contract snapshots, the run start and the decisions."""
+    snapshots = run.contract_snapshots
+    for old, new in pairwise(snapshots):
+        reasons = widening_reasons(old.contract, new.contract)
+        if reasons:
+            return _widened(reasons)
+    events = _events(run)
+    started = events[0] if events else None
+    contracts = [s.contract for s in snapshots]
+    if (
+        not snapshots
+        or snapshots[0].cause != "initial"
+        or any(s.cause == "initial" for s in snapshots[1:])
+        or not isinstance(started, RunStarted)
+        or started.contract != snapshots[0].contract
+        or any(record.inputs.contract not in contracts for record in run.calls)
+    ):
+        return _fail("I5", I5_MALFORMED)
+    reasons = widening_reasons(snapshots[0].contract, snapshots[-1].contract)
+    if reasons:
+        return _widened(reasons)
+    return _ok("I5")
