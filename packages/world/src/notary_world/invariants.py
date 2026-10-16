@@ -30,6 +30,7 @@ from notary_core.models import (
     ResolvedValue,
     RunStarted,
 )
+from notary_core.monitor import Monitor
 from notary_core.policy.sensitive_params import (
     ParamPolicy,
     PolicyTable,
@@ -40,7 +41,7 @@ from notary_core.provenance import PUBLIC, normalize_readers, readers_allow
 from notary_core.steps.origin import literal_text, origin_matches_source
 from notary_core.units import canonicalize
 from notary_world.cast import USER_PRINCIPAL
-from notary_world.executor import RunRecord, judged_tool_args
+from notary_world.executor import RunRecord, default_monitor, judged_tool_args
 from notary_world.state import (
     CalendarEvent,
     EntityKind,
@@ -480,3 +481,55 @@ def check_i5(run: RunRecord) -> InvariantResult:
     if reasons:
         return _widened(reasons)
     return _ok("I5")
+
+
+# I6
+
+
+def check_i6(run: RunRecord, monitor: Monitor | None = None) -> InvariantResult:
+    """Replay every decision twice; both must equal the recorded one and neither may raise.
+
+    This is evidence for THIS sequence of calls; fuzzing many sequences is issue #99.
+    """
+    judge = default_monitor() if monitor is None else monitor
+    for record in run.calls:
+        inputs = record.inputs
+        try:
+            first = judge(
+                inputs.contract,
+                inputs.proposal,
+                {v.ref.id: v for v in inputs.values},
+                inputs.ledger,
+                inputs.session,
+            )
+            second = judge(
+                inputs.contract,
+                inputs.proposal,
+                {v.ref.id: v for v in inputs.values},
+                inputs.ledger,
+                inputs.session,
+            )
+        except Exception as error:
+            detail = I6_RAISED.format(
+                exception=_safe(type(error).__name__), call_id=_safe(record.call_id)
+            )
+            return _fail("I6", detail)
+        if first != record.decision or second != record.decision:
+            detail = I6_DIFFERENT.format(call_id=_safe(record.call_id), phase=_safe(record.phase))
+            return _fail("I6", detail)
+    return _ok("I6")
+
+
+def check_invariants(
+    run: RunRecord, monitor: Monitor | None = None, policy: PolicyTable | None = None
+) -> tuple[InvariantResult, ...]:
+    """I1..I6 in order; with only a policy given, the replay uses that same policy."""
+    judge = default_monitor(policy) if monitor is None and policy is not None else monitor
+    return (
+        check_i1(run),
+        check_i2(run, policy),
+        check_i3(run),
+        check_i4(run),
+        check_i5(run),
+        check_i6(run, judge),
+    )
