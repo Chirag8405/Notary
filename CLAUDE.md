@@ -61,6 +61,12 @@ Use `uv run --no-sync` inside package scripts (parallel `uv run` calls corrupt t
 
 Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherwise ALLOW. (Not implemented yet: stubs raise `NotImplementedError`.)
 
+## Workflow
+
+- Never commit to `main` directly. Branch from `main` (`p<phase>/<slug>`, e.g. `p1/ledger`), open a pull request, merge only after review.
+- One PR per issue; put `Closes #<n>` in the PR body. Contract changes (label `contract-change`) need the announcement from phase.md P0b.
+- Run the commands under "Commands" before pushing; the CI workflow is currently removed, so the PR author is the gate.
+
 ## Docs
 
 - `docs/architecture.md` — components, monitor decision order, invariants I1-I6, event contract
