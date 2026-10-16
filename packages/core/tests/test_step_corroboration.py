@@ -3,13 +3,17 @@
 import copy
 from collections.abc import Mapping
 from dataclasses import replace
+from typing import get_args
 
 import pytest
 from builders import contract, sha
+from hypothesis import given
+from hypothesis import strategies as st
 
 from notary_core.ledger import LedgerClosureError, ToolResultAuthority, with_entry
 from notary_core.ledger import UserEndorsedAuthority as EndorsedAuthority
 from notary_core.models import (
+    CHECK_ORDER,
     DecisionUnit,
     EmailOrigin,
     EndorseMarker,
@@ -19,6 +23,7 @@ from notary_core.models import (
     LedgerEntry,
     LedgerMarker,
     LedgerSource,
+    LiteralMarker,
     Marker,
     NamedSourceMarker,
     ResolvedValue,
@@ -31,8 +36,9 @@ from notary_core.models import (
     ValueRef,
 )
 from notary_core.models.decision import StepOutcome
-from notary_core.pipeline import StepInput
+from notary_core.pipeline import StepInput, run_steps
 from notary_core.policy.sensitive_params import ParamPolicy, make_tool_policy
+from notary_core.steps import STEPS
 from notary_core.steps.corroboration import build_diff_row, check_corroboration
 
 IBAN = "DE89370400440532013000"
@@ -515,3 +521,123 @@ def test_step_does_not_mutate_input() -> None:
     snapshot = copy.deepcopy((inp.ledger, dict(inp.proposal.args), dict(inp.values)))
     check_corroboration(inp)
     assert (inp.ledger, dict(inp.proposal.args), dict(inp.values)) == snapshot
+
+
+def _stub_block(inp: StepInput) -> StepOutcome | None:
+    return StepOutcome(
+        verdict="BLOCK", code="CONF_READER_VIOLATION", detail="stub objects", diff_card=None
+    )
+
+
+def _stub_pass(inp: StepInput) -> StepOutcome | None:
+    return None
+
+
+@pytest.mark.attack("A3")
+def test_registered_after_origin_and_before_confidentiality() -> None:
+    names = [name for name, _ in STEPS]
+    assert names.index("origin") < names.index("corroboration") < names.index("confidentiality")
+    assert names == list(CHECK_ORDER)
+    assert dict(STEPS)["corroboration"] is check_corroboration
+
+
+@pytest.mark.invariant("I2")
+def test_corroboration_allow_does_not_skip_later_steps() -> None:
+    inp = _payee_input(IBAN, ledger=(_entry("iban", IBAN),))
+    assert _outcome(inp).verdict == "ALLOW"
+    blocked = run_steps(
+        (("corroboration", check_corroboration), ("confidentiality", _stub_block)), inp
+    )
+    assert blocked.verdict == "BLOCK"
+    assert [(r.check, r.outcome) for r in blocked.reasons] == [
+        ("corroboration", "pass"),
+        ("confidentiality", "fail"),
+    ]
+    allowed = run_steps((("corroboration", check_corroboration), ("budget", _stub_pass)), inp)
+    assert allowed.verdict == "ALLOW"
+    assert allowed.reasons[0].code == "LEDGER_EXACT_MATCH"
+
+
+@pytest.mark.attack("A3")
+def test_corroboration_escalate_flows_through_run_steps() -> None:
+    inp = _payee_input(FAR_IBAN, ledger=(_entry("iban", OTHER_IBAN),))
+    decision = run_steps((("corroboration", check_corroboration), ("budget", _stub_pass)), inp)
+    assert decision.verdict == "ESCALATE"
+    assert decision.diff_card is not None
+    assert decision.diff_card.rows[0].preview == FAR_IBAN
+
+
+_MARKERS: dict[str, Marker] = {
+    "ledger": LEDGER_PAYEES,
+    "endorse": ENDORSE,
+    "free": FREE,
+}
+_CURATED_TEXT = (IBAN, OTHER_IBAN, FAR_IBAN, "paypal.com", "alice@example.com", "120.00")
+_UNITS: tuple[DecisionUnit | None, ...] = (*get_args(DecisionUnit), None)
+_PARAMS = ("p1", "p2", "p3")
+
+
+@st.composite
+def _random_case(draw: st.DrawFn) -> StepInput:
+    names = draw(st.lists(st.sampled_from(_PARAMS), min_size=1, max_size=3, unique=True))
+    args: dict[str, ResolvedValue] = {}
+    floors: dict[str, tuple[DecisionUnit | None, Marker]] = {}
+    proposed: dict[str, Marker] = {}
+    for name in names:
+        text = draw(st.one_of(st.sampled_from(_CURATED_TEXT), st.text(max_size=30)))
+        integrity: Integrity = draw(st.sampled_from(("untrusted", "endorsed", "trusted")))
+        unit = draw(st.sampled_from(_UNITS))
+        args[name] = _resolved(f"v-{name}", text, unit=unit, integrity=integrity)
+        kind = draw(st.sampled_from(("ledger", "endorse", "free", "literal")))
+        if kind == "literal":
+            floors[name] = (unit, FREE)
+            proposed[name] = LiteralMarker(kind="literal", value=text)
+        else:
+            floors[name] = (unit, _MARKERS[kind])
+    entries = draw(
+        st.lists(
+            st.tuples(
+                st.sampled_from(get_args(DecisionUnit)),
+                st.one_of(st.sampled_from(_CURATED_TEXT), st.text(max_size=30)),
+                st.sampled_from(("payees", "contacts")),
+            ),
+            max_size=4,
+        )
+    )
+    ledger = tuple(
+        _entry(u, c, entry_id=f"e{i}", ledger=name) for i, (u, c, name) in enumerate(entries)
+    )
+    return _input(args, floors, ledger, proposed)
+
+
+@pytest.mark.invariant("I2")
+@given(_random_case())
+def test_step_never_raises_property(inp: StepInput) -> None:
+    outcome = check_corroboration(inp)
+    assert outcome is None or isinstance(outcome, StepOutcome)
+    if outcome is not None and outcome.verdict == "ESCALATE":
+        assert outcome.diff_card is not None
+        rows = outcome.diff_card.rows
+        assert rows
+        assert [row.param for row in rows] == sorted(row.param for row in rows)
+
+
+@pytest.mark.attack("A7")
+@given(
+    st.sampled_from((IBAN, OTHER_IBAN, "DE89370400440532013001")),
+    st.lists(
+        st.tuples(
+            st.integers(min_value=0, max_value=30), st.sampled_from((" ", chr(0x200B), chr(0x2060)))
+        ),
+        max_size=6,
+    ),
+)
+def test_formatting_noise_property(base: str, noise: list[tuple[int, str]]) -> None:
+    noisy = base
+    for position, char in noise:
+        cut = min(position, len(noisy))
+        noisy = noisy[:cut] + char + noisy[cut:]
+    ledger = (_entry("iban", IBAN),)
+    assert check_corroboration(_payee_input(noisy, ledger=ledger)) == check_corroboration(
+        _payee_input(base, ledger=ledger)
+    )
