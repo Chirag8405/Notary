@@ -9,7 +9,9 @@ adapter (MCP schemas may contain floats, which `canonical_json` rejects), so cor
 JSON or touches a network.
 """
 
-from notary_core.canon import canonical_hash
+from collections.abc import Mapping, Sequence
+
+from notary_core.canon import canonical_hash, sha256_hex
 from notary_core.models import NotaryModel, Sha256Hex
 
 UNKNOWN_TOOL_PREFIX: str = "unknown-tool:"
@@ -45,3 +47,51 @@ def manifest_hash(manifest: ToolManifest) -> Sha256Hex:
     Names and text are used byte-for-byte: whitespace and zero-width characters change the hash.
     """
     return canonical_hash(manifest)
+
+
+def _hashes(manifests: Sequence[ToolManifest]) -> dict[str, str]:
+    """Hash per tool name; names are compared exactly (case-sensitive), a repeat is an error."""
+    hashes: dict[str, str] = {}
+    for manifest in manifests:
+        if manifest.name in hashes:
+            raise ValueError(f"duplicate tool name: {manifest.name}")
+        hashes[manifest.name] = manifest_hash(manifest)
+    return hashes
+
+
+def pin_manifests(manifests: Sequence[ToolManifest]) -> dict[str, str]:
+    """Tool name -> manifest hash, with keys in sorted order; a repeated name raises."""
+    hashes = _hashes(manifests)
+    return {name: hashes[name] for name in sorted(hashes)}
+
+
+def compare_pins(pins: Mapping[str, str], observed: Sequence[ToolManifest]) -> PinReport:
+    """Compare pinned hashes with the manifests a server reports now.
+
+    Total except for a repeated name in `observed`: a pin that is not the observed hash, however
+    malformed, is drift (the pin format is not validated).
+    """
+    seen = _hashes(observed)
+    drifted = tuple(
+        sorted(name for name, digest in seen.items() if name in pins and pins[name] != digest)
+    )
+    unpinned = tuple(sorted(name for name in seen if name not in pins))
+    missing = tuple(sorted(name for name in pins if name not in seen))
+    return PinReport(
+        drifted=drifted,
+        unpinned=unpinned,
+        missing=missing,
+        ok=not (drifted or unpinned or missing),
+    )
+
+
+def observed_hash(observed: Sequence[ToolManifest], tool: str) -> str:
+    """The hash to stamp on a proposal for `tool`: that of its observed manifest.
+
+    A tool nobody reported gets a hash of its name alone, so an unknown tool never matches a
+    pinned hash. Never raises for an unknown tool.
+    """
+    hashes = _hashes(observed)
+    if tool in hashes:
+        return hashes[tool]
+    return sha256_hex(UNKNOWN_TOOL_PREFIX + tool)
