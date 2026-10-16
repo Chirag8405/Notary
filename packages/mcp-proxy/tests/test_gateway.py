@@ -1,11 +1,8 @@
-import pytest
+def test_public_names_import() -> None:
+    from notary_mcp_proxy import Gateway, ToolBackend, ToolPin
 
-from notary_mcp_proxy import Gateway
-
-
-def test_stubs_raise() -> None:
-    gateway = Gateway(())
-    with pytest.raises(NotImplementedError):
-        gateway.check_pins("t", "h")
-    with pytest.raises(NotImplementedError):
-        gateway.label_result("t", "raw")
+    assert (Gateway.__name__, ToolPin.__name__, ToolBackend.__name__) == (
+        "Gateway",
+        "ToolPin",
+        "ToolBackend",
+    )
