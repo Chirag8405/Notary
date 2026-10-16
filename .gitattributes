@@ -1,0 +1,7 @@
+# Generated files are written with LF by their generators; keep them LF on every checkout (core.autocrlf), so schema:check compares equal bytes.
+packages/schema/json/** text eol=lf
+packages/schema/src/generated/** text eol=lf
+packages/client/openapi.json text eol=lf
+packages/client/src/generated/** text eol=lf
+packages/world/fixtures/streams/** text eol=lf
+packages/world/fixtures/commands/** text eol=lf
