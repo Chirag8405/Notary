@@ -19,17 +19,22 @@ from notary_core.policy.sensitive_params import (
     DEFAULT_POLICY,
     EFFECT_STRICTNESS,
     UNKNOWN_PARAM,
+    ManifestInfo,
     ParamBinding,
     ParamPolicy,
+    PolicyCoverageError,
     PolicyTable,
     ToolPolicy,
+    assert_covered,
     effective_effect,
     effective_marker,
     make_tool_policy,
     marker_rank,
     merge_with_compiler_markers,
     param_policy,
+    render_markdown,
     stricter_effect,
+    unclassified_params,
 )
 
 markers: st.SearchStrategy[Marker] = st.one_of(
@@ -191,3 +196,122 @@ def test_toolpolicy_params_immutable() -> None:
         tool.params[0].name = "other"  # type: ignore[misc]
     with pytest.raises(TypeError):
         tool.params[0] = tool.params[0]  # type: ignore[index]
+
+
+def _manifests_for(table: PolicyTable) -> list[ManifestInfo]:
+    return [
+        ManifestInfo(
+            tool=name,
+            effect=tool.effect,
+            params=tuple(binding.name for binding in tool.params),
+        )
+        for name, tool in table.items()
+    ]
+
+
+# covers: I2
+def test_default_policy_marks_payee_as_ledger_floor() -> None:
+    floor = param_policy(DEFAULT_POLICY, "send_money", "payee").floor
+    assert floor == LedgerMarker(kind="ledger", ledger="payees")
+    assert param_policy(DEFAULT_POLICY, "pay_bill", "payee") == param_policy(
+        DEFAULT_POLICY, "send_money", "payee"
+    )
+
+
+# covers: I2
+def test_default_policy_effects() -> None:
+    assert DEFAULT_POLICY["delete_email"].effect == "irreversible"
+    assert DEFAULT_POLICY["send_money"].effect == "irreversible"
+    assert DEFAULT_POLICY["pay_bill"].effect == "irreversible"
+    assert DEFAULT_POLICY["read_email"].effect == "read"
+
+
+# covers: I2
+def test_default_policy_destinations_name_their_ledger() -> None:
+    expected = {
+        ("send_email", "to"): "contacts",
+        ("send_email", "cc"): "contacts",
+        ("post_slack", "channel"): "channels",
+        ("create_event", "attendees"): "contacts",
+    }
+    for (tool, param), ledger in expected.items():
+        assert param_policy(DEFAULT_POLICY, tool, param).floor == LedgerMarker(
+            kind="ledger", ledger=ledger
+        )
+
+
+# covers: I2
+def test_assert_covered_passes_for_known_manifests() -> None:
+    manifests = _manifests_for(DEFAULT_POLICY)
+    assert {m.tool for m in manifests} == set(DEFAULT_POLICY)
+    assert_covered(DEFAULT_POLICY, manifests)
+
+
+# covers: I2
+def test_assert_covered_fails_on_new_param() -> None:
+    manifest = ManifestInfo(
+        tool="send_money", effect="irreversible", params=("payee", "amount", "reference", "memo")
+    )
+    with pytest.raises(PolicyCoverageError) as error:
+        assert_covered(DEFAULT_POLICY, [manifest])
+    assert error.value.missing == (("send_money", "memo"),)
+
+
+# covers: I2
+def test_assert_covered_fails_on_unknown_effect_tool() -> None:
+    write = ManifestInfo(tool="mystery", effect="write", params=("b", "a"))
+    with pytest.raises(PolicyCoverageError) as error:
+        assert_covered(DEFAULT_POLICY, [write])
+    assert error.value.missing == (("mystery", "a"), ("mystery", "b"))
+    # an unknown tool is irreversible whatever its manifest claims
+    read = ManifestInfo(tool="mystery", effect="read", params=("a",))
+    with pytest.raises(PolicyCoverageError):
+        assert_covered(DEFAULT_POLICY, [read])
+
+
+# covers: I2
+def test_assert_covered_skips_read_tools_and_uses_stricter_effect() -> None:
+    read = ManifestInfo(tool="read_email", effect="read", params=("message_id", "folder"))
+    assert unclassified_params(DEFAULT_POLICY, [read]) == ()
+    # the manifest may only tighten the table: a "write" read_email must classify `folder`
+    tightened = ManifestInfo(tool="read_email", effect="write", params=("message_id", "folder"))
+    assert unclassified_params(DEFAULT_POLICY, [tightened]) == (("read_email", "folder"),)
+
+
+# covers: I2
+def test_unclassified_params_is_sorted_and_deduplicated() -> None:
+    manifests = [
+        ManifestInfo(tool="b_tool", effect="write", params=("z", "a")),
+        ManifestInfo(tool="a_tool", effect="write", params=("x",)),
+        ManifestInfo(tool="a_tool", effect="write", params=("x",)),
+    ]
+    assert unclassified_params({}, manifests) == (("a_tool", "x"), ("b_tool", "a"), ("b_tool", "z"))
+
+
+# covers: model
+def test_render_markdown_is_deterministic_and_sorted() -> None:
+    first = render_markdown(DEFAULT_POLICY)
+    assert render_markdown(DEFAULT_POLICY) == first
+    assert first.endswith("\n")
+    lines = first.splitlines()
+    assert lines[0] == "| Tool | Effect | Param | Unit | Floor | Kind |"
+    rows = [tuple(cell.strip() for cell in line.strip("|").split("|")) for line in lines[2:]]
+    assert rows == sorted(rows, key=lambda row: (row[0], row[2]))
+    assert len(rows) == sum(len(tool.params) for tool in DEFAULT_POLICY.values())
+    assert ("send_money", "irreversible", "payee", "iban", "ledger(payees)", "destination") in rows
+    assert ("send_email", "write", "body", "None", "free", "payload") in rows
+
+
+# covers: model
+def test_render_markdown_ignores_insertion_order() -> None:
+    forward = dict(DEFAULT_POLICY)
+    backward = dict(reversed(list(DEFAULT_POLICY.items())))
+    assert render_markdown(forward) == render_markdown(backward)
+
+
+# covers: I3
+def test_every_destination_param_has_a_unit_or_is_identifier() -> None:
+    for tool in DEFAULT_POLICY.values():
+        for binding in tool.params:
+            if binding.policy.kind == "destination":
+                assert binding.policy.unit in {"email", "iban", "identifier", "url_host"}
