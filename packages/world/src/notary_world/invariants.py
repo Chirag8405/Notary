@@ -7,16 +7,23 @@ Details are fixed sentences; any run-derived text in them passes through `_safe`
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
+from notary_core.audit import verify_chain
 from notary_core.models import (
+    DecisionMade,
+    EffectExecuted,
     Event,
     InvariantId,
     InvariantResult,
 )
-from notary_world.executor import RunRecord
-from notary_world.tools import get_tool
+from notary_world.executor import RunRecord, judged_tool_args
+from notary_world.state import (
+    diff,
+    state_hash,
+)
+from notary_world.tools import call, get_tool
 
 INVARIANT_DEFINITIONS: Mapping[InvariantId, str] = MappingProxyType(
     {
@@ -82,3 +89,104 @@ def _is_read(tool: str) -> bool:
     """Only a known read tool is read-only; an unknown tool is judged like an effect."""
     spec = get_tool(tool)
     return spec is not None and spec.effect == "read"
+
+
+# I1
+
+
+def _latest_decision(events: Sequence[Event], call_id: str, before: int) -> DecisionMade | None:
+    latest: DecisionMade | None = None
+    for event in events[:before]:
+        if isinstance(event, DecisionMade) and event.call_id == call_id:
+            latest = event
+    return latest
+
+
+def _has_effect_evidence(run: RunRecord, events: Sequence[Event]) -> bool:
+    """A logged write effect, or an executed write call whose ALLOW decision is in the chain."""
+    if any(isinstance(e, EffectExecuted) and not _is_read(e.tool) for e in events):
+        return True
+    for record in run.calls:
+        if record.status != "executed" or _is_read(record.tool):
+            continue
+        if 0 <= record.decision_index < len(events):
+            event = events[record.decision_index]
+            if (
+                isinstance(event, DecisionMade)
+                and event.call_id == record.call_id
+                and event.decision.verdict == "ALLOW"
+            ):
+                return True
+    return False
+
+
+def _records_match_chain(run: RunRecord, events: Sequence[Event]) -> bool:
+    referenced: list[int] = []
+    for record in run.calls:
+        if not 0 <= record.decision_index < len(events):
+            return False
+        decided = events[record.decision_index]
+        if not (
+            isinstance(decided, DecisionMade)
+            and decided.call_id == record.call_id
+            and decided.decision == record.decision
+        ):
+            return False
+        allowed = record.decision.verdict == "ALLOW"
+        if record.status == "executed" and not allowed:
+            return False
+        if not allowed and (record.effect is not None or record.effect_index is not None):
+            return False
+        if record.effect_index is not None:
+            index = record.effect_index
+            if not record.decision_index < index < len(events):
+                return False
+            effect = events[index]
+            if not (
+                isinstance(effect, EffectExecuted)
+                and effect.call_id == record.call_id
+                and effect.tool == record.tool
+            ):
+                return False
+            referenced.append(index)
+        elif record.status == "executed" and not (
+            run.halted is not None or record.effect is None or record.effect.effect == "read"
+        ):
+            return False
+    logged = [i for i, e in enumerate(events) if isinstance(e, EffectExecuted)]
+    return sorted(referenced) == logged
+
+
+def _replay_matches(run: RunRecord) -> bool:
+    """Re-run every executed call on the judged tool arguments, from the world before the run."""
+    state = run.world_before
+    for record in run.calls:
+        if record.status != "executed":
+            continue
+        result = call(state, record.tool, judged_tool_args(record.tool, record.args))
+        if result.error is not None:
+            return False
+        state = result.new_state
+    return state_hash(state) == state_hash(run.world_after)
+
+
+def check_i1(run: RunRecord) -> InvariantResult:
+    """Complete mediation, from the audit chain, the call records and the world states."""
+    if not verify_chain(run.chain):
+        return _fail("I1", I1_BAD_CHAIN)
+    events = _events(run)
+    for j, event in enumerate(events):
+        if not isinstance(event, EffectExecuted):
+            continue
+        latest = _latest_decision(events, event.call_id, j)
+        if latest is None or latest.decision.verdict != "ALLOW":
+            return _fail("I1", I1_NO_ALLOW.format(call_id=_safe(event.call_id)))
+    if run.world_diff.changes and not _has_effect_evidence(run, events):
+        return _fail("I1", I1_UNMEDIATED)
+    if not _records_match_chain(run, events):
+        return _fail("I1", I1_RECORD_MISMATCH)
+    if diff(run.world_before, run.world_after) != run.world_diff:
+        return _fail("I1", I1_DIFF_MISMATCH)
+    if not _replay_matches(run):
+        return _fail("I1", I1_REPLAY_MISMATCH)
+    return _ok("I1")
