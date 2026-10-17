@@ -16,7 +16,7 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 `WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
 
-Mode notes for the x-ray page: `golden` ignores `lane` and has no `legitimate_bill` stream (#193, #196), so the page uses `cassette` for the three-lane view and for `legitimate_bill`.
+Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) but has no `legitimate_bill` stream (#196), so the page uses `cassette` for `legitimate_bill`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 
 - Built: contract chips, provenance graph, decision rows, oracle lights, content inspector, endorsement card, three-lane view, effects list and audit anchor footer. The replay scrubber is P5.
 - A call decided twice (ESCALATE, then ALLOW after an approval) shows the latest verdict, with the earlier decision under "earlier decisions".
-- Modes: `golden` sends the NOTARY stream for every lane (#193) and has no `legitimate_bill` stream (#196); `cassette` replays a recorded run through the real runner, per lane, and waits at the card until the user answers; `live` needs an LLM API key and is not reproducible. The page defaults to `golden`, never to `live`, and moves a golden choice that cannot work (the three-lane view, `legitimate_bill`) to `cassette` and says so.
+- Modes: `golden` sends the stream of the requested lane (`<scenario>.<lane>`) and has no `legitimate_bill` stream (#196); `cassette` replays a recorded run through the real runner, per lane, and waits at the card until the user answers; `live` needs an LLM API key and is not reproducible. The page defaults to `golden`, never to `live`, and moves a golden choice that cannot work (the three-lane view, `legitimate_bill`) to `cassette` and says so.
 - Decisions: the hash link is a content hash, there is no classifier-flag outline, the effects list stands in for the world diff, and endorsement resolution is tracked on the client; see [decisions.md](decisions.md).
 
 ## Judge playground

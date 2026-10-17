@@ -60,6 +60,9 @@ from notary_world.loader import load_attacks
 
 EVENT_DELAY_SECONDS = 0.4
 
+BROKER_MODES: frozenset[RunMode] = frozenset({"cassette", "live"})
+"""The run modes that escalate through the endorsement broker. `golden` never does."""
+
 
 class Health(NotaryModel):
     status: Literal["ok"]
@@ -254,8 +257,13 @@ def create_app(
         progress = _Progress()
 
         def release_run() -> None:
-            """A run that is no longer watched must not wait for a human: reject its cards."""
-            if broker is not None and progress.run_id is not None:
+            """A run that is no longer watched must not wait for a human: reject its cards.
+
+            Only the modes that escalate through the broker own cards. A golden run never
+            registers one, and golden and cassette runs share the run id `run-<scenario>-<lane>`,
+            so a closing golden socket must not reject the card of a cassette run (#194).
+            """
+            if request.mode in BROKER_MODES and broker is not None and progress.run_id is not None:
                 broker.cancel_run(progress.run_id)
 
         async with anyio.create_task_group() as group:

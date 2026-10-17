@@ -9,9 +9,6 @@ from notary_world.golden import golden_streams
 
 RunMode = Literal["golden", "cassette", "live"]
 
-SCENARIO_ALIASES = {"poisoned_bill": "poisoned_bill.notary"}
-"""Short scenario names served by the golden source (`poisoned_bill` is the NOTARY lane run)."""
-
 
 class RunUnavailableError(Exception):
     """A source cannot serve this run (no key, no cassette, a cassette miss).
@@ -39,11 +36,16 @@ class RunSource(Protocol):
 
 
 class GoldenSource:
-    """The hand-built P0b streams. The lane is ignored: the stream name already carries it."""
+    """The hand-built P0b streams, named `<scenario>.<lane>`.
+
+    A scenario name is served under the requested lane. A full stream name
+    (`poisoned_bill.undefended`) is still served as that stream, but only when no stream exists
+    for `<name>.<lane>`.
+    """
 
     def events(self, request: RunRequest) -> Iterator[Event]:
         streams = golden_streams()
-        events = streams.get(SCENARIO_ALIASES.get(request.scenario, request.scenario))
+        events = streams.get(f"{request.scenario}.{request.lane}") or streams.get(request.scenario)
         if events is None:
             raise ScenarioNotFoundError(request.scenario)
         return iter(events)
