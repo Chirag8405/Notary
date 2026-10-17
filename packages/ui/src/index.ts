@@ -1,6 +1,7 @@
 export { ContentInspector, type ContentInspectorProps } from "./ContentInspector";
 export { ContractPanel, type ContractPanelProps } from "./ContractPanel";
 export { DecisionStream, type DecisionStreamProps } from "./DecisionStream";
+export { EndorsementCard, type CardState, type EndorsementCardProps } from "./EndorsementCard";
 export { toDecisionRows, type ArgChip, type DecisionRow } from "./decision-rows";
 export { OracleLights, type OracleLightsProps } from "./OracleLights";
 export { OraclePanel, type OraclePanelProps } from "./OraclePanel";
@@ -15,6 +16,7 @@ export {
   type LaneSummary,
 } from "./lane-summary";
 export { describeEvent } from "./describe-event";
+export { highlightDiff, type Segment } from "./diff-highlight";
 export { inspectValue, type Inspection } from "./inspect";
 export { goalLights, laneLabel, type GoalLights, type LightState } from "./goal-lights";
 export { markerLabel, markerTone, type MarkerTone } from "./marker-chip";
