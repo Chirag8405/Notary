@@ -81,6 +81,17 @@ The "Attack library" panel (`apps/web/components/attack-library-panel.tsx`, `/pl
 
 The "Attacker arena" panel (`apps/web/components/arena-panel.tsx`, `/playground?mode=arena`) posts rounds, seed and lanes to `POST /playground/arena`, plots the attack success rate per round with `AsrChart` and lists every round (vector and payload length only; the response carries no payload text). The UI caps rounds at 10, the server's default `NOTARY_ARENA_MAX_ROUNDS`. The attacker is a recording (seed 0 on the poisoned bill); other seeds answer `501 cassette miss`, which the panel explains.
 
+### What the playground does at CP4
+
+Run it with `pnpm dev` and open `http://localhost:3000/playground` (a mode can be named in the address: `?mode=poison`, `hijacked`, `library`, `arena`). The server needs no API key: everything below runs on recordings or on the real monitor, offline. Every result also has a **replay player** (First, Previous, Next, Last and a slider): at position 0 the oracle lights are grey and the decision stream is empty; stepping brings in the events one by one, the ESCALATE row with its decision and the oracle verdict with the last events.
+
+- **Poison the world.** Replays the recorded runs of the three lanes for the sample input (email, `Pay to IBAN DE00ATTACKER0000000001`, task `Pay my December bill`): Undefended and the Classifier-only stand-in lose, NOTARY does not. Honest limit: only the sample has a recording; any other payload answers "This input has no recorded run" until real cassettes exist (#182). The classifier is a stand-in, not a product.
+- **Be the hijacked LLM.** Real monitor and oracle, no recording: every call is judged live. Honest limits: an ESCALATE is rejected automatically (the judge plays the attacker and cannot approve), and the 2FA leak objective is mostly shown by the scope block on `send_email`. Sessions expire and are limited per client (see the deploy notes).
+- **Attack library.** One click per class A1-A14 and the benign controls B1-B4 on the real monitor; each badge compares the monitor's decisions with the taxonomy. A13 reads "Deferred to the Output Guard" (the monitor only allows the benign read; the text is the Output Guard's job).
+- **Attacker arena.** Rounds per lane and a seed, an ASR chart per round. Honest limit: the attacker is a scripted recording (`scripted-v1`, seed 0 on the poisoned bill) until a real recording exists (#182), so the "adaptive attacker" claim is not made; other seeds answer "no recorded run". The classifier climbs to 100 % and NOTARY stays at 0 %.
+
+Checks: `pnpm turbo run test` drives each mode through `PlaygroundView` against the recorded answers (`apps/web/tests/cp4.test.tsx`); `pnpm playground:fixtures:check` fails when a recorded answer drifts from the server; `pnpm e2e` plays Hijacked Mode in a real browser against the real server. The playground POSTs are rate limited per client (10 runs a minute by default), so a hand walk of all of A1-A14 and B1-B4 needs `NOTARY_RUN_LIMIT=100` on the server or a pause between runs.
+
 ## Three-minute stage script
 
 | Time  | Step                                                                                                                                                       |

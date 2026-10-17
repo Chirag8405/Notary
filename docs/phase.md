@@ -17,7 +17,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | done        |
 | P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | done        |
 | P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | CP3 pending |
-| P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | not started |
+| P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | done        |
 | P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started |
 | P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started |
 
@@ -166,9 +166,11 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 
 - Packages: `apps/web`, `packages/ui`, `packages/client` (endpoints come from lane C, P3c)
 - [x] Four modes: Poison the world, Be the hijacked LLM, Attack library, Attacker arena (all four panels are registered in `apps/web/components/playground-panels.tsx`; #221 is the integration check against the seeded world)
-- [ ] Replay scrubber
+- [x] Replay scrubber (`ReplayPlayer` on every result of `RunResult`; it opens on the whole run)
 - Accept: each mode has a test driving it against the seeded world; oracle verdicts match expected
 - Demo-able: step 5 (Hijacked Mode with a judge).
+- P5 status: all four modes are tested through `PlaygroundView` against the recorded answers (`apps/web/tests/cp4.test.tsx`), the replay works on every result, and the hand walk of steps 1-5 (poison, hijacked, library, arena, replay) was run on the real stack with no mismatch, recorded in the description of the PR that closed #221 (47 checks, no mismatch). Stage step 5 with a second person at the keyboard is a rehearsal for P7 and has not been done. Honest limits: poison and arena replay recordings (other inputs and seeds answer "no recorded run" until #182), the arena attacker is scripted, the classifier is a stand-in, and Hijacked Mode auto-rejects approvals.
+- CP4 status: the playground half is done (this phase); the eval half ("eval numbers in the deck") is P6 and is not.
 
 ## P6 MCP proxy and evals (lanes A, B)
 
