@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { PoisonPanel } from "@/components/poison-panel";
 import type { PlaygroundMode } from "@/lib/playground-state";
 
 export interface PanelProps {
@@ -12,7 +13,7 @@ function Placeholder(): ReactElement {
 
 /** One panel per mode. The mode issues replace their placeholder here. */
 export const PANELS: Readonly<Record<PlaygroundMode, (props: PanelProps) => ReactElement>> = {
-  poison: Placeholder,
+  poison: PoisonPanel,
   hijacked: Placeholder,
   library: Placeholder,
   arena: Placeholder,
