@@ -127,7 +127,7 @@ export type Event = z.infer<typeof EventSchema>;
 export const AuditEntrySchema = z.object({ "event": EventSchema, "hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "index": z.number().int().gte(0), "prev_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")) }).strict();
 export type AuditEntry = z.infer<typeof AuditEntrySchema>;
 
-export const EndorsementDecisionCommandSchema = z.object({ "decision": z.enum(["approve","reject"]), "endorsement_id": z.string(), "run_id": z.string(), "type": z.literal("endorsement_decision") }).strict();
+export const EndorsementDecisionCommandSchema = z.object({ "decision": z.enum(["approve","reject","use_nearest"]), "endorsement_id": z.string(), "run_id": z.string(), "type": z.literal("endorsement_decision") }).strict();
 export type EndorsementDecisionCommand = z.infer<typeof EndorsementDecisionCommandSchema>;
 
 export const HijackedToolCallCommandSchema = z.object({ "args": z.record(z.string(), z.string()), "call_id": z.string(), "run_id": z.string(), "tool": z.string(), "type": z.literal("hijacked_tool_call") }).strict().describe("Hijacked Mode: a judge submits a raw tool call; no LLM is involved.");

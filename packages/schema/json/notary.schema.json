@@ -483,7 +483,8 @@
         "decision": {
           "enum": [
             "approve",
-            "reject"
+            "reject",
+            "use_nearest"
           ],
           "type": "string"
         },
