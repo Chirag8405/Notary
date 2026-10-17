@@ -42,21 +42,18 @@ function paymentOf(name: (typeof STREAMS)[number]): string {
   ).summary;
 }
 
-function pendingItem(remaining: number): unknown {
-  return {
-    run_id: must(NOTARY.runId, "run id"),
-    endorsement: must(NOTARY.endorsements[0], "an endorsement").endorsement,
-    card_text: "",
-    remaining_approvals: remaining,
-  };
-}
+/** A cassette run waits at its card for the answer: the fake NOTARY stream stops there too. */
+const AT_CARD = { stopAtCard: true } as const;
 
-function open(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
-  const sockets = socketFactory();
+function open(
+  props: Partial<XRayViewProps> = {},
+  rest: Partial<RestState> = {},
+  socketOptions: Parameters<typeof socketFactory>[0] = {},
+) {
+  const sockets = socketFactory(socketOptions);
   // The modes come in an order the page must not depend on.
   const stub = stubRest({
     modes: ["live", "cassette", "golden"],
-    pending: [pendingItem(3)],
     anchor: ANCHOR,
     ...rest,
   });
@@ -66,8 +63,12 @@ function open(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {})
   return { ...utils, ...sockets, rest: stub };
 }
 
-async function opened(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
-  const page = open(props, rest);
+async function opened(
+  props: Partial<XRayViewProps> = {},
+  rest: Partial<RestState> = {},
+  socketOptions: Parameters<typeof socketFactory>[0] = {},
+) {
+  const page = open(props, rest, socketOptions);
   await screen.findAllByText(/(ESCALATE|ALLOW) for c2/);
   return page;
 }
@@ -147,7 +148,7 @@ describe("stage steps 1 and 2: the baseline lanes lose the money", () => {
 
 describe("stage step 3: NOTARY escalates and asks", () => {
   it("shows one escalate gate, one waiting row and a card with the differing characters [A3]", async () => {
-    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" });
+    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" }, {}, AT_CARD);
     const card = await screen.findByRole("group", { name: "Endorsement request" });
 
     expect(
@@ -179,16 +180,17 @@ describe("stage step 3: NOTARY escalates and asks", () => {
     expect(within(card).getByText("This value is not in your ledger.")).toBeTruthy();
     await within(card).findByText("Approvals left: 3");
 
-    // The attacker did not get the money; the user goal waits for the answer.
-    expect(light(region("Oracle panel"), "attacker")).toBe("good");
+    // The run waits at its card, as a cassette run does: the oracle has not spoken yet, so both
+    // lights wait for the answer (the golden stream, which runs on past the card, is the other test).
+    expect(light(region("Oracle panel"), "attacker")).toBe("pending");
     expect(light(region("Oracle panel"), "user")).toBe("pending");
-    expect(lane("notary").getAttribute("data-attacker")).toBe("stopped");
+    expect(lane("notary").getAttribute("data-attacker")).toBeNull(); // no verdict before the answer
     expect(laneEffects("notary")).toBe("read 2 messages");
     expect(socketOf(page, "notary").sent).toEqual([]);
   });
 
   it("confirm sends exactly one valid command, on the NOTARY socket only [I4]", async () => {
-    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" });
+    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" }, {}, AT_CARD);
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     const confirm = within(card).getByRole("button", { name: "Confirm" });
 
@@ -212,7 +214,7 @@ describe("stage step 3: NOTARY escalates and asks", () => {
   });
 
   it("reject sends exactly one reject command [I4]", async () => {
-    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" });
+    const page = await opened({ mode: "cassette", initialViewMode: "three-lane" }, {}, AT_CARD);
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
     const frames = socketOf(page, "notary").sent;

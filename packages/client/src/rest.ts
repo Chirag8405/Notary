@@ -9,8 +9,6 @@ export function createRestClient(baseUrl: string) {
 
 export type RestClient = ReturnType<typeof createRestClient>;
 
-/** The pending endorsements of a run, as the server describes them. */
-export type PendingList = components["schemas"]["PendingList"];
 /** The audit anchor of a run: the head hash and length the server persisted outside the log. */
 export type Anchor = components["schemas"]["Anchor"];
 
@@ -23,27 +21,6 @@ export async function listModes(client: RestClient): Promise<readonly string[]> 
   const { data, response } = await client.GET("/runs/modes");
   if (!response.ok || data === undefined) throw failed("GET /runs/modes", response.status);
   return data.modes;
-}
-
-/**
- * The endorsements of a run that still wait for the user (`GET /runs/{run_id}/endorsements`).
- *
- * `token` is the tab's read token, the one it put on its `cassette` / `live` socket (sent as the
- * `X-Notary-Token` header). The server lists only the cards of the sockets that hold it; a wrong
- * token is a normal 200 with an empty list. The token authorises reading only.
- */
-export async function getPendingEndorsements(
-  client: RestClient,
-  runId: string,
-  token: string,
-): Promise<PendingList> {
-  const { data, response } = await client.GET("/runs/{run_id}/endorsements", {
-    params: { path: { run_id: runId }, header: { "X-Notary-Token": token } },
-  });
-  if (!response.ok || data === undefined) {
-    throw failed("GET /runs/{run_id}/endorsements", response.status);
-  }
-  return data;
 }
 
 /** The audit anchor of a run, or `null` when the server has none (404). */

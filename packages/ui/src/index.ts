@@ -27,6 +27,7 @@ export {
   type LaneStatus,
   type LaneSummary,
 } from "./lane-summary";
+export { cardOutcomes, type CardOutcome, type CardOutcomes } from "./card-outcomes";
 export { clampPosition, positionLabel, stepPosition, viewAt, type Step } from "./replay";
 export { describeEvent } from "./describe-event";
 export { highlightDiff, type Segment } from "./diff-highlight";

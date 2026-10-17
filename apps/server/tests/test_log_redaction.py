@@ -21,7 +21,6 @@ import pytest
 import uvicorn
 import uvicorn.config
 from fastapi import FastAPI
-from tokens import OTHER_TOKEN, TOKEN
 from uvicorn.logging import AccessFormatter
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
@@ -39,6 +38,9 @@ from notary_server.log_redaction import (
 from notary_server.sources import RunMode, RunRequest, RunSource
 from notary_world.golden import golden_streams
 
+TOKEN = "t" * 36
+"""A sample secret in a query string (the filter redacts `token=` wherever it finds it)."""
+OTHER_TOKEN = "o" * 36
 URL_WITH_TOKEN = f"/ws/runs/poisoned_bill?lane=notary&mode=cassette&token={TOKEN}"
 COVERED = (
     "uvicorn.access",
@@ -427,7 +429,7 @@ def emit_request_lines(names: tuple[str, ...]) -> None:
 
 
 LATE_CHILD = "websockets.created_after_the_filter_was_attached"
-BAD_TOKEN = "malformed-" + "q" * 9  # 19 characters: refused with 4400
+BAD_TOKEN = "malformed-" + "q" * 9  # a second, different secret
 
 
 def tree_loggers() -> list[logging.Logger]:
@@ -529,14 +531,10 @@ def serving(app: FastAPI, log_config: dict[str, object] | None = None) -> Genera
 
 
 def get_list(port: int) -> None:
-    """The REST list twice: with the header (the real client) and with a stray `?token=` in the
-    query (a client that got it wrong), which uvicorn.access would print."""
-    run = "run-poisoned_bill-notary"
+    """A route twice: plain, and with a stray `?token=` in the query (a client that put a secret in
+    its URL), which uvicorn.access would print."""
     for query in ("", f"?token={TOKEN}"):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/runs/{run}/endorsements{query}",
-            headers={"X-Notary-Token": TOKEN},
-        )
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/runs/modes{query}")
         with urllib.request.urlopen(request, timeout=5) as response:
             assert response.status == 200
 
@@ -570,7 +568,7 @@ def play_session(port: int) -> str:
 
 
 def talk(port: int) -> list[int]:
-    """One good socket and one with a bad token (the close code of each), then the REST list."""
+    """Three sockets with a `token=` in the URL (the close code of each), then plain HTTP."""
     codes: list[int] = []
     for query in (f"token={TOKEN}", f"token={BAD_TOKEN}", f"token={OTHER_TOKEN}"):
         url = f"ws://127.0.0.1:{port}/ws/runs/poisoned_bill?lane=notary&mode=cassette&{query}"
@@ -589,7 +587,7 @@ def test_a_real_uvicorn_run_logs_no_token(detached: None) -> None:
     with capturing(UVICORN_LOGGERS) as capture, serving(app) as port:
         codes = talk(port)
         session_id = play_session(port)
-    assert codes == [1000, 4400, 1000]
+    assert codes == [1000, 1000, 1000]
     text = capture.text()
     assert "/ws/runs/poisoned_bill" in text  # the servers did log the requests
     # Every covered logger really printed something in this run: the capture saw them all.
@@ -599,7 +597,7 @@ def test_a_real_uvicorn_run_logs_no_token(detached: None) -> None:
     assert "token=[redacted]" in capture.text_of("uvicorn.error")  # the WebSocket [accepted] line
     assert TOKEN not in text
     assert OTHER_TOKEN not in text
-    assert BAD_TOKEN not in text  # a refused token is redacted as well
+    assert BAD_TOKEN not in text  # whatever the value, it is redacted
     assert "token=[redacted]" in text
     # The Hijacked Mode session id is a capability in the request path: the access log has the
     # route but never the id.
@@ -614,7 +612,7 @@ def test_control_a_real_uvicorn_run_prints_the_token_without_the_filter() -> Non
     with unredacted(), capturing(UVICORN_LOGGERS) as capture, serving(app) as port:
         codes = talk(port)
         session_id = play_session(port)
-    assert codes == [1000, 4400, 1000]
+    assert codes == [1000, 1000, 1000]
     assert session_id in capture.text_of("uvicorn.access")  # the id leaks into the access log
     assert TOKEN in capture.text()
     assert BAD_TOKEN in capture.text()

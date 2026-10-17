@@ -82,6 +82,7 @@ describe("chartPoints", () => {
 
   it("rounds coordinates to two decimals", () => {
     const third = asrSeries({ label: "L", rounds: [{ round: 3, cumulativeSuccesses: 1 }] });
-    expect(chartPoints(third, 7)[0]).toEqual({ x: 254, y: 142.67 });
+    // x = 44 + 420 * (3 - 1) / (7 - 1) = 184;  y = 16 + 188 * (1 - 1/3) = 141.33
+    expect(chartPoints(third, 7)[0]).toEqual({ x: 184, y: 141.33 });
   });
 });

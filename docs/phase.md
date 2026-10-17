@@ -191,7 +191,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
   - [ ] Final deck update
   - [ ] Two full rehearsals
 - Lane A (after P3a):
-  - [ ] Public deploy (single worker, `--ws websockets`, TLS, no query strings in proxy logs: [deploy notes](demo.md#deploy-notes), #235)
+  - [ ] Public deploy (single worker, `--ws websockets`, TLS, no session ids in proxy logs: [deploy notes](demo.md#deploy-notes))
   - [ ] Offline `docker compose up` fallback
   - [ ] Recorded-run and screenshots fallback
 - Accept: [pre-demo checklist](demo.md#pre-demo-checklist) fully checked

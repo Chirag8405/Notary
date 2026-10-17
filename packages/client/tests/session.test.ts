@@ -21,8 +21,6 @@ async function collect(session: ReturnType<typeof openRun>): Promise<string[]> {
   return types;
 }
 
-const TOKEN = "123e4567-e89b-12d3-a456-426614174000";
-
 describe("openRun events", () => {
   it("yields the validated events of a golden stream in order [A3]", async () => {
     const { factory, sockets } = rig();
@@ -41,16 +39,11 @@ describe("openRun events", () => {
     );
   });
 
-  it("opens the stream URL with the lane, mode and token [I6]", () => {
+  it("opens the stream URL with the lane and mode [I6]", () => {
     const { factory, sockets } = rig();
-    openRun(BASE, "poisoned_bill", {
-      webSocket: factory,
-      lane: "classifier",
-      mode: "cassette",
-      token: TOKEN,
-    });
+    openRun(BASE, "poisoned_bill", { webSocket: factory, lane: "classifier", mode: "cassette" });
     expect(firstSocket(sockets).url).toBe(
-      `ws://localhost:8000/ws/runs/poisoned_bill?lane=classifier&mode=cassette&token=${TOKEN}`,
+      "ws://localhost:8000/ws/runs/poisoned_bill?lane=classifier&mode=cassette",
     );
   });
 

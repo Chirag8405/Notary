@@ -57,57 +57,32 @@ const MODES: Readonly<Record<RunMode, true>> = { golden: true, cassette: true, l
 export interface RunOptions {
   lane?: RunLane;
   mode?: RunMode;
-  /**
-   * The read token of this tab (see `getPendingEndorsements`). The `cassette` and `live` modes
-   * need it (the server closes 4400 without one); `golden` sends none, so it is left out of the
-   * URL there.
-   */
-  token?: string;
   signal?: AbortSignal;
   webSocket?: WebSocketFactory;
 }
 
-/** The run modes whose sockets own endorsement cards and so carry a read token. */
-const TOKEN_MODES: Readonly<Record<RunMode, boolean>> = {
-  golden: false,
-  cassette: true,
-  live: true,
-};
-
-/** What the server accepts as a read token: 32 to 128 characters of `[A-Za-z0-9_-]`. */
-const TOKEN_FORMAT = /^[A-Za-z0-9_-]{32,128}$/;
-
 /**
- * The stream URL of a run: `ws://host/ws/runs/<scenario>?lane=...&mode=...&token=...`. The query
- * holds only the parameters that were given, lane first and the token last. `lane`, `mode` and
- * `token` are checked at run time too, because a cast could otherwise put arbitrary text into the
- * query. The token is added for `cassette` and `live` only and is required there; the error never
- * contains it.
+ * The stream URL of a run: `ws://host/ws/runs/<scenario>?lane=...&mode=...`. The query holds only
+ * the parameters that were given, lane first. `lane` and `mode` are checked at run time too,
+ * because a cast could otherwise put arbitrary text into the query.
  */
 export function runStreamUrl(
   baseUrl: string,
   scenario: string,
-  options: Pick<RunOptions, "lane" | "mode" | "token"> = {},
+  options: Pick<RunOptions, "lane" | "mode"> = {},
 ): string {
-  const { lane, mode, token } = options;
+  const { lane, mode } = options;
   if (lane !== undefined && !Object.hasOwn(LANES, lane)) {
     throw new RangeError(`unknown run lane: ${JSON.stringify(lane)}`);
   }
   if (mode !== undefined && !Object.hasOwn(MODES, mode)) {
     throw new RangeError(`unknown run mode: ${JSON.stringify(mode)}`);
   }
-  const needsToken = mode !== undefined && TOKEN_MODES[mode];
-  if (needsToken && (token === undefined || !TOKEN_FORMAT.test(token))) {
-    throw new RangeError(
-      `the ${mode} mode needs a read token of 32 to 128 characters [A-Za-z0-9_-]`,
-    );
-  }
   const url = new URL(`/ws/runs/${encodeURIComponent(scenario)}`, baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const query = [
     ...(lane === undefined ? [] : [`lane=${lane}`]),
     ...(mode === undefined ? [] : [`mode=${mode}`]),
-    ...(needsToken && token !== undefined ? [`token=${token}`] : []),
   ].join("&");
   return query === "" ? url.toString() : `${url.toString()}?${query}`;
 }

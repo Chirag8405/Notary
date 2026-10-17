@@ -1,3 +1,4 @@
+import type { Event } from "@notary/schema";
 import { markerTone } from "@notary/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { XRayView } from "@/components/x-ray-view";
 import type { XRayViewProps } from "@/components/x-ray-view";
 
+import { FINISHED, ORACLE, TO_REQUEST, append, decisionFor } from "./card-events";
 import { socketFactory, stubRest } from "./fake-run";
 import type { RestState } from "./fake-run";
 import { must, viewOf } from "./golden";
@@ -19,23 +21,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function pendingItem(remaining: number): unknown {
-  const endorsement = must(NOTARY.endorsements[0], "an endorsement").endorsement;
-  return {
-    run_id: must(NOTARY.runId, "run id"),
-    endorsement,
-    card_text: "payee: DE00ATTACKER0000000001",
-    remaining_approvals: remaining,
-  };
-}
-
 function open(
   props: Partial<XRayViewProps> = {},
   rest: Partial<RestState> = {},
   socketOptions: Parameters<typeof socketFactory>[0] = {},
 ) {
   const sockets = socketFactory(socketOptions);
-  const stub = stubRest({ modes: ["golden"], pending: [], anchor: ANCHOR, ...rest });
+  const stub = stubRest({ modes: ["golden"], anchor: ANCHOR, ...rest });
   const utils = render(
     <XRayView apiUrl={API} scenario="poisoned_bill" webSocket={sockets.factory} {...props} />,
   );
@@ -195,7 +187,7 @@ describe("x-ray page selection", () => {
 
 describe("x-ray page endorsement", () => {
   it("shows the card and sends exactly the approve command [I4]", async () => {
-    const page = await opened({}, { pending: [pendingItem(3)] });
+    const page = await opened({}, {});
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     expect(await within(card).findByText("Approvals left: 3")).toBeTruthy();
     expect(row("c2").querySelector("[data-awaiting]")).not.toBeNull();
@@ -211,14 +203,26 @@ describe("x-ray page endorsement", () => {
     });
   });
 
-  it("clears the 'awaiting your confirmation' tag once the card is answered [I4]", async () => {
-    const page = await opened({}, { pending: [pendingItem(3)] });
+  /** What the server streams after the card, pushed on the page's NOTARY socket. */
+  function stream(page: { sockets: { push(event: Event): void }[] }, ...tail: Event[]) {
+    const events = append(TO_REQUEST, ...tail).slice(TO_REQUEST.length);
+    act(() => {
+      for (const event of events) must(page.sockets[0], "the NOTARY socket").push(event);
+    });
+  }
+
+  const atCard = { mode: "cassette" } as const;
+
+  it("clears the 'awaiting your confirmation' tag once the stream says the card was answered [I4]", async () => {
+    const page = await opened(atCard, {}, { stopAtCard: true });
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     await within(card).findByText("Approvals left: 3");
     expect(row("c2").querySelector("[data-awaiting]")).not.toBeNull();
 
-    page.rest.state.pending = [];
     fireEvent.click(within(card).getByRole("button", { name: "Confirm" }));
+    expect(card.getAttribute("data-state")).toBe("sending");
+    expect(row("c2").querySelector("[data-awaiting]")).not.toBeNull(); // not before the server answers
+    stream(page, decisionFor("ALLOW"));
     await waitFor(() => {
       expect(card.getAttribute("data-state")).toBe("approved");
     });
@@ -227,16 +231,27 @@ describe("x-ray page endorsement", () => {
     });
   });
 
-  it("shows a neutral user light after Reject and a red attacker light after Confirm [I4]", async () => {
+  it("makes no request to the server for the card, whatever the answer [I6]", async () => {
+    const page = await opened(atCard, {}, { stopAtCard: true });
+    const card = await screen.findByRole("group", { name: "Endorsement request" });
+    fireEvent.click(within(card).getByRole("button", { name: "Confirm" }));
+    stream(page, decisionFor("ALLOW"), ORACLE, FINISHED);
+    await waitFor(() => {
+      expect(card.getAttribute("data-state")).toBe("approved");
+    });
+    expect(page.rest.calls.filter((path) => path.includes("endorsements"))).toEqual([]);
+  });
+
+  it("shows a neutral user light after Reject and a red one after Confirm [I4]", async () => {
     const lightOf = (which: string): string | null =>
       region("Oracle panel").querySelector(`[data-light="${which}"]`)?.getAttribute("data-state") ??
       null;
-    const rejecting = await opened({}, { pending: [pendingItem(3)] });
+    const rejecting = await opened(atCard, {}, { stopAtCard: true });
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     await within(card).findByText("Approvals left: 3");
     expect(lightOf("user")).toBe("pending");
-    rejecting.rest.state.pending = [];
     fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
+    stream(rejecting, ORACLE, FINISHED);
     await waitFor(() => {
       expect(lightOf("user")).toBe("neutral");
     });
@@ -244,11 +259,11 @@ describe("x-ray page endorsement", () => {
     expect(lightOf("attacker")).toBe("good");
     cleanup();
 
-    const confirming = await opened({}, { pending: [pendingItem(3)] });
+    const confirming = await opened(atCard, {}, { stopAtCard: true });
     const second = await screen.findByRole("group", { name: "Endorsement request" });
     await within(second).findByText("Approvals left: 3");
-    confirming.rest.state.pending = [];
     fireEvent.click(within(second).getByRole("button", { name: "Confirm" }));
+    stream(confirming, decisionFor("ALLOW"), ORACLE, FINISHED);
     await waitFor(() => {
       expect(second.getAttribute("data-state")).toBe("approved");
     });
@@ -257,8 +272,17 @@ describe("x-ray page endorsement", () => {
     });
   });
 
+  it("the golden replay never answers a card from its own later events [I6]", async () => {
+    await opened(); // golden: the card is followed by the oracle and the end of the run
+    const card = await screen.findByRole("group", { name: "Endorsement request" });
+    expect(card.getAttribute("data-state")).toBe("pending");
+    expect(within(card).getByRole<HTMLButtonElement>("button", { name: "Confirm" }).disabled).toBe(
+      false,
+    );
+  });
+
   it("turns the card into a conflict when the socket closes with 4409 [I4]", async () => {
-    const page = await opened({}, { pending: [pendingItem(3)] });
+    const page = await opened({}, {});
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     act(() => {
       must(page.sockets[0], "socket").closeWith(4409, "unknown endorsement");
@@ -444,7 +468,7 @@ describe("x-ray page controls", () => {
   it("writes nothing to localStorage, sessionStorage or cookies [I6]", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const cookie = vi.spyOn(document, "cookie", "set");
-    await opened({}, { pending: [pendingItem(3)] });
+    await opened({}, {});
     fireEvent.click(hashLink("c2", "payee"));
     fireEvent.click(screen.getByRole("button", { name: "Three-lane view" }));
     fireEvent.click(screen.getByRole("button", { name: "Run again" }));

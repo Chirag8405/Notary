@@ -8,7 +8,6 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
-from tokens import TOKEN, with_token
 
 from notary_core.models import Command, EndorsementDecisionCommand, Event
 from notary_server.app import create_app
@@ -191,18 +190,13 @@ def test_custom_source_is_streamed() -> None:
 def test_source_receives_the_request() -> None:
     source = fixed(GOLDEN[:1])
     client = TestClient(create_app(event_delay=0, sources={"cassette": source}))
-    with client.websocket_connect(
-        with_token("/ws/runs/poisoned_bill?lane=classifier&mode=cassette")
-    ) as ws:
+    with client.websocket_connect("/ws/runs/poisoned_bill?lane=classifier&mode=cassette") as ws:
         drain(ws)
     (request,) = source.requests
-    assert request.model_copy(update={"owner": "", "read_key": None}) == RunRequest(
+    assert request.model_copy(update={"owner": ""}) == RunRequest(
         scenario="poisoned_bill", lane="classifier", mode="cassette"
     )
     assert len(request.owner) >= 16  # the socket's own secret, never part of the query
-    assert request.read_key is not None  # the digest of the token, never the token
-    assert TOKEN.encode() not in request.read_key
-    assert len(request.read_key) == 32  # an HMAC-SHA256 digest
 
 
 @pytest.mark.invariant("I4")

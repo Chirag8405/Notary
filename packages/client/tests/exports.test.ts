@@ -6,7 +6,6 @@ import * as client from "../src";
 import type {
   Anchor,
   CloseKind,
-  PendingList,
   RestClient,
   RunLane,
   RunMode,
@@ -23,7 +22,6 @@ describe("package exports", () => {
       "runStreamUrl",
       "describeClose",
       "listModes",
-      "getPendingEndorsements",
       "getAnchor",
       "createRestClient",
       "encodeCommand",
@@ -58,14 +56,12 @@ describe("package exports", () => {
     const kind: CloseKind = client.describeClose(4404);
     const session: RunSession | null = null;
     const anchor: Anchor | null = null;
-    const pending: PendingList | null = null;
     const rest: RestClient | null = null;
     const state: RunStreamState | null = null;
     const result: RunStreamResult | null = null;
-    expect([options, kind, session, anchor, pending, rest, state, result]).toEqual([
+    expect([options, kind, session, anchor, rest, state, result]).toEqual([
       { lane: "notary", mode: "golden" },
       "unknown_scenario",
-      null,
       null,
       null,
       null,
