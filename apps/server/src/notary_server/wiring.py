@@ -14,12 +14,18 @@ from fastapi import FastAPI
 from pydantic import Field
 
 from notary_core.models import Event, Lane, NotaryModel
-from notary_server.agent_runner import EscalationDecider, ServerAgentRunner, reject_all
+from notary_server.agent_runner import (
+    EscalationAnnouncer,
+    EscalationDecider,
+    ServerAgentRunner,
+    ignore_escalation,
+    reject_all,
+)
 from notary_server.anchors import AnchorStore, anchored_append
 from notary_server.anthropic_client import AnthropicClient
 from notary_server.arena import AttackerFactory
 from notary_server.commands import CLOSE_CASSETTE_MISS, CLOSE_MODE_UNAVAILABLE
-from notary_server.endorsement import EndorsementBroker
+from notary_server.endorsement import EndorsementBroker, EndorsementRun
 from notary_server.lanes import lane_hooks, stream_for_lane
 from notary_server.llm import CassetteClient, CassetteMissError, LlmClient
 from notary_server.playground import LaneRunner
@@ -107,11 +113,13 @@ class RunStreamer:
         run_id: str,
         llm: LlmClient,
         decide: EscalationDecider,
+        announce: EscalationAnnouncer = ignore_escalation,
     ) -> Iterator[Event]:
         runner = ServerAgentRunner(
             llm=llm,
             scenarios=lambda _name: scenario,
             decide_escalation=decide,
+            announce_escalation=announce,
             audit_append=anchored_append(self._anchors),
         )
         run = runner.run(
@@ -119,11 +127,9 @@ class RunStreamer:
         )
         return _guard(stream_for_lane(run, lane))
 
-    def socket_decider(self, scenario: Scenario, run_id: str) -> EscalationDecider:
+    def socket_endorsements(self, scenario: Scenario, run_id: str) -> EndorsementRun:
         """Escalations of a watched run wait for the user's command (fail closed on timeout)."""
-        return self._broker.decider_for(
-            run_id, max_approvals=scenario.contract.budget.max_approvals
-        )
+        return self._broker.start_run(run_id, max_approvals=scenario.contract.budget.max_approvals)
 
     def lane_runner(self) -> LaneRunner:
         """For the REST endpoints: replays the lane's cassette and rejects every escalation."""
@@ -152,8 +158,10 @@ class CassetteSource:
         scenario = _scenario(request.scenario)
         run_id = golden_run_id(request.scenario, request.lane)
         client = load_cassette_client(f"{request.scenario}.{request.lane}")
-        decide = self._streamer.socket_decider(scenario, run_id)
-        return self._streamer.stream(scenario, request.lane, run_id, client, decide)
+        endorsements = self._streamer.socket_endorsements(scenario, run_id)
+        return self._streamer.stream(
+            scenario, request.lane, run_id, client, endorsements.decide, endorsements.announce
+        )
 
 
 class LiveSource:
@@ -178,8 +186,15 @@ class LiveSource:
         if self._client is None:
             self._client = self._factory()
         run_id = golden_run_id(request.scenario, request.lane)
-        decide = self._streamer.socket_decider(scenario, run_id)
-        return self._streamer.stream(scenario, request.lane, run_id, self._client, decide)
+        endorsements = self._streamer.socket_endorsements(scenario, run_id)
+        return self._streamer.stream(
+            scenario,
+            request.lane,
+            run_id,
+            self._client,
+            endorsements.decide,
+            endorsements.announce,
+        )
 
 
 def arena_attackers() -> AttackerFactory:

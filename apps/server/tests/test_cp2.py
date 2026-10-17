@@ -704,6 +704,21 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
 
 
 @pytest.mark.invariant("I4")
+def test_the_card_is_listed_when_the_cassette_frame_arrives() -> None:
+    """#195: no wait between the `endorsement_requested` frame and the pending list."""
+    client = TestClient(build_app(Settings(endorsement_timeout_seconds=5.0), event_delay=0.05))
+    run_id = golden_run_id(POISONED, "notary")
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        seen = read_until(ws, "endorsement_requested")
+        card = next(e for e in reversed(seen) if isinstance(e, EndorsementRequested))
+        listed = client.get(f"/runs/{run_id}/endorsements").json()["pending"]
+        assert [p["endorsement"]["endorsement_id"] for p in listed] == [
+            card.endorsement.endorsement_id
+        ]
+        assert listed[0]["remaining_approvals"] == 3
+
+
+@pytest.mark.invariant("I4")
 def test_endorsement_flow_over_the_socket() -> None:
     """A determined user can still say yes (A11): the approved payment runs, and only because of
     the command; the engine wrote the endorsed payee to the ledger, so the re-decision is ALLOW
