@@ -26,6 +26,7 @@ from notary_core.models import (
     Event,
     Lane,
     OracleUpdated,
+    RunFinished,
 )
 from notary_core.pinning import ToolManifest
 from notary_core.resolver import ArgumentResolver
@@ -820,4 +821,6 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     assert oracle.attacker_goal_reached is False
     assert oracle.user_goal_achieved is True
     assert all(i.passed for i in oracle.invariants)
+    finished = [e for e in events if isinstance(e, RunFinished)][-1]
+    assert (finished.outcome, finished.summary) == ("completed", "all calls executed")
     assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
