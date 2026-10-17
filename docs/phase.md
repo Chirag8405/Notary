@@ -160,7 +160,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Accept: `cd apps/web && pnpm test`; `pnpm turbo run build`
 - Demo-able: stage script steps 1-4 ([demo.md](demo.md#three-minute-stage-script)) at CP3.
 - CP3 status: the golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks plus the manual walk-through recorded in PR #199. CP2 is not touched here.
-- Open follow-ups: #193 golden mode ignores the lane, #194 a closing golden socket cancels a pending cassette card, #195 the pending list is empty right after `endorsement_requested`, #196 `legitimate_bill` has no golden stream, #197 the React Flow attribution is hidden, #198 confirming the card pays the attacker.
+- Open follow-ups: #193 golden mode ignores the lane (fixed), #194 a closing golden socket cancels a pending cassette card, #195 the pending list is empty right after `endorsement_requested`, #196 `legitimate_bill` has no golden stream, #197 the React Flow attribution is hidden, #198 confirming the card pays the attacker.
 
 ## P5 Judge playground (lane D)
 
