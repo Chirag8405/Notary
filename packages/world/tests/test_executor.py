@@ -420,7 +420,9 @@ def test_read_effect_labels_output_fields() -> None:
     for value_id in ("c1.m-dec.body", "c1.m-dec.attachment_0", "c1.m-dec.verified"):
         value = values[value_id]
         assert value.ref.label.origin == EmailOrigin(kind="email")
-        assert value.ref.label.integrity == "untrusted"
+        # `verified` is stamped by the platform (the world labeling policy), not by the content.
+        expected = "trusted" if value_id.endswith(".verified") else "untrusted"
+        assert value.ref.label.integrity == expected
         assert labeled[value_id].preview == value.text[:PREVIEW_LIMIT]
         assert labeled[value_id].value == value.ref
 

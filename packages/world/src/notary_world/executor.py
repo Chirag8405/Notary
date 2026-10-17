@@ -12,7 +12,7 @@ from typing import Literal, Protocol
 from notary_core.audit import append
 from notary_core.canon import sha256_hex
 from notary_core.contract import ContractWideningError, assert_monotonic
-from notary_core.gateway import GatewayLabeler
+from notary_core.gateway import GatewayLabeler, make_labeler
 from notary_core.ledger import (
     LedgerClosureError,
     UserEndorsedAuthority,
@@ -53,9 +53,10 @@ from notary_core.models import (
 from notary_core.monitor import Monitor, decide
 from notary_core.policy.sensitive_params import PolicyTable
 from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_readers
+from notary_core.resolver import ArgumentResolver
 from notary_core.session import with_approval, with_effect
 from notary_core.units import canonicalize
-from notary_world.fakes import FakeGateway
+from notary_world.labeling import world_labeling_policy
 from notary_world.scenarios import Scenario
 from notary_world.state import WorldDiff, WorldState, diff
 from notary_world.tools import (
@@ -421,8 +422,8 @@ def start_run(
         halted=None,
         finished=False,
         monitor=monitor or default_monitor(),
-        gateway=gateway or FakeGateway(),
-        resolver=resolver or DefaultArgResolver(),
+        gateway=gateway or make_labeler(world_labeling_policy()),
+        resolver=resolver or ArgumentResolver(),
         audit_append=audit_append,
     )
     return _emit(

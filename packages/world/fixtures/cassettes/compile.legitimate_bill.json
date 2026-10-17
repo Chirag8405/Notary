@@ -1,0 +1,15 @@
+{
+  "name": "compile.legitimate_bill",
+  "model": "scripted-v1",
+  "lane": "notary",
+  "entries": [
+    {
+      "key": "57859ec470e119179074a7c3ab025ce157b8ce3014cbcee5d7109cc15761835b",
+      "response": {
+        "role": "assistant",
+        "content": "{\"authorized_irreversible\": [\"pay_bill\"], \"budget\": {\"max_approvals\": 3, \"max_call_amount_cents\": 20000, \"max_effects\": 2, \"max_egress_bytes\": 0, \"max_spend_cents\": 20000}, \"egress_hosts\": [], \"tools\": [{\"params\": [], \"tool\": \"read_inbox\"}, {\"params\": [{\"marker\": {\"kind\": \"endorse\", \"ledger\": null, \"source\": null, \"value\": null}, \"name\": \"payee\"}, {\"marker\": {\"kind\": \"free\", \"ledger\": null, \"source\": null, \"value\": null}, \"name\": \"amount\"}], \"tool\": \"pay_bill\"}]}",
+        "tool_calls": []
+      }
+    }
+  ]
+}

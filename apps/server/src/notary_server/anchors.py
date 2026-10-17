@@ -53,6 +53,18 @@ class AnchorStore:
                 (run_id, head, length),
             )
 
+    def restart(self, run_id: str, head: str) -> None:
+        """A new run starts under a reused id (golden run ids repeat): its anchor starts at one
+        entry. Only the first entry of a chain may do this; a longer chain goes through `record`."""
+        if _HEAD.fullmatch(head) is None:
+            raise ValueError("invalid anchor")
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO anchors (run_id, head, length) VALUES (?, ?, 1) "
+                "ON CONFLICT(run_id) DO UPDATE SET head = excluded.head, length = 1",
+                (run_id, head),
+            )
+
     def get(self, run_id: str) -> Anchor | None:
         with self._lock:
             row = self._db.execute(
@@ -78,7 +90,10 @@ def anchored_append(store: AnchorStore, inner: AuditAppend | None = None) -> Aud
 
     def anchored(chain: Sequence[AuditEntry], event: Event) -> tuple[AuditEntry, ...]:
         new = step(chain, event)
-        store.record(event.run_id, new[-1].hash, len(new))
+        if len(new) == 1:
+            store.restart(event.run_id, new[-1].hash)
+        else:
+            store.record(event.run_id, new[-1].hash, len(new))
         return new
 
     return anchored

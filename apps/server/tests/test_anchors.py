@@ -122,6 +122,9 @@ class FailingStore(AnchorStore):
     def record(self, run_id: str, head: str, length: int) -> None:
         raise OSError("disk full")
 
+    def restart(self, run_id: str, head: str) -> None:
+        raise OSError("disk full")
+
 
 @pytest.mark.invariant("I1")
 def test_anchored_append_propagates_failures() -> None:
@@ -255,3 +258,22 @@ def test_replay_cli_values_match() -> None:
     assert (anchor.head, anchor.length) == (chain[-1].hash, len(chain))
     assert verify_chain_detailed(chain, expected_length=anchor.length, expected_head=anchor.head).ok
     assert verify_chain_detailed((), expected_head=GENESIS_HASH).ok
+
+
+@pytest.mark.invariant("I1")
+def test_a_reused_run_id_restarts_its_anchor() -> None:
+    """Golden run ids repeat: a second run under one id must not hit `cannot move backwards`."""
+    store = AnchorStore()
+    wrapper = anchored_append(store)
+    first = feed(wrapper, EVENTS[:5])
+    assert store.get(EVENTS[0].run_id) == Anchor(
+        run_id=EVENTS[0].run_id, head=first[-1].hash, length=5
+    )
+    second = feed(wrapper, EVENTS[:3])
+    assert store.get(EVENTS[0].run_id) == Anchor(
+        run_id=EVENTS[0].run_id, head=second[-1].hash, length=3
+    )
+    with pytest.raises(ValueError, match="anchor cannot move backwards"):
+        store.record(EVENTS[0].run_id, HEAD_A, 2)
+    with pytest.raises(ValueError, match="invalid anchor"):
+        store.restart("r1", "nope")

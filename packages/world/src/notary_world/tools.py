@@ -5,12 +5,14 @@ raises on bad input, mutates a state or reads a clock. The executor (not this mo
 whether a call may run; the only thing this module knows about the monitor is the policy table.
 """
 
+import json
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 
-from notary_core.canon import canonical_hash, sha256_hex
+from notary_core.canon import sha256_hex
 from notary_core.gateway import ToolResult, ToolResultField
 from notary_core.models import DecisionUnit, FreeMarker, NotaryModel, ToolEffect
+from notary_core.pinning import ToolManifest, manifest_hash
 from notary_core.policy.sensitive_params import (
     DEFAULT_POLICY,
     ManifestInfo,
@@ -188,21 +190,30 @@ def param_unit(tool: str, param: str) -> DecisionUnit | None:
     return next((p.unit for p in spec.params if p.name == param), None)
 
 
-class _ToolManifest(NotaryModel):
-    name: str
-    description: str
-    effect: ToolEffect
-    params: tuple[tuple[str, str | None], ...]
+def schema_text(spec: ToolSpec) -> str:
+    """The tool's parameter schema as canonical JSON text (sorted keys, compact separators).
+
+    This is the `input_schema` of the tool's `ToolManifest`: the agent is offered it and the
+    manifest hash is computed over it.
+    """
+    properties: dict[str, dict[str, str]] = {}
+    for param in spec.params:
+        entry = {"type": "string"}
+        if param.unit is not None:
+            entry["description"] = f"{param.unit} value"
+        properties[param.name] = entry
+    required = sorted(p.name for p in spec.params if p.required)
+    schema = {"type": "object", "properties": properties, "required": required}
+    return json.dumps(schema, sort_keys=True, separators=(",", ":"))
+
+
+def tool_manifest(spec: ToolSpec, description: str) -> ToolManifest:
+    return ToolManifest(name=spec.name, description=description, input_schema=schema_text(spec))
 
 
 def _manifest_hash(spec: ToolSpec, description: str) -> str:
-    manifest = _ToolManifest(
-        name=spec.name,
-        description=description,
-        effect=spec.effect,
-        params=tuple((p.name, p.unit) for p in spec.params),
-    )
-    return canonical_hash(manifest)
+    """The one authoritative recipe: core's `manifest_hash` over name, description and schema."""
+    return manifest_hash(tool_manifest(spec, description))
 
 
 def _unknown_tool_hash(tool: str) -> str:
@@ -223,6 +234,15 @@ def tool_manifest_hash(state: WorldState, tool: str) -> str:
         return _unknown_tool_hash(tool)
     override = next((d.description for d in state.tool_descriptions if d.tool == tool), None)
     return _manifest_hash(spec, spec.description if override is None else override)
+
+
+def world_manifests(state: WorldState) -> tuple[ToolManifest, ...]:
+    """The manifests the world serves now, sorted by name (a rug pull changes a description)."""
+    overrides = {d.tool: d.description for d in state.tool_descriptions}
+    return tuple(
+        tool_manifest(spec, overrides.get(spec.name, spec.description))
+        for spec in sorted(TOOL_SPECS, key=lambda s: s.name)
+    )
 
 
 def manifest_infos() -> tuple[ManifestInfo, ...]:

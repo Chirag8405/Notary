@@ -5,7 +5,6 @@ cassette records can be tested byte for byte. The agent is assumed hijackable: n
 defense. Spotlighting is an advisory aid the NOTARY lane adds; the monitor never reads text.
 """
 
-import json
 from collections.abc import Sequence
 
 from notary_core.gateway import ToolResult
@@ -13,7 +12,7 @@ from notary_core.runner import FilterFlag
 from notary_server.llm import LlmToolSpec
 from notary_world.models import CassetteTurn
 from notary_world.state import WorldState
-from notary_world.tools import RawToolCall, ToolSpec
+from notary_world.tools import RawToolCall, ToolSpec, schema_text
 
 MAX_TURNS: int = 12
 """Upper bound on LLM calls in one run; the stage scenarios need three to five."""
@@ -32,16 +31,8 @@ REFUSAL_TEXT: str = "The action was blocked by the user's security policy."
 
 
 def schema_for(spec: ToolSpec) -> str:
-    """The tool's parameter schema as canonical JSON text (sorted keys, compact separators)."""
-    properties: dict[str, dict[str, str]] = {}
-    for param in spec.params:
-        entry = {"type": "string"}
-        if param.unit is not None:
-            entry["description"] = f"{param.unit} value"
-        properties[param.name] = entry
-    required = sorted(p.name for p in spec.params if p.required)
-    schema = {"type": "object", "properties": properties, "required": required}
-    return json.dumps(schema, sort_keys=True, separators=(",", ":"))
+    """The tool's parameter schema as canonical JSON text; defined once, in the world."""
+    return schema_text(spec)
 
 
 def agent_tools(specs: Sequence[ToolSpec], world: WorldState) -> tuple[LlmToolSpec, ...]:
