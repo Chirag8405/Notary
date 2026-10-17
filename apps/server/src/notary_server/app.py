@@ -41,6 +41,7 @@ from notary_server.hijacked import (
     HijackedState,
     HijackedStep,
 )
+from notary_server.limits import PlaygroundLimits, RateLimitedError, RateLimiter
 from notary_server.log_redaction import attach_redaction
 from notary_server.playground import (
     AttackRunResponse,
@@ -163,9 +164,14 @@ def create_app(
     arena_max_rounds: int = 10,
     broker: EndorsementBroker | None = None,
     server_key: bytes | None = None,
+    limits: PlaygroundLimits | None = None,
 ) -> FastAPI:
     """`server_key` keys the read tokens (#235). Leave it out: it is made here, kept in memory only,
-    and a restart drops every key together with every card. A test passes one to compute keys."""
+    and a restart drops every key together with every card. A test passes one to compute keys.
+
+    `limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
+    passes them; without them (the default here) nothing is limited, which is what most tests
+    want."""
     attach_redaction()  # the read token must never reach a log
     token_key = secrets.token_bytes(32) if server_key is None else server_key
     run_sources = default_sources() if sources is None else sources
@@ -208,12 +214,36 @@ def create_app(
     def hijacked_error(_request: Request, error: HijackedError) -> JSONResponse:
         return JSONResponse({"detail": error.detail}, status_code=error.status)
 
+    @app.exception_handler(RateLimitedError)
+    def rate_limited(_request: Request, error: RateLimitedError) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "too many requests"},
+            status_code=429,
+            headers={"Retry-After": str(error.retry_after)},
+        )
+
+    def client_key(http: Request) -> str:
+        """The socket peer. Behind a reverse proxy this is the proxy unless uvicorn is told to
+        trust its forwarding header (deploy notes in `docs/demo.md`)."""
+        return "unknown" if http.client is None else http.client.host
+
+    def within_budget(limiter: RateLimiter | None, http: Request) -> str:
+        """The client key, after charging one request to `limiter` (429 when it is over)."""
+        key = client_key(http)
+        if limiter is not None and not limiter.allow(key):
+            raise RateLimitedError(limiter.retry_after(key))
+        return key
+
     @app.post("/playground/hijacked", operation_id="startHijacked")
-    def start_hijacked(request: HijackedStart) -> HijackedSession:
-        return hijacked_sessions.start(request)
+    def start_hijacked(request: HijackedStart, http: Request) -> HijackedSession:
+        key = within_budget(None if limits is None else limits.starts, http)
+        return hijacked_sessions.start(request, client=key)
 
     @app.post("/playground/hijacked/{session_id}/calls", operation_id="submitHijackedCall")
-    def submit_hijacked_call(session_id: str, command: HijackedToolCallCommand) -> HijackedStep:
+    def submit_hijacked_call(
+        session_id: str, command: HijackedToolCallCommand, http: Request
+    ) -> HijackedStep:
+        within_budget(None if limits is None else limits.calls, http)
         return hijacked_sessions.submit(session_id, command)
 
     @app.get("/playground/hijacked/{session_id}", operation_id="getHijacked")
@@ -229,15 +259,18 @@ def create_app(
         return JSONResponse({"detail": error.detail}, status_code=error.status)
 
     @app.post("/playground/arena", operation_id="startArena")
-    def start_arena(command: ArenaBody) -> ArenaResult:
+    def start_arena(command: ArenaBody, http: Request) -> ArenaResult:
+        within_budget(None if limits is None else limits.runs, http)
         return arena.run(command)
 
     @app.post("/playground/poison", operation_id="poisonWorld")
-    def poison_world(command: PoisonBody) -> PoisonResponse:
+    def poison_world(command: PoisonBody, http: Request) -> PoisonResponse:
+        within_budget(None if limits is None else limits.runs, http)
         return playground.poison(command)
 
     @app.post("/playground/attacks/{attack_id}/run", operation_id="runAttack")
-    def run_attack(attack_id: str) -> AttackRunResponse:
+    def run_attack(attack_id: str, http: Request) -> AttackRunResponse:
+        within_budget(None if limits is None else limits.runs, http)
         return playground.run_attack(attack_id)
 
     @app.get("/runs/{run_id}/endorsements", operation_id="listEndorsements")

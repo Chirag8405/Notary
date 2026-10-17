@@ -17,6 +17,7 @@ from typing import Protocol
 from fastapi.testclient import TestClient
 
 from notary_server.app import app, create_app
+from notary_server.hijacked import HijackedSessions, counter_session_ids
 from notary_world.cast import ATTACKER_IBAN, BILLER_IBAN
 from notary_world.tools import TOOL_SPECS
 
@@ -54,6 +55,14 @@ def hijacked_call(
     return client.post(f"/playground/hijacked/{session['session_id']}/calls", json=command)
 
 
+def numbered_client() -> TestClient:
+    """An app whose Hijacked Mode sessions are `h1`, `h2`, ... (a real server uses random ids), so
+    the recorded fixtures are the same every time they are captured."""
+    return TestClient(
+        create_app(event_delay=0, hijacked=HijackedSessions(new_id=counter_session_ids()))
+    )
+
+
 def capture() -> dict[str, JsonDict]:
     files: dict[str, JsonDict] = {}
     client = TestClient(app)
@@ -67,7 +76,7 @@ def capture() -> dict[str, JsonDict]:
     for attack_id in ("A3", "A13", "B1"):
         files[f"attack.{attack_id}"] = answer(client.post(f"/playground/attacks/{attack_id}/run"))
 
-    poisoned = TestClient(create_app(event_delay=0))
+    poisoned = numbered_client()
     start = poisoned.post("/playground/hijacked", json={"scenario": "poisoned_bill", "seed": 0})
     files["hijacked.start"] = answer(start)
     session: JsonDict = start.json()
@@ -90,7 +99,7 @@ def capture() -> dict[str, JsonDict]:
     )
     files["hijacked.state"] = answer(poisoned.get(f"/playground/hijacked/{session['session_id']}"))
 
-    legit = TestClient(create_app(event_delay=0))
+    legit = numbered_client()
     legit_start = legit.post(
         "/playground/hijacked", json={"scenario": "legitimate_bill", "seed": 0}
     )

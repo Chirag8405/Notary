@@ -1,12 +1,16 @@
 """Hijacked Mode over REST: a judge submits raw tool calls, the monitor and oracle judge."""
 
+import itertools
+import secrets
 import threading
+import time
 from collections.abc import Callable
 from typing import Annotated, Literal
 
 from pydantic import Field
 
 from notary_core.models import Event, HijackedToolCallCommand, NotaryModel, OracleResult
+from notary_server.limits import Clock
 from notary_world.executor import (
     RunEngine,
     RunRecord,
@@ -23,6 +27,11 @@ from notary_world.tools import RawToolCall
 
 MAX_SESSIONS: int = 64
 MAX_CALLS_PER_SESSION: int = 100
+DEFAULT_IDLE_TTL_SECONDS: float = 1800.0
+"""A session with no accepted call for this long no longer exists."""
+DEFAULT_MAX_AGE_SECONDS: float = 7200.0
+"""A session older than this no longer exists, however busy it is."""
+DEFAULT_SESSIONS_PER_CLIENT: int = 4
 
 USER_GOAL_ID = "user:bill_paid_to_acme"
 
@@ -95,11 +104,28 @@ class HijackedError(Exception):
         self.detail = detail
 
 
+def default_session_id() -> str:
+    """An unguessable id: 128 random bits, URL-safe (22 characters). The id is a capability: whoever
+    knows it can play the session."""
+    return secrets.token_urlsafe(16)
+
+
+def counter_session_ids() -> Callable[[], str]:
+    """`h1`, `h2`, ...: the ids of the recorded fixtures and of the tests. Never for a server."""
+    numbers = itertools.count(1)
+    return lambda: f"h{next(numbers)}"
+
+
 class _Session:
-    def __init__(self, session_id: str, run_id: str, engine: RunEngine) -> None:
+    def __init__(
+        self, session_id: str, run_id: str, engine: RunEngine, client: str, now: float
+    ) -> None:
         self.session_id = session_id
         self.run_id = run_id
         self.engine = engine
+        self.client = client
+        self.created = now
+        self.last_call = now
         self.call_ids: set[str] = set()
         self.lock = threading.Lock()
 
@@ -120,19 +146,54 @@ def _judge(engine: RunEngine) -> tuple[OracleResult, tuple[ObjectiveStatus, ...]
 
 
 class HijackedSessions:
-    """In-memory sessions. Each one has a lock around its engine's read-modify-write."""
+    """In-memory sessions. Each one has a lock around its engine's read-modify-write.
 
-    def __init__(self, scenarios: Callable[[str, int], Scenario] = get_scenario) -> None:
+    A session expires: after `idle_ttl_seconds` without an accepted call, or after
+    `max_age_seconds` in all. An expired session is removed the next time any session is looked
+    up or started (no background thread, so a test with a fake clock is deterministic) and then
+    answers exactly like an id that never existed. Ids come from `new_id`, are unguessable by
+    default, and are never handed out twice. One client may hold `max_sessions_per_client`
+    sessions; the whole process holds `MAX_SESSIONS`."""
+
+    def __init__(
+        self,
+        scenarios: Callable[[str, int], Scenario] = get_scenario,
+        *,
+        clock: Clock = time.monotonic,
+        new_id: Callable[[], str] = default_session_id,
+        idle_ttl_seconds: float = DEFAULT_IDLE_TTL_SECONDS,
+        max_age_seconds: float = DEFAULT_MAX_AGE_SECONDS,
+        max_sessions_per_client: int = DEFAULT_SESSIONS_PER_CLIENT,
+    ) -> None:
         self._scenarios = scenarios
+        self._clock = clock
+        self._new_id = new_id
+        self._idle_ttl = idle_ttl_seconds
+        self._max_age = max_age_seconds
+        self._per_client = max_sessions_per_client
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.Lock()
 
-    def start(self, request: HijackedStart) -> HijackedSession:
+    def _expired(self, session: _Session, now: float) -> bool:
+        return now - session.last_call > self._idle_ttl or now - session.created > self._max_age
+
+    def _sweep(self, now: float) -> None:
+        """Drop every expired session. Call with the lock held."""
+        for session_id in [k for k, v in self._sessions.items() if self._expired(v, now)]:
+            del self._sessions[session_id]
+
+    def start(self, request: HijackedStart, *, client: str = "") -> HijackedSession:
         scenario = self._scenarios(request.scenario, request.seed)
         with self._lock:
+            now = self._clock()
+            self._sweep(now)
             if len(self._sessions) >= MAX_SESSIONS:
                 raise HijackedError(429, "too many sessions")
-            session_id = f"h{len(self._sessions) + 1}"
+            if sum(1 for s in self._sessions.values() if s.client == client) >= self._per_client:
+                raise HijackedError(429, "too many sessions for this client")
+            session_id = self._new_id()
+            while session_id in self._sessions:  # an id in use is never handed out again
+                session_id = self._new_id()
             run_id = f"run-hijacked-{session_id}"
             engine = start_run(
                 run_id=run_id,
@@ -145,11 +206,12 @@ class HijackedSessions:
                 lane="notary",
                 monitor=default_monitor(),
             )
-            self._sessions[session_id] = _Session(session_id, run_id, engine)
+            self._sessions[session_id] = _Session(session_id, run_id, engine, client, now)
         return HijackedSession(session_id=session_id, run_id=run_id, objectives=OBJECTIVES)
 
     def _get(self, session_id: str) -> _Session:
         with self._lock:
+            self._sweep(self._clock())
             session = self._sessions.get(session_id)
         if session is None:
             raise HijackedError(404, "unknown session")
@@ -165,6 +227,7 @@ class HijackedSessions:
             if len(session.call_ids) >= MAX_CALLS_PER_SESSION:
                 raise HijackedError(429, "too many calls")
             session.call_ids.add(command.call_id)
+            session.last_call = self._clock()  # an accepted call keeps the session alive
             before = len(session.engine.chain)
             engine, outcome = propose(
                 session.engine,
