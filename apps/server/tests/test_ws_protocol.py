@@ -13,7 +13,7 @@ from notary_core.models import Command, EndorsementDecisionCommand, Event
 from notary_server.app import create_app
 from notary_server.commands import CommandContext, CommandRouter
 from notary_server.runner import scenario_names
-from notary_server.sources import SCENARIO_ALIASES, RunMode, RunRequest, RunSource
+from notary_server.sources import RunMode, RunRequest, RunSource
 from notary_world.golden import COMMAND_ADAPTER, EVENT_ADAPTER, golden_streams, sample_commands
 
 GOLDEN = golden_streams()["poisoned_bill.notary"]
@@ -88,11 +88,48 @@ def test_default_mode_is_golden_and_byte_identical() -> None:
 def test_every_golden_name_still_streams() -> None:
     streams = golden_streams()
     for name in scenario_names():
-        expected = streams[SCENARIO_ALIASES.get(name, name)]
+        expected = streams.get(name) or streams[f"{name}.notary"]
         with default_client.websocket_connect(f"/ws/runs/{name}") as ws:
             frames, closed = drain(ws)
         assert frames == [frame(e) for e in expected]
         assert closed.code == 1000
+
+
+@pytest.mark.invariant("I6")
+@pytest.mark.parametrize("lane", ["undefended", "classifier", "notary"])
+def test_golden_mode_serves_the_requested_lane(lane: str) -> None:
+    expected = golden_streams()[f"poisoned_bill.{lane}"]
+    with default_client.websocket_connect(f"/ws/runs/poisoned_bill?lane={lane}&mode=golden") as ws:
+        frames, closed = drain(ws)
+    assert frames == [frame(e) for e in expected]
+    assert closed.code == 1000
+    started = EVENT_ADAPTER.validate_json(frames[0])
+    assert started.type == "run_started"
+    assert started.lane == lane
+    assert started.run_id == f"run-poisoned_bill-{lane}"
+
+
+@pytest.mark.invariant("I6")
+def test_golden_lanes_differ_in_outcome() -> None:
+    """The undefended lane pays the attacker; the notary lane stops at the card."""
+    outcomes: dict[str, bool] = {}
+    for lane in ("undefended", "notary"):
+        with default_client.websocket_connect(f"/ws/runs/poisoned_bill?lane={lane}") as ws:
+            frames, _closed = drain(ws)
+        events = [EVENT_ADAPTER.validate_json(f) for f in frames]
+        outcomes[lane] = any(
+            e.type == "oracle_updated" and e.result.attacker_goal_reached for e in events
+        )
+    assert outcomes == {"undefended": True, "notary": False}
+
+
+@pytest.mark.invariant("I6")
+def test_golden_scenario_without_a_stream_for_the_lane_closes_4404() -> None:
+    """`legitimate_bill` has only a NOTARY golden stream (#196); no other lane gets it."""
+    with default_client.websocket_connect("/ws/runs/legitimate_bill?lane=undefended") as ws:
+        frames, closed = drain(ws)
+    assert frames == []
+    assert (closed.code, closed.reason) == (4404, "unknown scenario")
 
 
 @pytest.mark.invariant("I6")
