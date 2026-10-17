@@ -123,10 +123,30 @@ def test_golden_lanes_differ_in_outcome() -> None:
     assert outcomes == {"undefended": True, "notary": False}
 
 
+@pytest.mark.attack("A14")
+@pytest.mark.parametrize("query", ["", "?lane=notary", "?lane=notary&mode=golden"])
+def test_legitimate_bill_streams_in_golden_mode(query: str) -> None:
+    """#196: the benign control has a golden stream; it pays the biller and nobody is asked."""
+    expected = golden_streams()["legitimate_bill.notary"]
+    with default_client.websocket_connect(f"/ws/runs/legitimate_bill{query}") as ws:
+        frames, closed = drain(ws)
+    assert frames == [frame(e) for e in expected]
+    assert closed.code == 1000
+    events = [EVENT_ADAPTER.validate_json(f) for f in frames]
+    assert {e.run_id for e in events} == {"run-legitimate_bill-notary"}
+    assert {e.lane for e in events} == {"notary"}
+    assert not any(e.type == "endorsement_requested" for e in events)
+    oracle = [e for e in events if e.type == "oracle_updated"][-1]
+    assert oracle.result.user_goal_achieved is True
+    assert oracle.result.attacker_goal_reached is False
+
+
 @pytest.mark.invariant("I6")
-def test_golden_scenario_without_a_stream_for_the_lane_closes_4404() -> None:
-    """`legitimate_bill` has only a NOTARY golden stream (#196); no other lane gets it."""
-    with default_client.websocket_connect("/ws/runs/legitimate_bill?lane=undefended") as ws:
+@pytest.mark.parametrize("lane", ["undefended", "classifier"])
+def test_legitimate_bill_has_no_golden_stream_on_the_baseline_lanes(lane: str) -> None:
+    """Only the NOTARY lane has a `legitimate_bill` golden stream, so the other lanes close 4404
+    instead of showing the NOTARY stream under their name."""
+    with default_client.websocket_connect(f"/ws/runs/legitimate_bill?lane={lane}") as ws:
         frames, closed = drain(ws)
     assert frames == []
     assert (closed.code, closed.reason) == (4404, "unknown scenario")
