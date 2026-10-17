@@ -75,6 +75,8 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 
 The "Poison the world" panel (`apps/web/components/poison-panel.tsx`, `/playground?mode=poison`) posts the form to `POST /playground/poison` and shows the lanes side by side with a verdict table. The REST runner replays recorded runs, so only the sample input (email, `Pay to IBAN DE00ATTACKER0000000001`, `Pay my December bill`, all three lanes) has a run; any other payload answers `501 cassette miss`, which the panel explains. The `web` vector is never offered.
 
+The "Attack library" panel (`apps/web/components/attack-library-panel.tsx`, `/playground?mode=library`) lists A1-A14 from `GET /attacks` with each class's primary stop and expected outcome, plus the benign controls B1-B4. One click calls `POST /playground/attacks/{id}/run` and shows, per tool call, the taxonomy's expected outcome against what the real monitor decided; a mismatch and the deferred class (A13) are always shown, never hidden.
+
 ## Three-minute stage script
 
 | Time  | Step                                                                                                                                                       |

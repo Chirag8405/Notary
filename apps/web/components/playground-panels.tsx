@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { AttackLibraryPanel } from "@/components/attack-library-panel";
 import { PoisonPanel } from "@/components/poison-panel";
 import type { PlaygroundMode } from "@/lib/playground-state";
 
@@ -15,6 +16,6 @@ function Placeholder(): ReactElement {
 export const PANELS: Readonly<Record<PlaygroundMode, (props: PanelProps) => ReactElement>> = {
   poison: PoisonPanel,
   hijacked: Placeholder,
-  library: Placeholder,
+  library: AttackLibraryPanel,
   arena: Placeholder,
 };
