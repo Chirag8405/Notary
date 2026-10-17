@@ -4,6 +4,7 @@ import { createRestClient, listModes } from "@notary/client";
 import type { RunMode } from "@notary/client";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { MODES, SCENARIOS, modeOptions, scenarioLanes } from "@/lib/x-ray-state";
@@ -87,6 +88,9 @@ export function RunControls({
         <Button type="button" variant="outline" className="h-9 text-sm" onClick={onRunAgain}>
           Run again
         </Button>
+        <Link href="/playground" className="text-sm underline">
+          Judge playground
+        </Link>
       </div>
       {guide}
       {note === undefined || note === null ? null : (
