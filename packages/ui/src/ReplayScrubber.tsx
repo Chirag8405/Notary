@@ -1,3 +1,4 @@
+/** A range over positions 0..length: the number of events shown, not an event index. */
 export interface ReplayScrubberProps {
   length: number;
   index: number;
@@ -10,7 +11,7 @@ export function ReplayScrubber({ length, index, onChange }: ReplayScrubberProps)
       type="range"
       aria-label="Replay position"
       min={0}
-      max={Math.max(0, length - 1)}
+      max={length}
       value={index}
       disabled={length === 0}
       onChange={(change) => {
