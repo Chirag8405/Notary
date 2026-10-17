@@ -70,7 +70,7 @@ const FLAGGED = "outline outline-2 outline-red-500";
 export function ValueNodeView({ data }: NodeProps<ValueFlowNode>) {
   const { node, selected } = data;
   const classes = [
-    "w-48 rounded border-2 px-2 py-1 text-xs shadow-sm",
+    "w-[200px] rounded-md border-2 px-2 py-1.5 text-xs shadow-sm",
     TONE_CLASS[node.tone],
     node.flagged ? FLAGGED : "",
     selected ? RING : "",
@@ -87,10 +87,10 @@ export function ValueNodeView({ data }: NodeProps<ValueFlowNode>) {
       className={classes.filter(Boolean).join(" ")}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="font-semibold">
+      <div className="truncate font-semibold">
         {node.originKind} <span className="font-normal">({node.integrity})</span>
       </div>
-      <div className="truncate font-mono">{shortPreview(node.preview)}</div>
+      <div className="truncate font-mono text-[11px]">{shortPreview(node.preview)}</div>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
@@ -102,7 +102,7 @@ export function GateNodeView({ data }: NodeProps<GateFlowNode>) {
   const note = gateNote(node);
   const executed = executedNote(node);
   const classes = [
-    "w-48 rounded border-2 px-2 py-1 text-xs shadow-sm",
+    "w-[200px] rounded-md border-2 px-2 py-1.5 text-xs shadow-sm",
     GATE_CLASS[node.state],
     selected ? RING : "",
   ];
@@ -116,15 +116,15 @@ export function GateNodeView({ data }: NodeProps<GateFlowNode>) {
       className={classes.filter(Boolean).join(" ")}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="font-semibold">{node.tool}</div>
+      <div className="truncate font-semibold">{node.tool}</div>
       <div>
-        <span className="rounded bg-white/60 px-1 uppercase">{node.state}</span>
+        <span className="rounded bg-white/60 px-1 text-[11px] uppercase">{node.state}</span>
         {node.reasonCode === null ? null : (
-          <span className="ml-1 font-mono">{node.reasonCode}</span>
+          <span className="ml-1 font-mono text-[11px]">{node.reasonCode}</span>
         )}
       </div>
-      {note === null ? null : <div>{note}</div>}
-      {executed === null ? null : <div>{executed}</div>}
+      {note === null ? null : <div className="text-[11px]">{note}</div>}
+      {executed === null ? null : <div className="text-[11px]">{executed}</div>}
     </div>
   );
 }
@@ -151,7 +151,7 @@ export function ModelEdgeView(props: EdgeProps<ModelFlowEdge>) {
   const labelStyle = { transform: `translate(-50%, -50%) translate(${centerX}px, ${centerY}px)` };
   const labelClass = edge.severed
     ? "pointer-events-none absolute rounded bg-red-100 px-1 font-mono text-[10px] text-red-800"
-    : "pointer-events-none absolute rounded bg-white px-1 text-[10px] text-neutral-600";
+    : "pointer-events-none absolute rounded bg-white px-1 text-[10px] text-muted-foreground";
 
   const labelNode =
     label === "" ? null : (

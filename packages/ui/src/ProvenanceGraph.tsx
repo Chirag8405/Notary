@@ -1,5 +1,12 @@
-import { Background, Controls, ReactFlow, type EdgeTypes, type NodeTypes } from "@xyflow/react";
-import { useMemo } from "react";
+import {
+  Background,
+  ReactFlow,
+  useNodesInitialized,
+  useReactFlow,
+  type EdgeTypes,
+  type NodeTypes,
+} from "@xyflow/react";
+import { useEffect, useMemo } from "react";
 
 import { layout } from "./graph-layout";
 import { buildGraph } from "./graph-model";
@@ -30,6 +37,28 @@ export interface ProvenanceGraphProps {
 const NODE_TYPES: NodeTypes = { value: ValueNodeView, gate: GateNodeView };
 const EDGE_TYPES: EdgeTypes = { model: ModelEdgeView };
 
+/** Room for the rows of the tallest column: a row is 110 units tall and is shown at about 60%. */
+const MIN_HEIGHT = 380;
+const MAX_HEIGHT = 720;
+
+function panelHeight(positions: ReadonlyMap<string, { x: number; y: number }>): number {
+  const lowest = Math.max(0, ...[...positions.values()].map((position) => position.y));
+  return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.ceil((lowest + 90) * 0.6) + 40));
+}
+
+/**
+ * Fits the whole graph in the panel, and again whenever a node appears or the panel changes size.
+ * `fitView` as a prop only runs once, when the first node arrives (a single gate, shown huge).
+ */
+function FitOnChange({ signature }: { signature: string }) {
+  const { fitView } = useReactFlow();
+  const initialized = useNodesInitialized();
+  useEffect(() => {
+    if (initialized) void fitView({ padding: 0.2, maxZoom: 1 });
+  }, [signature, initialized, fitView]);
+  return null;
+}
+
 function edgeText(edge: GraphEdge): string {
   const label = edge.severed ? (edge.reasonCode ?? "blocked") : (edge.param ?? "derived");
   return `${edge.from} to ${edge.to}: ${label}`;
@@ -47,6 +76,11 @@ export function ProvenanceGraph({
     [view, flaggedValueIds],
   );
   const positions = useMemo(() => layout(model), [model]);
+  const height = useMemo(() => panelHeight(positions), [positions]);
+  const signature = useMemo(
+    () => `${model.nodes.map((node) => node.id).join(",")}|${height}`,
+    [model, height],
+  );
 
   const nodes = useMemo(
     () =>
@@ -74,7 +108,7 @@ export function ProvenanceGraph({
   if (model.nodes.length === 0) {
     return (
       <div className="w-full rounded border p-4" aria-label="Provenance graph">
-        <p className="text-sm text-neutral-500">No provenance yet</p>
+        <p className="text-sm text-muted-foreground">No provenance yet</p>
       </div>
     );
   }
@@ -82,20 +116,23 @@ export function ProvenanceGraph({
   return (
     <div className="w-full rounded border" aria-label="Provenance graph">
       <style>{SNAP_CSS}</style>
-      <div className="h-64 w-full">
+      <div className="min-h-[380px] w-full" style={{ height }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
           fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          minZoom={0.4}
+          maxZoom={1.25}
           nodesDraggable={false}
           nodesConnectable={false}
           onNodeClick={(_event, node) => onSelect?.(node.id)}
           onPaneClick={() => onSelect?.(null)}
         >
           <Background />
-          <Controls showInteractive={false} />
+          <FitOnChange signature={signature} />
         </ReactFlow>
       </div>
       <ul aria-label="Graph nodes" className="sr-only">

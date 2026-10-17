@@ -21,6 +21,10 @@ export type DecisionStreamProps =
   | (DecisionStreamCommon & { view: RunView })
   | (DecisionStreamCommon & { events: readonly Event[] });
 
+/** A small badge that selects something when clicked. */
+const BADGE =
+  "inline-flex cursor-pointer items-center rounded-md border px-2 py-0.5 font-mono text-xs hover:bg-muted";
+
 const WAITING = "Waiting for events…";
 
 const CHIP_CLASS: Record<ArgChip["originKind"], string> = {
@@ -46,7 +50,7 @@ export function DecisionStream(props: DecisionStreamProps) {
 
 function EventList({ events }: { events: readonly Event[] }) {
   if (events.length === 0) {
-    return <p className="text-sm text-neutral-500">{WAITING}</p>;
+    return <p className="text-sm text-muted-foreground">{WAITING}</p>;
   }
   return (
     <ol className="space-y-1 font-mono text-sm" aria-label="Decision stream">
@@ -79,7 +83,7 @@ function DecisionRows({
 }: DecisionStreamCommon & { view: RunView }) {
   const rows = useMemo(() => toDecisionRows(view), [view]);
   if (rows.length === 0) {
-    return <p className="text-sm text-neutral-500">{WAITING}</p>;
+    return <p className="text-sm text-muted-foreground">{WAITING}</p>;
   }
   return (
     <ol className="space-y-2 text-sm" aria-label="Decision stream">
@@ -107,7 +111,7 @@ function DecisionRows({
               <button
                 type="button"
                 data-row-select
-                className="font-semibold underline-offset-2 hover:underline"
+                className="cursor-pointer font-semibold underline-offset-2 hover:underline"
                 onClick={(event) => {
                   event.stopPropagation();
                   onSelect?.({ callId: row.callId });
@@ -115,7 +119,7 @@ function DecisionRows({
               >
                 {row.tool}
               </button>
-              <span className="font-mono text-xs text-neutral-500">
+              <span className="font-mono text-xs text-muted-foreground">
                 {row.callId} <span data-manifest>{row.manifestShort}</span>
               </span>
               {row.verdict === null ? null : (
@@ -148,7 +152,7 @@ function DecisionRows({
                       data-chip={chip.param}
                       data-origin={chip.originKind}
                       data-integrity={chip.integrity}
-                      className={`rounded border px-1 text-xs ${CHIP_CLASS[chip.originKind]}`}
+                      className={`${BADGE} ${CHIP_CLASS[chip.originKind]}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSelect?.({ callId: row.callId, valueId: chip.valueId });
@@ -163,7 +167,7 @@ function DecisionRows({
                     <button
                       type="button"
                       data-hash-link
-                      className="font-mono text-xs text-indigo-700 underline"
+                      className={`${BADGE} border-input bg-background`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSelect?.({ callId: row.callId, valueId: chip.valueId });
