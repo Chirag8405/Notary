@@ -344,3 +344,60 @@ describe("EndorsementPanel rendering", () => {
     expect(screen.getByRole("heading").textContent).toBe("Confirm pay_bill?");
   });
 });
+
+describe("EndorsementPanel onResolvedChange", () => {
+  const ids = (set: ReadonlySet<string> | undefined) => [...(set ?? [])].sort();
+
+  it("reports the answered cards once, by content, and never on mount [I4]", async () => {
+    const d = setup();
+    d.fetchPending.mockResolvedValueOnce([item(ID, 3)]).mockResolvedValue([]);
+    const onResolved = vi.fn<(resolved: ReadonlySet<string>) => void>();
+    const { update } = await mount(d, { onResolvedChange: onResolved });
+    expect(onResolved).not.toHaveBeenCalled();
+
+    fireEvent.click(button("Confirm"));
+    expect(onResolved).not.toHaveBeenCalled();
+    await settle();
+    expect(onResolved).toHaveBeenCalledTimes(1);
+    expect(ids(onResolved.mock.calls[0]?.[0])).toEqual([ID]);
+
+    // Re-renders, new events and a new callback do not report the same set again.
+    await update({ eventCount: 9 });
+    const other = vi.fn<(resolved: ReadonlySet<string>) => void>();
+    await update({ onResolvedChange: other });
+    await update({ eventCount: 10 });
+    expect(onResolved).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it("counts rejected cards and grows the set as more cards are answered [I4]", async () => {
+    const d = setup();
+    d.fetchPending
+      .mockResolvedValueOnce([item(ID, 3), item("e-second", 3)])
+      .mockResolvedValueOnce([item("e-second", 3)])
+      .mockResolvedValue([]);
+    const onResolved = vi.fn<(resolved: ReadonlySet<string>) => void>();
+    await mount(d, { endorsements: [FIRST, SECOND], onResolvedChange: onResolved });
+
+    fireEvent.click(within(card(ID)).getByRole("button", { name: "Reject" }));
+    await settle();
+    expect(ids(onResolved.mock.calls.at(-1)?.[0])).toEqual([ID]);
+
+    fireEvent.click(cardButton("e-second", "Confirm"));
+    await settle();
+    expect(onResolved).toHaveBeenCalledTimes(2);
+    expect(ids(onResolved.mock.calls.at(-1)?.[0])).toEqual(["e-second", ID]);
+  });
+
+  it("does not report a card that is only sending or in conflict [I4]", async () => {
+    const d = setup();
+    const onResolved = vi.fn<(resolved: ReadonlySet<string>) => void>();
+    const { update } = await mount(d, { onResolvedChange: onResolved });
+    fireEvent.click(button("Confirm"));
+    await settle();
+    expect(card(ID).getAttribute("data-state")).toBe("sending");
+    await update({ closeCode: 4409 });
+    expect(card(ID).getAttribute("data-state")).toBe("conflict");
+    expect(onResolved).not.toHaveBeenCalled();
+  });
+});
