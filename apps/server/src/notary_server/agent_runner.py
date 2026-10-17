@@ -46,6 +46,7 @@ from notary_server.llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, LlmClient, LlmR
 from notary_world.executor import (
     MAX_ESCALATION_ROUNDS,
     AuditAppend,
+    CallOutcome,
     RunEngine,
     RunRecord,
     finish,
@@ -63,6 +64,10 @@ EscalationDecider = Callable[[Endorsement], Literal["approve", "reject"]]
 """Asked (possibly blocking) after the escalation was streamed. The only place a human approval
 can enter a run."""
 
+EscalationAnnouncer = Callable[[Endorsement], None]
+"""Told about an escalation BEFORE its `endorsement_requested` event is handed to the consumer, so
+a card is already pending when a client sees the event (#195). It must not block."""
+
 ContractSource = Callable[[Scenario, Lane], IntentContract]
 
 _BILL_GOALS = GoalPair(
@@ -76,6 +81,10 @@ SCENARIO_GOALS: Mapping[str, GoalPair] = MappingProxyType(
 def reject_all(endorsement: Endorsement) -> Literal["approve", "reject"]:
     """The default decider: an unattended run never approves anything."""
     return "reject"
+
+
+def ignore_escalation(endorsement: Endorsement) -> None:
+    """The default announcer: nobody needs to know before the event is streamed."""
 
 
 def scenario_contract(scenario: Scenario, lane: Lane) -> IntentContract:
@@ -171,6 +180,7 @@ class ServerAgentRunner:
         llm: LlmClient,
         scenarios: Callable[[str], Scenario],
         decide_escalation: EscalationDecider = reject_all,
+        announce_escalation: EscalationAnnouncer = ignore_escalation,
         contracts: ContractSource = scenario_contract,
         model: str = DEFAULT_MODEL,
         audit_append: AuditAppend = append,
@@ -178,9 +188,14 @@ class ServerAgentRunner:
         self._llm = llm
         self._scenarios = scenarios
         self._decide = decide_escalation
+        self._announce = announce_escalation
         self._contracts = contracts
         self._model = model
         self._audit_append = audit_append
+
+    def _announce_pending(self, engine: RunEngine, outcome: CallOutcome) -> None:
+        if outcome.status == "escalated" and outcome.endorsement_id is not None:
+            self._announce(_endorsement(engine, outcome.endorsement_id))
 
     def _one_call(
         self, cursor: _Cursor, call: RawToolCall, hooks: RunnerHooks, spotlight: bool
@@ -188,6 +203,7 @@ class ServerAgentRunner:
         """Propose one call, settle its escalations; the text for the agent, or None if halted."""
         before = frozenset(v.ref.id for v in cursor.engine.store)
         cursor.engine, outcome = propose(cursor.engine, call)
+        self._announce_pending(cursor.engine, outcome)
         yield from cursor.fresh()
         rounds = 0
         while (
@@ -201,6 +217,8 @@ class ServerAgentRunner:
             cursor.engine, resolved = resolve_escalation(
                 cursor.engine, outcome.endorsement_id, decision
             )
+            if resolved is not None:
+                self._announce_pending(cursor.engine, resolved)
             yield from cursor.fresh()
             if resolved is None:
                 break

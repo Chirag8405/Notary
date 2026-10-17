@@ -2,7 +2,7 @@
 
 import threading
 import time
-from collections.abc import Callable, Generator, Iterator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from typing import Literal
 
 import pytest
@@ -209,6 +209,47 @@ def test_a_new_run_with_the_same_id_never_reuses_an_old_decision() -> None:
 
 
 @pytest.mark.attack("A11")
+def test_announce_registers_the_card_without_a_waiter() -> None:
+    broker = EndorsementBroker()
+    run = broker.start_run("r1", max_approvals=2)
+    run.announce(endorsement())
+    (entry,) = broker.pending("r1")
+    assert (entry.endorsement, entry.remaining_approvals) == (endorsement(), 2)
+    run.announce(endorsement())  # idempotent
+    assert len(broker.pending("r1")) == 1
+    waiter = Waiter(run.decide, endorsement())
+    assert broker.submit(decision()) == "accepted"
+    assert waiter.join() == "approve"
+    assert broker.pending("r1") == ()
+
+
+@pytest.mark.attack("A11")
+def test_an_answer_before_the_decider_is_asked_is_kept() -> None:
+    broker = EndorsementBroker()
+    run = broker.start_run("r1", max_approvals=1)
+    run.announce(endorsement())
+    assert broker.submit(decision(decision_="reject")) == "accepted"
+    assert broker.submit(decision()) == "already_resolved"
+    assert run.decide(endorsement()) == "reject"
+
+
+@pytest.mark.attack("A11")
+def test_an_announced_card_is_rejected_when_the_run_is_cancelled_or_restarted() -> None:
+    broker = EndorsementBroker()
+    run = broker.start_run("r1", max_approvals=1)
+    run.announce(endorsement())
+    broker.cancel_run("r1")
+    assert broker.pending("r1") == ()
+    assert run.decide(endorsement()) == "reject"
+    run.announce(endorsement("e2"))  # a cancelled run registers nothing that can be approved
+    assert broker.pending("r1") == ()
+    assert broker.submit(decision(endorsement_id="e2")) == "already_resolved"
+    again = broker.start_run("r1", max_approvals=1)
+    again.announce(endorsement())
+    assert len(broker.pending("r1")) == 1
+
+
+@pytest.mark.attack("A11")
 def test_pending_view() -> None:
     broker = EndorsementBroker()
     decide = broker.decider_for("r1", max_approvals=2)
@@ -353,13 +394,14 @@ class RunnerSource:
         self.chain_events.append(event)
         return append(chain, event)
 
-    def events(self, request: RunRequest) -> Iterator[Event]:
+    def events(self, request: RunRequest) -> Generator[Event, None, None]:
         return self._run(request)
 
     def _run(self, request: RunRequest) -> Generator[Event, None, None]:
         run_id = f"run-{request.scenario}-{request.lane}"
         scenario = contacts_scenario(1)
-        decide = self.broker.decider_for(run_id, max_approvals=1)
+        endorsements = self.broker.start_run(run_id, max_approvals=1)
+        decide = endorsements.decide
 
         def counted(card: Endorsement) -> Decision:
             self.deciders_asked += 1
@@ -369,6 +411,7 @@ class RunnerSource:
             llm=self.client,
             scenarios=lambda _name: scenario,
             decide_escalation=counted,
+            announce_escalation=endorsements.announce,
             audit_append=self._audit,
         )
         hooks = hooks_for_lane("notary", gate=default_monitor())
@@ -378,9 +421,9 @@ class RunnerSource:
         self.records.append(record)
 
 
-def socket_client(source: RunnerSource) -> TestClient:
+def socket_client(source: RunnerSource, event_delay: float = 0) -> TestClient:
     sources: dict[RunMode, RunSource] = {"golden": source}
-    return TestClient(create_app(event_delay=0, sources=sources, broker=source.broker))
+    return TestClient(create_app(event_delay=event_delay, sources=sources, broker=source.broker))
 
 
 def frames_until(ws: WebSocketTestSession, event_type: str) -> list[Event]:
@@ -413,6 +456,47 @@ def requested(events: Sequence[Event]) -> EndorsementRequested:
     return next(e for e in reversed(events) if isinstance(e, EndorsementRequested))
 
 
+def events_until_requested(
+    source: RunnerSource,
+) -> tuple[Generator[Event, None, None], EndorsementRequested]:
+    """Drive the run on this thread to the moment the consumer is handed the card event."""
+    events = source.events(RunRequest(scenario="contacts", lane="notary", mode="golden"))
+    for event in events:
+        if isinstance(event, EndorsementRequested):
+            return events, event
+    raise AssertionError("the run never asked for an endorsement")
+
+
+@pytest.mark.invariant("I4")
+def test_the_card_is_pending_when_the_event_is_handed_over() -> None:
+    """#195: the card is registered before `endorsement_requested` leaves the runner, not when the
+    runner reaches the decider (after the stream's per-event delay)."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    events, card = events_until_requested(source)
+    assert source.deciders_asked == 0  # the runner has not asked the decider yet
+    (entry,) = source.broker.pending(card.run_id)
+    assert entry.endorsement == card.endorsement
+    assert entry.remaining_approvals == 1
+    source.broker.cancel_run(card.run_id)
+    events.close()
+
+
+@pytest.mark.invariant("I4")
+def test_an_answer_inside_the_old_gap_is_accepted_and_used() -> None:
+    """The answer arrives after the event is handed over and before the decider is asked."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    events, card = events_until_requested(source)
+    result = source.broker.submit(decision(card.run_id, card.endorsement.endorsement_id))
+    assert result == "accepted"
+    assert source.deciders_asked == 0
+    rest = list(events)
+    assert source.deciders_asked == 1
+    (record,) = source.records
+    assert [c.name for c in record.world_after.contacts][-1] == "Alpha Consulting"
+    assert any(isinstance(e, EffectExecuted) for e in rest)
+    assert source.broker.pending(card.run_id) == ()
+
+
 @pytest.mark.invariant("I4")
 def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
@@ -437,6 +521,26 @@ def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
     assert ledger_entry.source.kind == "user_endorsed"
     assert ledger_entry.source.endorsement_id == card.endorsement.endorsement_id
     assert source.broker.pending(run_id) == ()
+
+
+@pytest.mark.invariant("I4")
+def test_a_fast_answer_over_the_socket_needs_no_wait() -> None:
+    """#195 over the real socket: list the card and answer it the moment the frame is received."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    client = socket_client(source, event_delay=0.05)
+    with client.websocket_connect("/ws/runs/contacts") as ws:
+        seen = frames_until(ws, "endorsement_requested")
+        card = requested(seen)
+        listed = client.get(f"/runs/{card.run_id}/endorsements").json()["pending"]
+        assert [p["endorsement"]["endorsement_id"] for p in listed] == [
+            card.endorsement.endorsement_id
+        ]
+        assert listed[0]["remaining_approvals"] == 1
+        decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "approve")
+        closed = finish(ws)
+    assert closed.code == 1000
+    (record,) = source.records
+    assert [c.name for c in record.world_after.contacts][-1] == "Alpha Consulting"
 
 
 @pytest.mark.attack("A11")

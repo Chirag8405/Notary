@@ -15,7 +15,7 @@ from typing import Literal
 
 from notary_core.endorsement import render_card
 from notary_core.models import Command, Endorsement, EndorsementDecisionCommand, NotaryModel
-from notary_server.agent_runner import EscalationDecider
+from notary_server.agent_runner import EscalationAnnouncer, EscalationDecider
 from notary_server.commands import (
     CLOSE_COMMAND_CONFLICT,
     CLOSE_UNSUPPORTED_COMMAND,
@@ -67,6 +67,14 @@ class _Run:
         return any(slot.decision is None for slot in self.slots.values())
 
 
+class EndorsementRun:
+    """The two hooks of one run: `announce` registers a card, `decide` waits for its answer."""
+
+    def __init__(self, announce: EscalationAnnouncer, decide: EscalationDecider) -> None:
+        self.announce = announce
+        self.decide = decide
+
+
 class EndorsementBroker:
     def __init__(self, *, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._timeout = timeout_seconds
@@ -74,8 +82,17 @@ class EndorsementBroker:
         self._runs: OrderedDict[str, _Run] = OrderedDict()
 
     def decider_for(self, run_id: str, *, max_approvals: int) -> EscalationDecider:
-        """The decider of one run. Calling it starts the run: state left by an earlier run with
-        the same id is rejected and dropped, so a stale decision can never answer a new run."""
+        """The decider of one run (see `start_run`)."""
+        return self.start_run(run_id, max_approvals=max_approvals).decide
+
+    def start_run(self, run_id: str, *, max_approvals: int) -> EndorsementRun:
+        """Start a run. State left by an earlier run with the same id is rejected and dropped, so
+        a stale decision can never answer a new run.
+
+        `announce(endorsement)` registers the pending card without waiting; the runner calls it
+        before it hands the `endorsement_requested` event to the client, so the card is already
+        on `pending` and answerable when the client sees the event (#195). `decide(endorsement)`
+        waits for the answer; it registers the card too when `announce` was not called."""
         with self._cond:
             previous = self._runs.pop(run_id, None)
             if previous is not None:
@@ -84,10 +101,14 @@ class EndorsementBroker:
             self._runs[run_id] = _Run()
             self._evict()
 
+        def announce(endorsement: Endorsement) -> None:
+            with self._cond:
+                self._slot(run_id, endorsement, max_approvals)
+
         def decide(endorsement: Endorsement) -> Decision:
             return self._wait(run_id, endorsement, max_approvals)
 
-        return decide
+        return EndorsementRun(announce, decide)
 
     def _evict(self) -> None:
         for old_id in list(self._runs):
@@ -96,16 +117,21 @@ class EndorsementBroker:
             if not self._runs[old_id].has_waiter():
                 del self._runs[old_id]
 
+    def _slot(self, run_id: str, endorsement: Endorsement, max_approvals: int) -> _Slot:
+        """The slot of the card, created on first sight. Call with the lock held."""
+        run = self._runs.setdefault(run_id, _Run())
+        slot = run.slots.get(endorsement.endorsement_id)
+        if slot is None:
+            remaining = max(max_approvals - run.approved, 0)
+            slot = _Slot(endorsement, remaining)
+            run.slots[endorsement.endorsement_id] = slot
+            if run.cancelled:
+                slot.decision = "reject"
+        return slot
+
     def _wait(self, run_id: str, endorsement: Endorsement, max_approvals: int) -> Decision:
         with self._cond:
-            run = self._runs.setdefault(run_id, _Run())
-            slot = run.slots.get(endorsement.endorsement_id)
-            if slot is None:
-                remaining = max(max_approvals - run.approved, 0)
-                slot = _Slot(endorsement, remaining)
-                run.slots[endorsement.endorsement_id] = slot
-                if run.cancelled:
-                    slot.decision = "reject"
+            slot = self._slot(run_id, endorsement, max_approvals)
             deadline = time.monotonic() + self._timeout
             while slot.decision is None:
                 left = deadline - time.monotonic()
