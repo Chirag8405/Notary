@@ -41,6 +41,7 @@ from notary_server.agent_io import (
     render_result,
     result_message,
 )
+from notary_server.compiler import with_optional_params
 from notary_server.labeling import world_labeling_policy
 from notary_server.llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, LlmClient, LlmRequest
 from notary_world.executor import (
@@ -58,7 +59,7 @@ from notary_world.invariants import check_invariants
 from notary_world.models import CassetteTurn
 from notary_world.oracle import GoalPair, evaluate
 from notary_world.scenarios import Scenario
-from notary_world.tools import TOOL_SPECS, RawToolCall
+from notary_world.tools import TOOL_SPECS, RawToolCall, world_manifests, world_policy
 
 EscalationDecider = Callable[[Endorsement], Literal["approve", "reject"]]
 """Asked (possibly blocking) after the escalation was streamed. The only place a human approval
@@ -88,7 +89,13 @@ def ignore_escalation(endorsement: Endorsement) -> None:
 
 
 def scenario_contract(scenario: Scenario, lane: Lane) -> IntentContract:
-    return scenario.contract
+    """The scenario's contract with the optional parameters of its tools allowed at their floors.
+
+    A real model fills optional parameters (`pay_bill.reference`); the hand-written scenario
+    contracts name only the required ones, which would block a benign bill at scope. The floors
+    of the sensitive-parameter table are not lowered (see `with_optional_params`).
+    """
+    return with_optional_params(scenario.contract, world_manifests(scenario.world), world_policy())
 
 
 def goals_for(scenario_id: str) -> GoalPair:
@@ -184,6 +191,7 @@ class ServerAgentRunner:
         contracts: ContractSource = scenario_contract,
         model: str = DEFAULT_MODEL,
         audit_append: AuditAppend = append,
+        run_note: str = "",
     ) -> None:
         self._llm = llm
         self._scenarios = scenarios
@@ -192,6 +200,7 @@ class ServerAgentRunner:
         self._contracts = contracts
         self._model = model
         self._audit_append = audit_append
+        self._run_note = run_note
 
     def _announce_pending(self, engine: RunEngine, outcome: CallOutcome) -> None:
         if outcome.status == "escalated" and outcome.endorsement_id is not None:
@@ -284,6 +293,6 @@ class ServerAgentRunner:
         def oracle(run: RunRecord) -> OracleResult:
             return evaluate(run, goals, check_invariants(run, monitor))
 
-        cursor.engine, record = finish(cursor.engine, oracle=oracle)
+        cursor.engine, record = finish(cursor.engine, oracle=oracle, note=self._run_note)
         yield from cursor.fresh()
         return record

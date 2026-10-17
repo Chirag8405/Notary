@@ -66,6 +66,8 @@ class CassetteClient:
     """Replays a cassette; a prompt it never recorded is an error, never a fallback."""
 
     def __init__(self, cassette: Cassette) -> None:
+        self.model = cassette.model
+        """Who recorded it: a model name, or `scripted-v1` for a scripted agent."""
         self._lane: Lane = cassette.lane
         answers: dict[str, CassetteTurn] = {}
         for entry in cassette.entries:

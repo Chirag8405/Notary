@@ -25,6 +25,7 @@ from notary_core.models import (
     Endorsement,
     EndorsementRequested,
     Event,
+    FreeMarker,
     OracleUpdated,
     RunFinished,
     RunStarted,
@@ -40,6 +41,7 @@ from notary_server.agent_runner import (
     scenario_contract,
     ungated_monitor,
 )
+from notary_server.compiler import PAYLOAD_EGRESS_BYTES
 from notary_server.labeling import world_labeling_policy
 from notary_server.llm import CassetteClient, RecordingClient, ScriptedClient
 from notary_server.runner import ScenarioNotFoundError
@@ -303,7 +305,17 @@ def test_a_custom_contract_source_is_used() -> None:
     started = events[0]
     assert isinstance(started, RunStarted)
     assert started.contract.contract_id == "contract-narrow"
-    assert scenario_contract(legitimate_bill_scenario(), "notary") == base
+    widened = scenario_contract(legitimate_bill_scenario(), "notary")
+    pay = next(scope for scope in widened.allowed_tools if scope.tool == "pay_bill")
+    assert pay.params == {
+        **dict(next(s for s in base.allowed_tools if s.tool == "pay_bill").params),
+        "reference": FreeMarker(kind="free"),
+    }
+    restored = widened.model_copy(
+        update={"allowed_tools": base.allowed_tools, "budget": base.budget}
+    )
+    assert restored == base  # only the optional parameters and the payload egress floor differ
+    assert widened.budget.max_egress_bytes == PAYLOAD_EGRESS_BYTES
 
 
 @pytest.mark.invariant("I2")

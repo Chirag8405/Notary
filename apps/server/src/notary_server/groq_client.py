@@ -59,8 +59,9 @@ class ChatApi(Protocol):
 
 
 class _SdkChat:
-    def __init__(self) -> None:
+    def __init__(self, max_wait_seconds: float) -> None:
         self._client = groq.Groq()
+        self._max_wait = max_wait_seconds
 
     def create(
         self,
@@ -88,6 +89,8 @@ class _SdkChat:
                 if attempt == RATE_LIMIT_WAITS:
                     raise
                 wait = retry_after(limited)
+                if wait > self._max_wait:
+                    raise  # a daily cap frees tokens slowly: let the caller decide
                 LOG.warning("Groq rate limit; waiting %.0fs (attempt %d)", wait, attempt + 1)
                 time.sleep(wait)
         raise AssertionError("unreachable")
@@ -203,12 +206,15 @@ def _tool_param(spec: LlmToolSpec) -> ChatCompletionToolParam:
 class GroqClient:
     """Live client: one chat completion per request, no retries, no streaming."""
 
-    def __init__(self, *, chat_api: ChatApi | None = None) -> None:
+    def __init__(
+        self, *, chat_api: ChatApi | None = None, max_wait_seconds: float = MAX_WAIT_SECONDS
+    ) -> None:
         self._api = chat_api
+        self._max_wait = max_wait_seconds
 
     def _chat(self) -> ChatApi:
         if self._api is None:
-            self._api = _SdkChat()
+            self._api = _SdkChat(self._max_wait)
         return self._api
 
     def complete(self, request: LlmRequest) -> CassetteTurn:

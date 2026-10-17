@@ -27,7 +27,7 @@ from notary_server.commands import CLOSE_CASSETTE_MISS, CLOSE_MODE_UNAVAILABLE
 from notary_server.endorsement import EndorsementBroker, EndorsementRun
 from notary_server.groq_client import GroqClient
 from notary_server.lanes import lane_hooks, stream_for_lane
-from notary_server.llm import CassetteClient, CassetteMissError, LlmClient
+from notary_server.llm import DEFAULT_MODEL, CassetteClient, CassetteMissError, LlmClient
 from notary_server.playground import LaneRunner
 from notary_server.runner import ScenarioNotFoundError
 from notary_server.sources import (
@@ -43,6 +43,9 @@ from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 DEFAULT_ANCHOR_DB = ":memory:"
 DEFAULT_ENDORSEMENT_TIMEOUT_SECONDS = 300.0
 DEFAULT_ARENA_MAX_ROUNDS = 10
+LIVE_RUN_NOTE = "live run: a real model answered, so this run is not reproducible"
+"""Appended to the `run_finished` summary of every live run (the event contract has no field for
+it). A cassette or golden run never carries it."""
 
 
 class Settings(NotaryModel):
@@ -54,6 +57,9 @@ class Settings(NotaryModel):
     arena_max_rounds: Annotated[int, Field(ge=1, le=100)] = DEFAULT_ARENA_MAX_ROUNDS
     live_available: bool = False
     """Whether `GROQ_API_KEY` is set. Only the fact is kept, never the key."""
+    live_model: Annotated[str, Field(min_length=1)] = DEFAULT_MODEL
+    """The Groq chat model `live` mode asks (`NOTARY_LIVE_MODEL`). Cassettes always use
+    `DEFAULT_MODEL`: the model is part of every cassette key."""
 
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
@@ -62,6 +68,9 @@ class Settings(NotaryModel):
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
         values: dict[str, object] = {"live_available": bool(environ.get("GROQ_API_KEY"))}
+        live_model = environ.get("NOTARY_LIVE_MODEL")
+        if live_model is not None:
+            values["live_model"] = live_model
         anchor_db = environ.get("NOTARY_ANCHOR_DB")
         if anchor_db is not None:
             values["anchor_db"] = anchor_db
@@ -81,6 +90,14 @@ def _number[N: (int, float)](name: str, raw: str, parse: Callable[[str], N]) -> 
         return parse(raw)
     except ValueError:
         raise ValueError(f"{name} is not a valid number") from None
+
+
+def cassette_note(model: str) -> str:
+    """Appended to the `run_finished` summary of a cassette run: who produced the answers.
+
+    The committed cassettes say `scripted-v1`: a scripted agent wrote them, no model did."""
+    kind = "scripted agent" if model.startswith("scripted") else f"model {model}"
+    return f"cassette replay: recorded from a {kind} ({model})"
 
 
 def load_cassette_client(name: str) -> CassetteClient:
@@ -114,6 +131,9 @@ class RunStreamer:
         llm: LlmClient,
         decide: EscalationDecider,
         announce: EscalationAnnouncer = ignore_escalation,
+        *,
+        model: str = DEFAULT_MODEL,
+        run_note: str = "",
     ) -> Iterator[Event]:
         runner = ServerAgentRunner(
             llm=llm,
@@ -121,6 +141,8 @@ class RunStreamer:
             decide_escalation=decide,
             announce_escalation=announce,
             audit_append=anchored_append(self._anchors),
+            model=model,
+            run_note=run_note,
         )
         run = runner.run(
             lane=lane, scenario=scenario.scenario_id, run_id=run_id, hooks=lane_hooks(lane)
@@ -136,7 +158,9 @@ class RunStreamer:
 
         def run(scenario: Scenario, lane: Lane, run_id: str) -> Iterator[Event]:
             client = load_cassette_client(f"{scenario.scenario_id}.{lane}")
-            return self.stream(scenario, lane, run_id, client, reject_all)
+            return self.stream(
+                scenario, lane, run_id, client, reject_all, run_note=cassette_note(client.model)
+            )
 
         return run
 
@@ -160,7 +184,13 @@ class CassetteSource:
         client = load_cassette_client(f"{request.scenario}.{request.lane}")
         endorsements = self._streamer.socket_endorsements(scenario, run_id)
         return self._streamer.stream(
-            scenario, request.lane, run_id, client, endorsements.decide, endorsements.announce
+            scenario,
+            request.lane,
+            run_id,
+            client,
+            endorsements.decide,
+            endorsements.announce,
+            run_note=cassette_note(client.model),
         )
 
 
@@ -173,27 +203,36 @@ class LiveSource:
         *,
         available: bool,
         client_factory: Callable[[], LlmClient] = GroqClient,
+        model: str = DEFAULT_MODEL,
     ) -> None:
         self._streamer = streamer
         self._available = available
         self._factory = client_factory
+        self._model = model
         self._client: LlmClient | None = None
 
     def events(self, request: RunRequest) -> Iterator[Event]:
+        if not self._available:  # before the scenario lookup: no key is 4501 whatever the name
+            raise RunUnavailableError(CLOSE_MODE_UNAVAILABLE, "mode not available")
+        return self.run(_scenario(request.scenario), request.lane)
+
+    def run(self, scenario: Scenario, lane: Lane) -> Iterator[Event]:
+        """The live run of an already built scenario (the model probe varies the world seed)."""
         if not self._available:
             raise RunUnavailableError(CLOSE_MODE_UNAVAILABLE, "mode not available")
-        scenario = _scenario(request.scenario)
         if self._client is None:
             self._client = self._factory()
-        run_id = golden_run_id(request.scenario, request.lane)
+        run_id = golden_run_id(scenario.scenario_id, lane)
         endorsements = self._streamer.socket_endorsements(scenario, run_id)
         return self._streamer.stream(
             scenario,
-            request.lane,
+            lane,
             run_id,
             self._client,
             endorsements.decide,
             endorsements.announce,
+            model=self._model,
+            run_note=LIVE_RUN_NOTE,
         )
 
 
@@ -216,6 +255,7 @@ def build_app(settings: Settings, *, event_delay: float = 0.4) -> FastAPI:
         "live": LiveSource(
             streamer,
             available=settings.live_available,
+            model=settings.live_model,
         ),
     }
     return create_app(

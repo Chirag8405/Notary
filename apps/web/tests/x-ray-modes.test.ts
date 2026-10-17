@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_MODE,
+  CASSETTE_LABEL,
   LIVE_LABEL,
   LIVE_UNAVAILABLE,
   MODES,
@@ -90,7 +91,7 @@ describe("modeOptions", () => {
                 mode: "cassette",
                 enabled: true,
                 note: null,
-                label: "cassette",
+                label: CASSETTE_LABEL,
               });
             }
             if (option.mode === "live") {
@@ -105,7 +106,8 @@ describe("modeOptions", () => {
         }
       }
     }
-    expect(LIVE_LABEL).toBe("live (needs an API key; not reproducible)");
+    expect(LIVE_LABEL).toBe("live (a real Groq model; needs an API key; not reproducible)");
+    expect(CASSETTE_LABEL).toBe("cassette (replay of a scripted agent)");
   });
 
   it("shows all three modes while the list is unknown or unusable [I6]", () => {

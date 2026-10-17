@@ -1,0 +1,36 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "note": "The real Intent Compiler reply recorded from Groq (cassette key removed). It omits read_inbox and sets every budget field except max_effects to 0.",
+  "reply": {
+    "tools": [
+      {
+        "tool": "pay_bill",
+        "params": [
+          {
+            "name": "amount",
+            "marker": null
+          },
+          {
+            "name": "payee",
+            "marker": null
+          },
+          {
+            "name": "reference",
+            "marker": null
+          }
+        ]
+      }
+    ],
+    "budget": {
+      "max_effects": 1,
+      "max_spend_cents": 0,
+      "max_egress_bytes": 0,
+      "max_call_amount_cents": 0,
+      "max_approvals": 0
+    },
+    "egress_hosts": [],
+    "authorized_irreversible": [
+      "pay_bill"
+    ]
+  }
+}
