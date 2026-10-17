@@ -27,6 +27,8 @@ export interface XRayParams {
   scenario: Scenario;
   mode: RunMode;
   viewMode: ViewMode;
+  /** The demo step named in the address (1 to 4); absent when there is none. */
+  step?: number;
 }
 
 type Raw = string | string[] | undefined;
@@ -158,22 +160,36 @@ export function toLaneStatus(status: "connecting" | "open" | "finished" | "error
 }
 
 /** Whitelist the page's query: anything unknown falls back to the default. */
-export function parseXRayParams(raw: { scenario?: Raw; mode?: Raw; view?: Raw }): XRayParams {
+export function parseXRayParams(raw: {
+  scenario?: Raw;
+  mode?: Raw;
+  view?: Raw;
+  step?: Raw;
+}): XRayParams {
   const scenario = first(raw.scenario);
   const mode = first(raw.mode);
+  const number = Number(first(raw.step));
+  const step = Number.isInteger(number) && number >= 1 && number <= 4 ? number : undefined;
   return {
     scenario: SCENARIOS.find((item) => item === scenario) ?? "poisoned_bill",
     mode: MODES.find((item) => item === mode) ?? DEFAULT_MODE,
     viewMode: first(raw.view) === "three" ? "three-lane" : "single",
+    ...(step === undefined ? {} : { step }),
   };
 }
 
 /** The address of a screen, built deterministically. */
-export function xrayUrl(state: { scenario: string; mode: string; viewMode: ViewMode }): string {
+export function xrayUrl(state: {
+  scenario: string;
+  mode: string;
+  viewMode: ViewMode;
+  step?: number;
+}): string {
   const view = state.viewMode === "three-lane" ? "three" : "single";
   return (
     `/x-ray?scenario=${encodeURIComponent(state.scenario)}` +
-    `&mode=${encodeURIComponent(state.mode)}&view=${view}`
+    `&mode=${encodeURIComponent(state.mode)}&view=${view}` +
+    (state.step === undefined ? "" : `&step=${state.step}`)
   );
 }
 
