@@ -31,7 +31,9 @@ from notary_core.pinning import ToolManifest
 from notary_core.resolver import ArgumentResolver
 from notary_mcp_proxy.backend import BackendEffect, BackendRecord, BackendResult
 from notary_mcp_proxy.gateway import Gateway, RawCall
+from notary_server.agent_runner import EscalationDecider
 from notary_server.anchors import AnchorStore
+from notary_server.app import create_app
 from notary_server.arena import ArenaService
 from notary_server.compiler import compile_contract
 from notary_server.endorsement import EndorsementBroker
@@ -53,8 +55,9 @@ from notary_server.recording import (
     scripted_agent_turns,
     scripted_cassettes,
 )
-from notary_server.sources import RunRequest
+from notary_server.sources import RunMode, RunRequest, RunSource
 from notary_server.wiring import (
+    CassetteSource,
     LiveSource,
     RunStreamer,
     Settings,
@@ -584,6 +587,120 @@ def read_until(ws: WebSocketTestSession, event_type: str) -> list[Event]:
         seen.append(event)
         if event.type == event_type:
             return seen
+
+
+def run_to_the_end_with_approval(
+    client: TestClient, *, golden: Callable[[TestClient], None] | None = None
+) -> list[Event]:
+    """Run poisoned_bill / notary in cassette mode, approve its card, and return every event.
+
+    `golden` runs while the card is pending, after the cassette socket stopped at it.
+    """
+    run_id = golden_run_id(POISONED, "notary")
+
+    def pending() -> int:
+        return len(client.get(f"/runs/{run_id}/endorsements").json()["pending"])
+
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        before = read_until(ws, "endorsement_requested")
+        assert len(before) == 18
+        wait_until(lambda: pending() == 1)
+        if golden is not None:
+            golden(client)
+            assert pending() == 1
+        card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
+        command = EndorsementDecisionCommand(
+            type="endorsement_decision",
+            run_id=run_id,
+            endorsement_id=card.endorsement.endorsement_id,
+            decision="approve",
+        )
+        ws.send_text(COMMAND_ADAPTER.dump_json(command).decode("utf-8"))
+        after: list[Event] = []
+        while True:
+            try:
+                after.append(EVENT_ADAPTER.validate_json(ws.receive_text()))
+            except WebSocketDisconnect:
+                break
+    return [*before, *after]
+
+
+def golden_runs_to_the_end(client: TestClient) -> None:
+    for lane in ("notary", "undefended"):
+        _events, closed = replay(client, POISONED, lane_named(lane), mode="golden")
+        assert closed.code == 1000
+
+
+def golden_run_abandoned(client: TestClient) -> None:
+    """A golden socket the browser closes after the first frame."""
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=golden") as ws:
+        ws.receive_text()
+
+
+@pytest.mark.invariant("I4")
+@pytest.mark.parametrize(
+    "golden",
+    [golden_runs_to_the_end, golden_run_abandoned],
+    ids=["golden-finishes", "golden-abandoned"],
+)
+def test_closing_a_golden_socket_leaves_a_pending_cassette_card_alone(
+    golden: Callable[[TestClient], None],
+) -> None:
+    """Golden and cassette runs share `run-poisoned_bill-notary` (#194). A golden socket closing
+    must not reject the cassette run's card: it stays pending, answerable, and the cassette stream
+    is byte-identical to the run without a golden socket."""
+    alone = run_to_the_end_with_approval(app_client(timeout=5.0))
+    beside_golden = run_to_the_end_with_approval(app_client(timeout=5.0), golden=golden)
+    assert lines(beside_golden) == lines(alone)
+    pay_decisions = [e for e in beside_golden if isinstance(e, DecisionMade) and e.call_id == "c2"]
+    assert [d.decision.verdict for d in pay_decisions] == ["ESCALATE", "ALLOW"]
+
+
+class SpyBroker(EndorsementBroker):
+    def __init__(self) -> None:
+        super().__init__(timeout_seconds=5.0)
+        self.calls: list[str] = []
+
+    def decider_for(self, run_id: str, *, max_approvals: int) -> EscalationDecider:
+        self.calls.append("decider_for")
+        return super().decider_for(run_id, max_approvals=max_approvals)
+
+    def cancel_run(self, run_id: str) -> None:
+        self.calls.append("cancel_run")
+        super().cancel_run(run_id)
+
+
+@pytest.mark.invariant("I4")
+def test_a_golden_run_never_registers_a_card_or_touches_the_broker() -> None:
+    """Golden streams contain an `endorsement_requested` event, but it is replayed text: nobody
+    waits, so the broker has no card, and no golden socket resets or cancels a run."""
+    broker = SpyBroker()
+    client = TestClient(create_app(event_delay=0, broker=broker))
+    run_id = golden_run_id(POISONED, "notary")
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=golden") as ws:
+        seen = read_until(ws, "endorsement_requested")
+        assert any(isinstance(e, EndorsementRequested) for e in seen)
+        assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+        golden_rest = [EVENT_ADAPTER.validate_json(ws.receive_text()) for _ in range(2)]
+        assert golden_rest
+    golden_run_abandoned(client)  # the path that used to cancel the run id
+    assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+    assert broker.calls == []
+
+
+@pytest.mark.invariant("I4")
+def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
+    """The mode check keeps the real case: an abandoned cassette run fails closed."""
+    broker = SpyBroker()
+    streamer = RunStreamer(broker=broker, anchors=AnchorStore(":memory:"))
+    sources: dict[RunMode, RunSource] = {"cassette": CassetteSource(streamer)}
+    client = TestClient(create_app(event_delay=0, sources=sources, broker=broker))
+    run_id = golden_run_id(POISONED, "notary")
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        read_until(ws, "endorsement_requested")
+        wait_until(lambda: len(broker.pending(run_id)) == 1)
+    wait_until(lambda: broker.pending(run_id) == ())
+    assert "cancel_run" in broker.calls
 
 
 @pytest.mark.invariant("I4")
