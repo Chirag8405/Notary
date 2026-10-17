@@ -15,6 +15,7 @@ export {
 } from "./lane-summary";
 export { describeEvent } from "./describe-event";
 export { goalLights, laneLabel, type GoalLights, type LightState } from "./goal-lights";
+export { markerLabel, markerTone, type MarkerTone } from "./marker-chip";
 export { layout } from "./graph-layout";
 export {
   buildGraph,
