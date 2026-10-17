@@ -215,7 +215,11 @@ describe("the endorsement buttons", () => {
     await opened({ mode: "cassette" });
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     const buttons = within(card).getAllByRole<HTMLButtonElement>("button");
-    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm", "Reject"]);
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Confirm",
+      "Reject",
+      "Use nearest known value",
+    ]);
     for (const button of buttons) {
       expect(button.tagName).toBe("BUTTON");
       expect(button.type).toBe("button");

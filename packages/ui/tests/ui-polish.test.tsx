@@ -16,7 +16,7 @@ describe("EndorsementCard buttons", () => {
     "an endorsement",
   ).endorsement;
 
-  it("are real buttons in DOM order Confirm, Reject, with a pointer cursor [I4]", () => {
+  it("are real buttons in DOM order Confirm, Reject, Use nearest, with a pointer cursor [I4]", () => {
     const onDecide = vi.fn();
     const { container } = render(
       <EndorsementCard
@@ -27,7 +27,11 @@ describe("EndorsementCard buttons", () => {
       />,
     );
     const buttons = [...container.querySelectorAll("button")];
-    expect(buttons.map((b) => b.textContent)).toEqual(["Confirm", "Reject"]);
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Confirm",
+      "Reject",
+      "Use nearest known value",
+    ]);
     for (const button of buttons) {
       expect(button.type).toBe("button");
       expect(button.className).toContain("cursor-pointer");
@@ -37,12 +41,15 @@ describe("EndorsementCard buttons", () => {
     }
     expect(buttons[1]?.className).toContain("bg-primary");
     expect(buttons[0]?.className).toContain("border-amber-500");
+    expect(buttons[2]?.className).toContain("border-input");
+    expect(buttons[2]?.className).not.toContain("bg-primary");
     buttons[0]?.click();
     buttons[1]?.click();
-    expect(onDecide.mock.calls).toEqual([["approve"], ["reject"]]);
+    buttons[2]?.click();
+    expect(onDecide.mock.calls).toEqual([["approve"], ["reject"], ["use_nearest"]]);
   });
 
-  it("keep their look when disabled, and take no default focus [I4]", () => {
+  it("keep their look when disabled; only the nearest-value choice survives no approvals [I4]", () => {
     const { container } = render(
       <EndorsementCard
         endorsement={endorsement}
@@ -51,10 +58,14 @@ describe("EndorsementCard buttons", () => {
         onDecide={() => undefined}
       />,
     );
-    for (const button of container.querySelectorAll("button")) {
-      expect(button.disabled).toBe(true);
-      expect(button.className).toContain("disabled:opacity-50");
+    const [confirm, reject, nearest] = [...container.querySelectorAll("button")];
+    for (const button of [confirm, reject]) {
+      expect(button?.disabled).toBe(true);
+      expect(button?.className).toContain("disabled:opacity-50");
     }
+    // It approves nothing, so it does not use up an approval.
+    expect(nearest?.textContent).toBe("Use nearest known value");
+    expect(nearest?.disabled).toBe(false);
     expect(document.activeElement?.tagName).not.toBe("BUTTON");
   });
 });

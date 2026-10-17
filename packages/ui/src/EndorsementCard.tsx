@@ -4,14 +4,14 @@ import { useEffect, useRef } from "react";
 import { highlightDiff } from "./diff-highlight";
 import type { Segment } from "./diff-highlight";
 
-export type CardState = "pending" | "sending" | "approved" | "rejected" | "conflict";
+export type CardState = "pending" | "sending" | "approved" | "rejected" | "replaced" | "conflict";
 
 export interface EndorsementCardProps {
   endorsement: Endorsement;
   /** The approvals left in the run's budget; null while unknown. */
   remainingApprovals: number | null;
   state: CardState;
-  onDecide: (decision: "approve" | "reject") => void;
+  onDecide: (decision: "approve" | "reject" | "use_nearest") => void;
   /** The tool the call wants to run, for the title; the call id is used when it is missing. */
   toolName?: string;
   /** A message to show when the last attempt failed. */
@@ -24,10 +24,14 @@ const BUTTON =
 const REJECT_BUTTON = `${BUTTON} bg-primary text-primary-foreground hover:bg-primary/90`;
 const CONFIRM_BUTTON = `${BUTTON} border border-amber-500 bg-background text-amber-900 hover:bg-amber-50`;
 
+/** The third choice: it approves nothing, so it looks like a plain secondary action. */
+const NEAREST_BUTTON = `${BUTTON} border border-input bg-background text-foreground hover:bg-muted`;
+
 const STATE_TEXT: Partial<Record<CardState, string>> = {
   sending: "Sending...",
   approved: "You confirmed this request",
   rejected: "You rejected this request",
+  replaced: "You asked for the nearest known value instead",
   conflict: "This request is no longer open",
 };
 
@@ -85,7 +89,8 @@ function LedgerValue({ row }: { row: DiffRow }) {
 
 /**
  * The human-in-the-loop moment: what the agent wants to do with a value that is not in the
- * ledger, and two buttons. It only calls `onDecide`; it builds no command and never focuses a
+ * ledger, and its buttons: confirm it, reject it, or use the nearest known value instead. It only
+ * calls `onDecide`; it builds no command and never focuses a
  * button, so nothing can be confirmed by accident.
  */
 export function EndorsementCard({
@@ -104,6 +109,10 @@ export function EndorsementCard({
   const exhausted = remainingApprovals === 0;
   const disabled = state !== "pending" || exhausted;
   const stateText = STATE_TEXT[state];
+  // Offered only when the ledger has a value to propose for every parameter on the card.
+  const canUseNearest =
+    endorsement.card.rows.length > 0 &&
+    endorsement.card.rows.every((row) => row.nearest_ledger_value !== null);
 
   return (
     <section
@@ -173,6 +182,18 @@ export function EndorsementCard({
           >
             Reject
           </button>
+          {canUseNearest ? (
+            <button
+              type="button"
+              disabled={state !== "pending"}
+              className={NEAREST_BUTTON}
+              onClick={() => {
+                onDecide("use_nearest");
+              }}
+            >
+              Use nearest known value
+            </button>
+          ) : null}
         </div>
       )}
     </section>
