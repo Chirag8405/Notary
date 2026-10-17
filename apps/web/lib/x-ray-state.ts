@@ -247,3 +247,27 @@ export function settleSelection(selection: Selection): Selection & { note: strin
     note: reason === null ? null : `Switched to cassette: ${reason}`,
   };
 }
+
+export const LIVE_UNAVAILABLE =
+  "This mode is not available on the server (live needs an LLM API key).";
+
+/**
+ * What to tell the user about a failed stream, and whether to offer the way out: a button that
+ * switches to cassette. Offered when the server says the mode is unavailable (4501) and when a
+ * live run fails for any reason; never retried automatically.
+ */
+export function streamProblem(input: {
+  closeCode: number | undefined;
+  message: string | undefined;
+  apiUrl: string;
+  mode: RunMode;
+}): { text: string; offerCassette: boolean } {
+  const text = describeStreamError(input.closeCode, input.message, input.apiUrl);
+  if (input.closeCode === 4501) {
+    return {
+      text: input.mode === "live" ? LIVE_UNAVAILABLE : text,
+      offerCassette: input.mode !== "cassette",
+    };
+  }
+  return { text, offerCassette: input.mode === "live" };
+}

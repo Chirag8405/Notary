@@ -22,6 +22,7 @@ import { AnchorFooter } from "@/components/anchor-footer";
 import { EffectsList } from "@/components/effects-list";
 import { EndorsementPanel } from "@/components/endorsement-panel";
 import { RunControls } from "@/components/run-controls";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DEFAULT_MODE,
@@ -30,6 +31,7 @@ import {
   scenarioLanes,
   selectionFromChip,
   settleSelection,
+  streamProblem,
   toLaneStatus,
   valueIdForSelection,
   xrayUrl,
@@ -117,12 +119,14 @@ function XRayRun({
   mode,
   viewMode,
   webSocket,
+  onUseCassette,
 }: {
   apiUrl: string;
   scenario: string;
   mode: RunMode;
   viewMode: ViewMode;
   webSocket: WebSocketFactory | undefined;
+  onUseCassette: () => void;
 }) {
   const stream = useRunStream(apiUrl, scenario, {
     lane: "notary",
@@ -157,6 +161,15 @@ function XRayRun({
     (item) => !resolved.has(item.endorsement.endorsement_id),
   ).length;
   const notary: LaneInput = laneInput("notary", stream, view, apiUrl);
+  const problem =
+    stream.status === "error"
+      ? streamProblem({
+          closeCode: stream.closeCode,
+          message: stream.error.message,
+          apiUrl,
+          mode,
+        })
+      : null;
 
   return (
     <>
@@ -167,11 +180,18 @@ function XRayRun({
           <span className="text-sm font-normal text-neutral-500">{laneLabel("notary", null)}</span>
         </h1>
       </header>
-      {stream.status === "error" ? (
-        <div role="alert" className="text-red-700">
-          {describeStreamError(stream.closeCode, stream.error.message, apiUrl)}
+      {problem === null ? null : (
+        <div className="flex flex-wrap items-center gap-3">
+          <div role="alert" className="text-red-700">
+            {problem.text}
+          </div>
+          {problem.offerCassette ? (
+            <Button type="button" variant="outline" onClick={onUseCassette}>
+              Use cassette instead
+            </Button>
+          ) : null}
         </div>
-      ) : null}
+      )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
         <Panel title="Contract">
           <ContractPanel contract={view.contract} />
@@ -289,6 +309,9 @@ export function XRayView({
         mode={selection.mode}
         viewMode={selection.viewMode}
         webSocket={webSocket}
+        onUseCassette={() => {
+          apply({ ...selection, mode: "cassette" });
+        }}
       />
     </main>
   );
