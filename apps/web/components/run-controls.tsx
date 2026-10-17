@@ -5,14 +5,17 @@ import type { RunMode } from "@notary/client";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { MODES, SCENARIOS, scenarioLanes } from "@/lib/x-ray-state";
-import type { ViewMode } from "@/lib/x-ray-state";
+import { MODES, SCENARIOS, modeOptions, scenarioLanes } from "@/lib/x-ray-state";
+import type { ModeOption, ViewMode } from "@/lib/x-ray-state";
 
 export interface RunControlsProps {
   apiUrl: string;
   scenario: string;
+  /** The mode the streams actually use. */
   mode: RunMode;
   viewMode: ViewMode;
+  /** Said once when the page changed a choice that cannot work (for example golden to cassette). */
+  note?: string | null;
   onScenarioChange: (scenario: string) => void;
   onModeChange: (mode: RunMode) => void;
   onViewModeChange: (viewMode: ViewMode) => void;
@@ -25,6 +28,7 @@ export function RunControls({
   scenario,
   mode,
   viewMode,
+  note,
   onScenarioChange,
   onModeChange,
   onViewModeChange,
@@ -48,10 +52,15 @@ export function RunControls({
     };
   }, [client]);
 
-  // While the list is loading, or when it cannot be read, only "golden" is offered (plus the
-  // mode that is already selected, so the select never shows a value it cannot list).
-  const known = offered === null ? ["golden"] : MODES.filter((item) => offered.includes(item));
-  const options = MODES.filter((item) => known.includes(item) || item === mode);
+  // The select is controlled by the mode the sockets use, and always lists that mode, even when
+  // the server's list does not.
+  const listed = modeOptions(scenario, offered, viewMode);
+  const shown: readonly ModeOption[] = listed.some((option) => option.mode === mode)
+    ? listed
+    : [...listed, { mode, enabled: true, note: null, label: mode }];
+  const disabledNotes = shown.flatMap((option) =>
+    option.enabled || option.note === null ? [] : [`${option.mode} is off: ${option.note}`],
+  );
   const threeLaneAvailable = scenarioLanes(scenario).length >= 3;
 
   return (
@@ -60,14 +69,14 @@ export function RunControls({
       aria-label="Run controls"
       className="flex flex-wrap items-center gap-3 text-sm"
     >
-      <label className="flex items-center gap-1">
+      <label className="flex items-center gap-2">
         Scenario
         <select
           value={scenario}
           onChange={(event) => {
             onScenarioChange(event.target.value);
           }}
-          className="border px-1"
+          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
         >
           {SCENARIOS.map((item) => (
             <option key={item} value={item}>
@@ -76,7 +85,7 @@ export function RunControls({
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-1">
+      <label className="flex items-center gap-2">
         Mode
         <select
           value={mode}
@@ -84,35 +93,46 @@ export function RunControls({
             const next = MODES.find((item) => item === event.target.value);
             if (next !== undefined) onModeChange(next);
           }}
-          className="border px-1"
+          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
         >
-          {options.map((item) => (
-            <option key={item} value={item}>
-              {item}
+          {shown.map((option) => (
+            <option key={option.mode} value={option.mode} disabled={!option.enabled}>
+              {option.label}
             </option>
           ))}
         </select>
       </label>
+      {disabledNotes.map((text) => (
+        <span key={text} data-mode-note className="text-xs text-muted-foreground">
+          {text}
+        </span>
+      ))}
       {mode === "live" ? (
-        <span className="text-xs text-amber-800">live runs are not reproducible</span>
+        <span className="text-xs text-muted-foreground">live runs are not reproducible</span>
       ) : null}
+      {note === undefined || note === null ? null : (
+        <span data-switch-note role="status" className="text-xs text-muted-foreground">
+          {note}
+        </span>
+      )}
       <Button
         type="button"
         variant="outline"
+        className="text-sm"
         aria-pressed={viewMode === "three-lane"}
-        disabled={!threeLaneAvailable}
         onClick={() => {
           onViewModeChange(viewMode === "three-lane" ? "single" : "three-lane");
         }}
+        disabled={!threeLaneAvailable}
       >
         Three-lane view
       </Button>
       {threeLaneAvailable ? null : (
-        <span className="text-xs text-neutral-600">
+        <span className="text-xs text-muted-foreground">
           only the NOTARY lane has a recorded stream for this scenario
         </span>
       )}
-      <Button type="button" onClick={onRunAgain}>
+      <Button type="button" className="text-sm" onClick={onRunAgain}>
         Run again
       </Button>
     </div>

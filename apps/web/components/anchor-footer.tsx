@@ -55,7 +55,7 @@ export function AnchorFooter({
 
   if (!finished || runId === null || result?.runId !== runId) return null;
   return (
-    <footer aria-label="Audit anchor" className="text-xs text-neutral-600">
+    <footer aria-label="Audit anchor" className="text-xs text-muted-foreground">
       {result.anchor === null
         ? "no anchor available"
         : `Audit head ${shortHead(result.anchor.head)} | ${result.anchor.length} entries | persisted outside the log`}
