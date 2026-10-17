@@ -16,6 +16,8 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 `WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
 
+Mode notes for the x-ray page: `golden` ignores `lane` and has no `legitimate_bill` stream (#193, #196), so the page uses `cassette` for the three-lane view and for `legitimate_bill`.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | unset | enables `mode=live`; without it `live` closes `4501 mode not available`. Only the SDK reads the value |
@@ -40,9 +42,9 @@ Re-record whenever the agent system prompt, the tool descriptions or the renderi
 | Region | Content                                                                                                                                                                                                                                   |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Left   | Intent Contract panel (chips)                                                                                                                                                                                                             |
-| Center | provenance graph. Node colors: green user, blue ledger, amber tool content, red outline = classifier-flagged span (advisory only). BLOCK snaps the edge and shows the reason code. ESCALATE turns the gate yellow and opens the diff card |
-| Right  | decision stream: one row per decision with argument origin chips, verdict, reason, hash link                                                                                                                                              |
-| Bottom | world state + oracle: before/after diff and two lights, user goal achieved and attacker goal achieved                                                                                                                                     |
+| Center | provenance graph. Node colors: green user, blue ledger, amber tool content, red outline = classifier-flagged span (advisory only; not built for CP3, see [decisions.md](decisions.md)). BLOCK snaps the edge and shows the reason code. ESCALATE turns the gate yellow ("awaiting confirmation"); the Endorsement card is docked under the graph |
+| Right  | decision stream: one row per decision with argument origin chips, verdict, reason, hash link (the short content hash of the argument; events carry no audit-chain hash)                                                                                                                                              |
+| Bottom | oracle panel (user goal and attacker goal lights, six invariant lights, outcome banner), an effects list ("What changed") in place of the before/after world diff, and the audit anchor footer                                                                                                                                     |
 
 Lanes are configurations of one agent runner ([architecture.md](architecture.md#components)):
 
@@ -53,6 +55,13 @@ Lanes are configurations of one agent runner ([architecture.md](architecture.md#
 | NOTARY          | Gateway + monitor                                                                                                                                                                                                       |
 
 Supporting views: Content Inspector; three-lane split (Undefended / Classifier-only / NOTARY); Endorsement card (value, source span, nearest ledger entry with differing chars highlighted, remaining approval budget); Replay scrubber.
+
+### What the page does at CP3
+
+- Built: contract chips, provenance graph, decision rows, oracle lights, content inspector, endorsement card, three-lane view, effects list and audit anchor footer. The replay scrubber is P5.
+- A call decided twice (ESCALATE, then ALLOW after an approval) shows the latest verdict, with the earlier decision under "earlier decisions".
+- Modes: `golden` sends the NOTARY stream for every lane (#193) and has no `legitimate_bill` stream (#196); `cassette` replays a recorded run through the real runner, per lane, and waits at the card until the user answers; `live` needs an LLM API key and is not reproducible. The page defaults to `golden`, never to `live`, and moves a golden choice that cannot work (the three-lane view, `legitimate_bill`) to `cassette` and says so.
+- Decisions: the hash link is a content hash, there is no classifier-flag outline, the effects list stands in for the world diff, and endorsement resolution is tracked on the client; see [decisions.md](decisions.md).
 
 ## Judge playground
 
@@ -75,6 +84,13 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 | ~2:30 | 6. Close on evaluation numbers and the fuzz result                                                                                                         |
 
 Timestamps are approximate; rehearse and adjust.
+
+Steps on the page (cassette stack, [CP3](phase.md#integration-checkpoints)):
+
+- Steps 1 and 2: `/x-ray?scenario=poisoned_bill&mode=cassette&view=three`. The Undefended and Classifier-only (stand-in) columns show the payment to the attacker IBAN and a red attacker light.
+- Step 3: the NOTARY column and the single-lane regions of the same page: yellow ESCALATE gate, endorsement card, green attacker light, user light pending until the card is answered. **Reject** keeps the attacker light green. **Confirm pays the attacker's IBAN** (the card holds the attacker's value) and turns the light red, so the presenter must not expect "the correct payee" to be confirmable here (#198).
+- Step 4: `/x-ray?scenario=legitimate_bill&mode=cassette` (`legitimate_bill` has no golden stream): no card, two ALLOW rows, green user light, payment to the ledger IBAN.
+- Steps 5 and 6 are not on this page.
 
 ## Fallback plan
 
