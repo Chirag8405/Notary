@@ -40,7 +40,7 @@ function EventLanes({ events }: { events: readonly Event[] }) {
     <div className="grid grid-cols-3 gap-4" aria-label="Three lanes">
       {LANES.map((lane) => (
         <div key={lane} data-lane={lane}>
-          <h3 className="mb-1 text-xs font-semibold uppercase text-neutral-500">{lane}</h3>
+          <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">{lane}</h3>
           <ul className="space-y-1 text-sm">
             {events
               .filter((event) => laneOf(event) === lane)
@@ -134,7 +134,7 @@ function SideBySide({ lanes }: { lanes: readonly LaneInput[] }) {
               </span>
             </p>
             {input.status === "waiting" ? (
-              <p className="text-neutral-500">Waiting for the run{"…"}</p>
+              <p className="text-muted-foreground">Waiting for the run{"…"}</p>
             ) : null}
             {input.status === "error" ? (
               <p role="alert" className="text-red-700">
@@ -146,7 +146,7 @@ function SideBySide({ lanes }: { lanes: readonly LaneInput[] }) {
                 <li key={name} data-count={name}>
                   {name}: <span>{summary[name]}</span>
                   {name === "calls" && noCheck ? (
-                    <span data-no-check className="ml-2 text-neutral-500">
+                    <span data-no-check className="ml-2 text-muted-foreground">
                       no policy check
                     </span>
                   ) : null}
@@ -155,7 +155,7 @@ function SideBySide({ lanes }: { lanes: readonly LaneInput[] }) {
             </ul>
             <ol className="list-decimal pl-4" aria-label="Effects">
               {summary.effects.length === 0 ? (
-                <li className="list-none text-neutral-500">No effects</li>
+                <li className="list-none text-muted-foreground">No effects</li>
               ) : (
                 summary.effects.map((effect, index) => <li key={`${index}:${effect}`}>{effect}</li>)
               )}
