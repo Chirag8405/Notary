@@ -16,4 +16,6 @@ WORKDIR /app
 COPY --from=build /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
-CMD ["uvicorn", "notary_server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# One worker, one WebSocket implementation: the broker state and the read-token key live in this
+# process, and the log filter covers the `websockets` loggers (#235).
+CMD ["uvicorn", "notary_server.app:app", "--ws", "websockets", "--host", "0.0.0.0", "--port", "8000"]

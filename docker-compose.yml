@@ -4,6 +4,19 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
+    # Same command as the Dockerfile CMD (a test keeps them equal). Single worker only: the
+    # endorsement broker state and the read-token key are in-process.
+    command:
+      [
+        "uvicorn",
+        "notary_server.app:app",
+        "--ws",
+        "websockets",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
     ports:
       - "8000:8000"
     healthcheck:

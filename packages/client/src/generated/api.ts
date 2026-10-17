@@ -181,7 +181,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Run Endorsements */
+        /**
+         * Run Endorsements
+         * @description The unresolved cards of the sockets that hold this read token. A missing, malformed or
+         *     wrong token lists nothing and is still a 200: the answer never tells a guess from a run
+         *     that does not exist. The token reads only; answering needs the socket (#235).
+         */
         get: operations["listEndorsements"];
         put?: never;
         post?: never;
@@ -1284,7 +1289,9 @@ export interface operations {
     listEndorsements: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Notary-Token"?: string | null;
+            };
             path: {
                 run_id: string;
             };

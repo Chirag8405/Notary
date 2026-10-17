@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
+from tokens import HEADERS, TOKEN, with_token
 
 from notary_core.audit import append
 from notary_core.models import (
@@ -39,6 +40,7 @@ from notary_server.endorsement import (
     SubmitResult,
 )
 from notary_server.llm import ScriptedClient
+from notary_server.read_token import read_key
 from notary_server.sources import GoldenSource, RunMode, RunRequest, RunSource
 from notary_world.executor import RunRecord, default_monitor
 from notary_world.golden import COMMAND_ADAPTER
@@ -427,7 +429,9 @@ class RunnerSource:
         run_id = f"run-{request.scenario}-{request.lane}"
         scenario = contacts_scenario(1)
         self.client = ScriptedClient(self.turns)  # one script per run, so two sockets can overlap
-        endorsements = self.broker.start_run(run_id, owner=request.owner, max_approvals=1)
+        endorsements = self.broker.start_run(
+            run_id, owner=request.owner, max_approvals=1, read_key=request.read_key
+        )
         decide = endorsements.decide
 
         def counted(card: Endorsement) -> Decision:
@@ -532,7 +536,7 @@ def test_an_answer_inside_the_old_gap_is_accepted_and_used() -> None:
 def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     client = socket_client(source)
-    with client.websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with client.websocket_connect(with_token("/ws/runs/contacts?mode=cassette")) as ws:
         seen = frames_until(ws, "endorsement_requested")
         card = requested(seen)
         run_id = card.run_id
@@ -540,9 +544,9 @@ def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
         (entry,) = source.broker.pending_for_run(run_id)
         assert entry.remaining_approvals == 1
         assert entry.card_text == "name: alpha consulting [llm, untrusted]"
-        assert client.get(f"/runs/{run_id}/endorsements").json()["pending"][0]["card_text"] == (
-            entry.card_text
-        )
+        assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"][0][
+            "card_text"
+        ] == (entry.card_text)
         decide_over_socket(ws, run_id, card.endorsement.endorsement_id, "approve")
         closed = finish(ws)
     assert closed.code == 1000
@@ -559,10 +563,10 @@ def test_a_fast_answer_over_the_socket_needs_no_wait() -> None:
     """#195 over the real socket: list the card and answer it the moment the frame is received."""
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     client = socket_client(source, event_delay=0.05)
-    with client.websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with client.websocket_connect(with_token("/ws/runs/contacts?mode=cassette")) as ws:
         seen = frames_until(ws, "endorsement_requested")
         card = requested(seen)
-        listed = client.get(f"/runs/{card.run_id}/endorsements").json()["pending"]
+        listed = client.get(f"/runs/{card.run_id}/endorsements", headers=HEADERS).json()["pending"]
         assert [p["endorsement"]["endorsement_id"] for p in listed] == [
             card.endorsement.endorsement_id
         ]
@@ -579,7 +583,9 @@ def test_end_to_end_budget_exhaustion() -> None:
     source = RunnerSource(
         EndorsementBroker(), [add_contact("Alpha Consulting"), add_contact("Bravo Holdings"), FINAL]
     )
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
         wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "approve")
@@ -599,7 +605,9 @@ def test_end_to_end_budget_exhaustion() -> None:
 @pytest.mark.attack("A9")
 def test_end_to_end_reject_leaves_the_world_unchanged() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
         wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "reject")
@@ -615,7 +623,9 @@ def test_end_to_end_reject_leaves_the_world_unchanged() -> None:
 @pytest.mark.attack("A11")
 def test_end_to_end_no_answer_fails_closed() -> None:
     source = RunnerSource(EndorsementBroker(timeout_seconds=0.05), [add_contact("Alpha"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         frames_until(ws, "endorsement_requested")
         closed = finish(ws)
     assert closed.code == 1000
@@ -627,7 +637,9 @@ def test_end_to_end_no_answer_fails_closed() -> None:
 @pytest.mark.invariant("I4")
 def test_decision_for_a_wrong_endorsement_closes_the_socket() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
         wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, "e99", "approve")
@@ -640,23 +652,41 @@ def test_decision_for_a_wrong_endorsement_closes_the_socket() -> None:
 @pytest.mark.attack("A11")
 def test_a_disconnect_rejects_the_pending_card() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
         wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
     assert source.broker.pending_for_run(card.run_id) == ()
     assert not any(isinstance(e, EffectExecuted) for e in source.chain_events)
 
 
+SERVER_KEY = b"k" * 32
+
+
 @pytest.mark.invariant("I6")
 def test_rest_pending_route() -> None:
     broker = EndorsementBroker()
-    waiter = waiting(broker, "r1")
-    client = TestClient(create_app(event_delay=0, broker=broker))
-    body = PendingList.model_validate_json(client.get("/runs/r1/endorsements").content)
-    assert body.pending == broker.pending_for_run("r1")
-    assert client.get("/runs/nope/endorsements").json() == {"pending": []}
+    broker_run = broker.start_run(
+        "r1", owner=OWNER, max_approvals=3, read_key=read_key(SERVER_KEY, "r1", TOKEN)
+    )
+    waiter = Waiter(broker_run.decide, endorsement())
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) > 0)
+    client = TestClient(create_app(event_delay=0, broker=broker, server_key=SERVER_KEY))
+    body = PendingList.model_validate_json(
+        client.get("/runs/r1/endorsements", headers=HEADERS).content
+    )
+    assert body.pending == broker.pending("r1", owner=OWNER)
+    assert len(body.pending) == 1
+    assert client.get("/runs/nope/endorsements", headers=HEADERS).json() == {"pending": []}
     operation = client.get("/openapi.json").json()["paths"]["/runs/{run_id}/endorsements"]["get"]
     assert operation["operationId"] == "listEndorsements"
+    (parameter,) = [p for p in operation["parameters"] if p["in"] == "header"]
+    assert (parameter["name"], parameter["in"], parameter.get("required", False)) == (
+        "X-Notary-Token",
+        "header",
+        False,
+    )
     broker.cancel_run("r1", owner=OWNER)
     waiter.join()
 
@@ -737,7 +767,7 @@ def test_closing_one_tab_leaves_the_card_of_another_tab_of_the_same_run_alone(
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     sources: dict[RunMode, RunSource] = {mode: source}
     client = TestClient(create_app(event_delay=0, sources=sources, broker=source.broker))
-    url = f"/ws/runs/contacts?mode={mode}"
+    url = with_token(f"/ws/runs/contacts?mode={mode}")
     with client.websocket_connect(url) as keeper:
         keeper_card = card_frames(keeper)
         run_id = keeper_card.run_id
@@ -760,7 +790,7 @@ def test_an_answer_on_one_tab_never_answers_the_card_of_another_tab() -> None:
     the card of the socket that sent it."""
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     client = socket_client(source)
-    url = "/ws/runs/contacts?mode=cassette"
+    url = with_token("/ws/runs/contacts?mode=cassette")
     with client.websocket_connect(url) as first, client.websocket_connect(url) as second:
         card = card_frames(first)
         assert card_frames(second).endorsement == card.endorsement
@@ -782,7 +812,7 @@ def test_a_socket_cannot_approve_a_card_it_does_not_own() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     sources: dict[RunMode, RunSource] = {"cassette": source, "golden": GoldenSource()}
     client = TestClient(create_app(event_delay=0, sources=sources, broker=source.broker))
-    with client.websocket_connect("/ws/runs/poisoned_bill?mode=cassette") as owner:
+    with client.websocket_connect(with_token("/ws/runs/poisoned_bill?mode=cassette")) as owner:
         card = card_frames(owner)
         assert card.run_id == golden_run_id("poisoned_bill", "notary")
         wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)

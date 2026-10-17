@@ -4,7 +4,7 @@
   "private": true,
   "description": "notary_server: FastAPI app (REST + WebSocket events), agent runner, world host",
   "scripts": {
-    "dev": "uv run --no-sync uvicorn notary_server.app:app --reload --host 0.0.0.0 --port 8000",
+    "dev": "uv run --no-sync uvicorn notary_server.app:app --ws websockets --reload --host 0.0.0.0 --port 8000",
     "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
     "typecheck": "uv run --no-sync pyright",
     "test": "uv run --no-sync pytest",
