@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { ArenaPanel } from "@/components/arena-panel";
 import { AttackLibraryPanel } from "@/components/attack-library-panel";
 import { PoisonPanel } from "@/components/poison-panel";
 import type { PlaygroundMode } from "@/lib/playground-state";
@@ -17,5 +18,5 @@ export const PANELS: Readonly<Record<PlaygroundMode, (props: PanelProps) => Reac
   poison: PoisonPanel,
   hijacked: Placeholder,
   library: AttackLibraryPanel,
-  arena: Placeholder,
+  arena: ArenaPanel,
 };
