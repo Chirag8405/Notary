@@ -45,7 +45,7 @@ pnpm schema:generate             # core -> JSON Schema -> TS types + Zod; OpenAP
 pnpm schema:check                # regenerate and fail on drift (restores files when it fails)
 pnpm --filter @notary/cli cp1    # CP1 proof: notary attack --all and notary fuzz (ci profile)
 uv run --no-sync pytest apps/server/tests/test_cp2.py   # CP2 proof: cassette replay, no network
-uv run --no-sync python apps/server/scripts/record_cassettes.py [--live]   # re-record cassettes (--live needs ANTHROPIC_API_KEY)
+uv run --no-sync python apps/server/scripts/record_cassettes.py [--live]   # re-record cassettes (--live needs GROQ_API_KEY, in the shell or a git-ignored .env)
 ```
 
 **Before committing run:** `pnpm schema:generate && pnpm turbo run lint typecheck test build && pnpm schema:check`.

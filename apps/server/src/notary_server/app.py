@@ -31,6 +31,7 @@ from notary_server.commands import (
     CommandRouter,
 )
 from notary_server.endorsement import EndorsementBroker, PendingList
+from notary_server.envfile import load_env_file
 from notary_server.hijacked import (
     HijackedError,
     HijackedSession,
@@ -294,4 +295,5 @@ def create_app(
     return app
 
 
+load_env_file()  # a local `.env` supplies names the shell did not set (see .env.example)
 app = build_app(Settings.from_env(os.environ))

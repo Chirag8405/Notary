@@ -95,6 +95,6 @@ type = "forbidden"
 source_modules = ["notary_core"]
 forbidden_modules = [
   "socket", "http", "urllib", "requests", "httpx", "aiohttp", "subprocess", "random", "time",
-  "datetime", "anthropic", "openai", "langchain", "litellm", "fastapi", "typer",
+  "datetime", "anthropic", "groq", "openai", "langchain", "litellm", "fastapi", "typer",
 ]
 allow_indirect_imports = true

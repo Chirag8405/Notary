@@ -118,6 +118,11 @@ def _turn(role: str, content: str) -> CassetteTurn:
     return CassetteTurn.model_validate({"role": role, "content": content, "tool_calls": ()})
 
 
+NO_REPLY_TEXT = "(no reply)"
+"""What an attacker turn with no text is recorded as, so the history stays a valid conversation.
+The round is counted as an invalid move."""
+
+
 class ArenaService:
     def __init__(
         self,
@@ -161,7 +166,7 @@ class ArenaService:
                 max_tokens=DEFAULT_MAX_TOKENS,
             )
             reply = client.complete(request)
-            history.append(_turn("assistant", reply.content))
+            history.append(_turn("assistant", reply.content or NO_REPLY_TEXT))
             move = parse_move(reply.content)
             reached = False
             codes: tuple[str, ...] = ()

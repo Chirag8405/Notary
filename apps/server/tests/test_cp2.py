@@ -70,7 +70,7 @@ from notary_world.executor import default_monitor, execute_run
 from notary_world.golden import COMMAND_ADAPTER, EVENT_ADAPTER, golden_streams, sample_commands
 from notary_world.labeling import world_labeling_policy
 from notary_world.loader import FIXTURES_DIR, load_cassette
-from notary_world.models import Cassette
+from notary_world.models import Cassette, CassetteTurn
 from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 from notary_world.state import diff, seed_world
 from notary_world.tools import (
@@ -363,7 +363,7 @@ def test_live_mode_needs_a_key() -> None:
     settings = Settings.from_env(environ)
     assert settings.live_available is False
     assert environ.read <= {
-        "ANTHROPIC_API_KEY",
+        "GROQ_API_KEY",
         "NOTARY_ANCHOR_DB",
         "NOTARY_ENDORSEMENT_TIMEOUT",
         "NOTARY_ARENA_MAX_ROUNDS",
@@ -401,7 +401,7 @@ def test_settings_from_env() -> None:
             "NOTARY_ANCHOR_DB": "/var/lib/notary/anchors.sqlite",
             "NOTARY_ENDORSEMENT_TIMEOUT": "2.5",
             "NOTARY_ARENA_MAX_ROUNDS": "25",
-            "ANTHROPIC_API_KEY": "sk-not-stored",
+            "GROQ_API_KEY": "sk-not-stored",
         }
     )
     assert custom.anchor_db == "/var/lib/notary/anchors.sqlite"
@@ -760,3 +760,26 @@ def test_endorsement_flow_over_the_socket() -> None:
     assert any(isinstance(e, EffectExecuted) and e.tool == "pay_bill" for e in events)
     assert BILLER_IBAN not in lines(events)[-1]
     assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+
+
+@pytest.mark.invariant("I6")
+def test_a_repeated_prompt_continues_from_the_first_recorded_answer() -> None:
+    """A real model may word one prompt two ways; a cassette keeps one, and later runs follow it."""
+    from notary_server.recording import Recorder
+
+    request = LlmRequest(
+        model="m",
+        system="s",
+        messages=(CassetteTurn(role="user", content="hi", tool_calls=()),),
+        tools=(),
+        max_tokens=5,
+    )
+    first = CassetteTurn(role="assistant", content="one", tool_calls=())
+    second = CassetteTurn(role="assistant", content="two", tool_calls=())
+    inner = ScriptedClient([first, second])
+    recorder = Recorder("m")
+    assert recorder.wrap("x.notary", "notary", inner).complete(request) == first
+    assert recorder.wrap("x.notary", "notary", inner).complete(request) == first
+    assert len(inner.requests) == 2
+    (entry,) = recorder.cassettes()["x.notary"].entries
+    assert entry.response == first

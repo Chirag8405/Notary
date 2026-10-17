@@ -2,9 +2,9 @@
 
 `build_app` is the only place that decides which source answers which mode, which LLM client
 backs it, and which decider answers an escalation. Environment access is limited to
-`Settings.from_env` (three `NOTARY_*` variables and whether `ANTHROPIC_API_KEY` is set, never its
-value). A cassette miss, a missing cassette or a missing key is an error with a fixed reason; no
-mode ever falls back to another.
+`Settings.from_env` (the `NOTARY_*` variables and whether `GROQ_API_KEY` is set, never
+its value). A cassette miss, a missing cassette or a missing key is an error with a
+fixed reason; no mode ever falls back to another.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -22,10 +22,10 @@ from notary_server.agent_runner import (
     reject_all,
 )
 from notary_server.anchors import AnchorStore, anchored_append
-from notary_server.anthropic_client import AnthropicClient
 from notary_server.arena import AttackerFactory
 from notary_server.commands import CLOSE_CASSETTE_MISS, CLOSE_MODE_UNAVAILABLE
 from notary_server.endorsement import EndorsementBroker, EndorsementRun
+from notary_server.groq_client import GroqClient
 from notary_server.lanes import lane_hooks, stream_for_lane
 from notary_server.llm import CassetteClient, CassetteMissError, LlmClient
 from notary_server.playground import LaneRunner
@@ -53,7 +53,7 @@ class Settings(NotaryModel):
     )
     arena_max_rounds: Annotated[int, Field(ge=1, le=100)] = DEFAULT_ARENA_MAX_ROUNDS
     live_available: bool = False
-    """Whether `ANTHROPIC_API_KEY` is set. Only the fact is kept, never the key."""
+    """Whether `GROQ_API_KEY` is set. Only the fact is kept, never the key."""
 
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
@@ -61,7 +61,7 @@ class Settings(NotaryModel):
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
-        values: dict[str, object] = {"live_available": bool(environ.get("ANTHROPIC_API_KEY"))}
+        values: dict[str, object] = {"live_available": bool(environ.get("GROQ_API_KEY"))}
         anchor_db = environ.get("NOTARY_ANCHOR_DB")
         if anchor_db is not None:
             values["anchor_db"] = anchor_db
@@ -165,14 +165,14 @@ class CassetteSource:
 
 
 class LiveSource:
-    """Live run on the Anthropic API. The client is built on the first request, never earlier."""
+    """Live run on the Groq API. The client is built on the first request, never earlier."""
 
     def __init__(
         self,
         streamer: RunStreamer,
         *,
         available: bool,
-        client_factory: Callable[[], LlmClient] = AnthropicClient,
+        client_factory: Callable[[], LlmClient] = GroqClient,
     ) -> None:
         self._streamer = streamer
         self._available = available
@@ -213,7 +213,10 @@ def build_app(settings: Settings, *, event_delay: float = 0.4) -> FastAPI:
     sources: dict[RunMode, RunSource] = {
         "golden": GoldenSource(),
         "cassette": CassetteSource(streamer),
-        "live": LiveSource(streamer, available=settings.live_available),
+        "live": LiveSource(
+            streamer,
+            available=settings.live_available,
+        ),
     }
     return create_app(
         event_delay=event_delay,

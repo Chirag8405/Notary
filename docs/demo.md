@@ -9,30 +9,30 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 | World                   | seeded: bank, inbox, calendar, files, Slack as one JSON state, reset before every run; mirrors the organizer's sandbox tools (`packages/world`) |
 | Monitor, ledger, oracle | pure functions of state (`packages/core`)                                                                                                       |
 | Stage run               | replays recorded LLM responses keyed by prompt hash (cassettes in `packages/world/fixtures/cassettes`); byte-identical                          |
-| Live mode               | labeled "live" in the UI; the current Anthropic SDK exposes no sampling parameters (no `temperature`), so live runs are not reproducible: use cassettes |
+| Live mode               | labeled "live" in the UI; Groq is asked with `temperature=0` but does not promise identical answers, so live runs are not reproducible: use cassettes |
 | Hijacked Mode           | no LLM; a judge or script submits raw tool calls; demonstrates I6                                                                               |
 
 ### Run modes and recording
 
-`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
+`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Groq API.
 
 Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) and `legitimate_bill` on the NOTARY lane only (#196: the baseline lanes have no golden `legitimate_bill` stream and close `4404`). The x-ray page still moves `legitimate_bill` and the three-lane view to `cassette` by itself; that is a web change.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | unset | enables `mode=live`; without it `live` closes `4501 mode not available`. Only the SDK reads the value |
+| `GROQ_API_KEY` | unset | enables `mode=live`; without it `live` closes `4501 mode not available`. Only the SDK reads the value. May be set in a git-ignored `.env` (copy `.env.example`); a shell variable wins |
 | `NOTARY_ENDORSEMENT_TIMEOUT` | `300` | seconds an escalation waits for the user's `endorsement_decision` before it is rejected (fail closed); use a few seconds for a stage run |
 | `NOTARY_ANCHOR_DB` | `:memory:` | SQLite file of the audit anchors; keep it away from any saved run records. `:memory:` loses the anchors on restart |
 | `NOTARY_ARENA_MAX_ROUNDS` | `10` | cap on `rounds` for the attacker arena |
 
 A cassette miss (`4502 cassette miss`), a missing cassette (`4502 cassette not found`) or a missing key is an error with a fixed reason; the server never falls back to another mode.
 
-**The committed cassettes are scripted** (`"model": "scripted-v1"` in each file): the keys are the real prompt hashes, so the replay is real and byte-identical, but the responses were written by `notary_server.recording`, not by a model. No real `ANTHROPIC_API_KEY` has been configured or tested yet; the checklist is #182. To (re-)record:
+**The committed cassettes are scripted** (`"model": "scripted-v1"` in each file): the keys are the real prompt hashes, so the replay is real and byte-identical, but the responses were written by `notary_server.recording`, not by a model. A first real recording on Groq was made and does not yet reproduce the scripted behaviour; the findings and checklist are in #182. To (re-)record:
 
 ```
 cd apps/server
 uv run --no-sync python scripts/record_cassettes.py          # scripted: no key, no network
-ANTHROPIC_API_KEY=... uv run --no-sync python scripts/record_cassettes.py --live   # manual, costs tokens
+uv run --no-sync python scripts/record_cassettes.py --live   # manual, costs tokens; needs GROQ_API_KEY (shell or .env)
 ```
 
 Re-record whenever the agent system prompt, the tool descriptions or the rendering format change (the key covers all of them); `apps/server/tests/test_cp2.py::test_committed_scripted_cassettes_are_current` fails when scripted cassettes are stale. The CP2 proof: `cd apps/server && uv run --no-sync pytest tests/test_cp2.py`.

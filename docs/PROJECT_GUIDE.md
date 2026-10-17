@@ -274,7 +274,7 @@ The **AgentRunner** (`runner.py`) is one runner with two hook points: (a) a **pr
 
 ### Design decisions (from `docs/decisions.md`)
 
-Monorepo (Turborepo + pnpm + uv workspace); **types originate in Pydantic** and are generated to JSON Schema → TypeScript types + Zod; pure `core`; Python for eval/fuzz (AgentDojo and Hypothesis are Python); Next.js + React Flow for the UI; raw Anthropic SDK with a hand-written tool loop (no agent framework, so record/replay is trivial); hand-written policy rules instead of OPA/Cedar (six fixed steps, no policy language to audit); SQLite for storage; FastAPI + WebSocket; Docker Compose with offline fallback. Several decisions are still "Proposed, needs team confirmation": gateway placement, stand-in classifier, audit anchoring, write-ahead audit, sensitive-parameter table data.
+Monorepo (Turborepo + pnpm + uv workspace); **types originate in Pydantic** and are generated to JSON Schema → TypeScript types + Zod; pure `core`; Python for eval/fuzz (AgentDojo and Hypothesis are Python); Next.js + React Flow for the UI; raw Groq SDK with a hand-written tool loop (no agent framework, so record/replay is trivial); hand-written policy rules instead of OPA/Cedar (six fixed steps, no policy language to audit); SQLite for storage; FastAPI + WebSocket; Docker Compose with offline fallback. Several decisions are still "Proposed, needs team confirmation": gateway placement, stand-in classifier, audit anchoring, write-ahead audit, sensitive-parameter table data.
 
 ---
 
@@ -466,7 +466,7 @@ Status verified against the code, not only the docs (the README and `phase.md` l
 | P1 Core | monitor, six steps, policy table, ledger, audit chain, units, lookalike, contract monotonicity | **done**; 500 core tests pass |
 | P2 World/attacks/oracle/fuzz/CLI | world state, tools, poison, scenarios, classifier stand-in, executor/Hijacked runner, A1–A14 fixtures, B1–B4 controls, oracle goals | **mostly done**; still missing: Hypothesis fuzz harness, real `notary fuzz/attack/replay` CLI commands |
 | P3a Deterministic pipeline | real Gateway labeling, Value Store, mcp-proxy adapter, Output Guard | not started (interfaces only) |
-| P3b LLM side | Intent Compiler, agent runner on the Anthropic SDK, cassettes, Undefended baseline | not started |
+| P3b LLM side | Intent Compiler, agent runner on the Groq SDK, cassettes, Undefended baseline | not started |
 | P3c Server stream/playground endpoints | real runs over WS, playground endpoints | not started (server replays golden streams) |
 | P3d Endorsement backend | diff card service, approval budget, ledger write | not started |
 | P4 Trust X-ray UI | full contract panel, provenance graph, endorsement card, three-lane view | partial |
@@ -524,7 +524,7 @@ This is where invariant I1 (complete mediation) becomes testable, because every 
 **P3b, LLM side (lane C).** The only phase that touches a model. It builds:
 - the Intent Compiler (user request → contract, never seeing fetched content)
 - an optional Quarantined Extractor
-- the agent runner, a hand-written tool loop on the Anthropic SDK that implements the two lane hooks
+- the agent runner, a hand-written tool loop on the Groq SDK that implements the two lane hooks
 - cassette record and replay (keyed by lane plus prompt hash), so the stage run is byte-identical
 - the Undefended baseline agent
 
