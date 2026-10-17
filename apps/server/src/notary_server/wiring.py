@@ -264,7 +264,7 @@ class LiveSource:
         self._model = model
         self._client: LlmClient | None = None
 
-    def events(self, request: RunRequest) -> Iterator[Event]:
+    def check_available(self) -> None:
         if not self._available:
             raise RunUnavailableError(CLOSE_MODE_UNAVAILABLE, "mode not available")
 
