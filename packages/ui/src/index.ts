@@ -1,3 +1,4 @@
+export { ContentInspector, type ContentInspectorProps } from "./ContentInspector";
 export { ContractPanel, type ContractPanelProps } from "./ContractPanel";
 export { DecisionStream, type DecisionStreamProps } from "./DecisionStream";
 export { toDecisionRows, type ArgChip, type DecisionRow } from "./decision-rows";
@@ -14,6 +15,7 @@ export {
   type LaneSummary,
 } from "./lane-summary";
 export { describeEvent } from "./describe-event";
+export { inspectValue, type Inspection } from "./inspect";
 export { goalLights, laneLabel, type GoalLights, type LightState } from "./goal-lights";
 export { layout } from "./graph-layout";
 export {
