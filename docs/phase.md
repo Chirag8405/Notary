@@ -16,7 +16,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | done        |
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | done        |
 | P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | done        |
-| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | not started |
+| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | CP3 pending |
 | P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | not started |
 | P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started |
 | P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started |
@@ -44,7 +44,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 | --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | CP1 | A + B     | real monitor passes all A1-A14 fixtures; `notary fuzz` reports zero violations; no LLM, no UI. Plan one contract revision window here                   | `cd packages/world && uv run pytest`; `uv run notary fuzz`; `uv run notary attack`        |
 | CP2 | C + A     | runner replays the poisoned bill through the real monitor and Gateway, producing the event stream                                                       | `cd apps/server && uv run pytest tests/test_cp2.py` (cassette replay, no network): byte-identical streams, A3 not paid |
-| CP3 | D + C + B | UI renders that live stream, including the endorsement flow (P3d) and the Classifier-only lane (P2); stage-script steps 1-4 work in the three-lane view | `pnpm dev`, open `/x-ray`; [stage script](demo.md#three-minute-stage-script) steps 1-4    |
+| CP3 | D + C + B | UI renders that live stream, including the endorsement flow (P3d) and the Classifier-only lane (P2); stage-script steps 1-4 work in the three-lane view | `pnpm dev`, open `/x-ray`; [stage script](demo.md#three-minute-stage-script) steps 1-4; golden proof automated (`apps/web/tests/cp3.test.tsx`); cassette proof: automated stream checks and the manual walk-through, recorded in PR #199 |
 | CP4 | all       | playground modes working and eval numbers in the deck                                                                                                   | each playground mode runs against the seeded world; eval export matches the slides        |
 
 ## P0 Foundations (done)
@@ -151,11 +151,16 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 ## P4 Trust X-ray UI (lane D)
 
 - Packages: `packages/ui`, `apps/web`, `packages/client`
-- [ ] Contract panel, real provenance graph, decision stream, oracle lights
-- [ ] Endorsement card; three-lane view
+- [x] Contract panel, real provenance graph, decision stream, oracle lights (#164, #165, #166, #167, #168)
+- [x] Endorsement card; three-lane view (#170, #171)
+- [x] RunView, client lane/mode/send, content inspector (#162, #163, #169)
+- [x] `/x-ray` page: regions, run controls, effects list, audit anchor footer, mode handling (#172, #191)
+- [ ] CP3 manual walk-through of stage-script steps 1-4 on the cassette stack (maintainer; PR #199)
 - Built against golden streams until CP3. Endorsement card uses the P0b approve/reject commands.
 - Accept: `cd apps/web && pnpm test`; `pnpm turbo run build`
 - Demo-able: stage script steps 1-4 ([demo.md](demo.md#three-minute-stage-script)) at CP3.
+- CP3 status: the golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks plus the manual walk-through recorded in PR #199. CP2 is not touched here.
+- Open follow-ups: #193 golden mode ignores the lane, #194 a closing golden socket cancels a pending cassette card, #195 the pending list is empty right after `endorsement_requested`, #196 `legitimate_bill` has no golden stream, #197 the React Flow attribution is hidden, #198 confirming the card pays the attacker.
 
 ## P5 Judge playground (lane D)
 
