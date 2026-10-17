@@ -1,6 +1,11 @@
 "use client";
 
-import { createRestClient, startHijacked, submitHijackedCall } from "@notary/client";
+import {
+  PlaygroundHttpError,
+  createRestClient,
+  startHijacked,
+  submitHijackedCall,
+} from "@notary/client";
 import { DecisionStream, OracleLights, goalLights } from "@notary/ui";
 import type { LightState } from "@notary/ui";
 import { useMemo, useReducer, useRef, useState } from "react";
@@ -16,6 +21,7 @@ import { describePlaygroundError } from "@/lib/playground-state";
 
 export const BEFORE_SESSION_TEXT = "Start a session to play the hijacked model.";
 export const SEED_ERROR = "Seed must be a whole number, 0 or more";
+export const EXPIRED_TEXT = "Your session expired. Start a new session.";
 const SCENARIOS = ["poisoned_bill", "legitimate_bill"] as const;
 type Scenario = (typeof SCENARIOS)[number];
 
@@ -49,6 +55,8 @@ export function HijackedPanel({ apiUrl }: PanelProps) {
   const [starting, setStarting] = useState(false);
   const [inFlight, setInFlight] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The server dropped the session (idle or too old): nothing can be sent until a new Start.
+  const [expired, setExpired] = useState(false);
   // Calls made in this session. A ref, so an id is spent the moment a call is sent: a request that
   // failed after the server recorded its id cannot make the next call a duplicate.
   const attempts = useRef(0);
@@ -75,6 +83,7 @@ export function HijackedPanel({ apiUrl }: PanelProps) {
         if (request !== startRequest.current) return;
         attempts.current = 0;
         dispatch({ type: "started", session: started });
+        setExpired(false);
         setStarting(false);
       },
       (failure: unknown) => {
@@ -105,7 +114,16 @@ export function HijackedPanel({ apiUrl }: PanelProps) {
       },
       (failure: unknown) => {
         busy.current = false;
-        setError(describePlaygroundError(failure, apiUrl));
+        if (
+          failure instanceof PlaygroundHttpError &&
+          failure.status === 404 &&
+          failure.detail === "unknown session"
+        ) {
+          setExpired(true);
+          setError(EXPIRED_TEXT);
+        } else {
+          setError(describePlaygroundError(failure, apiUrl));
+        }
         setInFlight(false);
       },
     );
@@ -166,7 +184,7 @@ export function HijackedPanel({ apiUrl }: PanelProps) {
       ) : (
         <ObjectiveCards objectives={state.objectives} />
       )}
-      <CallForm disabled={session === null || starting || inFlight} onSubmit={submit} />
+      <CallForm disabled={session === null || starting || inFlight || expired} onSubmit={submit} />
       {session === null ? null : (
         <div className="space-y-4">
           <CallLog log={state.log} />
