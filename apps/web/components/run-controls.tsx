@@ -2,8 +2,9 @@
 
 import { createRestClient, listModes } from "@notary/client";
 import type { RunMode } from "@notary/client";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { MODES, SCENARIOS, modeOptions, scenarioLanes } from "@/lib/x-ray-state";
@@ -17,19 +18,35 @@ export interface RunControlsProps {
   viewMode: ViewMode;
   /** Said once when the page changed a choice that cannot work (for example golden to cassette). */
   note?: string | null;
+  /** The demo step buttons, shown in the row of "Run again". */
+  steps?: ReactNode;
+  /** What the active step is about, shown under that row. */
+  guide?: ReactNode;
+  /** Whether "Advanced" is open; kept by the page so a new run does not close it. */
+  advancedOpen?: boolean;
+  onAdvancedToggle?: (open: boolean) => void;
   onScenarioChange: (scenario: string) => void;
   onModeChange: (mode: RunMode) => void;
   onViewModeChange: (viewMode: ViewMode) => void;
   onRunAgain: () => void;
 }
 
-/** Scenario, mode and view selection plus "Run again". Keeps no state beyond the mode list. */
+const SELECT = "h-9 rounded-md border border-input bg-background px-3 text-sm";
+
+/**
+ * "Run again" and the demo steps are always visible; scenario, mode and the three-lane toggle sit
+ * under "Advanced". Keeps no state beyond the mode list.
+ */
 export function RunControls({
   apiUrl,
   scenario,
   mode,
   viewMode,
   note,
+  steps,
+  guide,
+  advancedOpen = false,
+  onAdvancedToggle,
   onScenarioChange,
   onModeChange,
   onViewModeChange,
@@ -65,80 +82,91 @@ export function RunControls({
   const threeLaneAvailable = scenarioLanes(scenario).length >= 3;
 
   return (
-    <div
-      role="group"
-      aria-label="Run controls"
-      className="flex flex-wrap items-center gap-3 text-sm"
-    >
-      <label className="flex items-center gap-2">
-        Scenario
-        <select
-          value={scenario}
-          onChange={(event) => {
-            onScenarioChange(event.target.value);
-          }}
-          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
-        >
-          {SCENARIOS.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center gap-2">
-        Mode
-        <select
-          value={mode}
-          onChange={(event) => {
-            const next = MODES.find((item) => item === event.target.value);
-            if (next !== undefined) onModeChange(next);
-          }}
-          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
-        >
-          {shown.map((option) => (
-            <option key={option.mode} value={option.mode} disabled={!option.enabled}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {disabledNotes.map((text) => (
-        <span key={text} data-mode-note className="text-xs text-muted-foreground">
-          {text}
-        </span>
-      ))}
-      {mode === "live" ? (
-        <span className="text-xs text-muted-foreground">live runs are not reproducible</span>
-      ) : null}
+    <div role="group" aria-label="Run controls" className="space-y-4 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        {steps}
+        <Button type="button" variant="outline" className="h-9 text-sm" onClick={onRunAgain}>
+          Run again
+        </Button>
+        <Link href="/playground" className="text-sm underline">
+          Judge playground
+        </Link>
+      </div>
+      {guide}
       {note === undefined || note === null ? null : (
-        <span data-switch-note role="status" className="text-xs text-muted-foreground">
+        <p data-switch-note role="status" className="text-xs text-muted-foreground">
           {note}
-        </span>
+        </p>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        className="text-sm"
-        aria-pressed={viewMode === "three-lane"}
-        onClick={() => {
-          onViewModeChange(viewMode === "three-lane" ? "single" : "three-lane");
+      <details
+        open={advancedOpen}
+        onToggle={(event) => {
+          onAdvancedToggle?.(event.currentTarget.open);
         }}
-        disabled={!threeLaneAvailable}
+        className="rounded-md border px-3 py-2"
       >
-        Three-lane view
-      </Button>
-      {threeLaneAvailable ? null : (
-        <span className="text-xs text-muted-foreground">
-          only the NOTARY lane has a recorded stream for this scenario
-        </span>
-      )}
-      <Button type="button" className="text-sm" onClick={onRunAgain}>
-        Run again
-      </Button>
-      <Link href="/playground" className="text-sm underline">
-        Judge playground
-      </Link>
+        <summary className="cursor-pointer text-sm font-medium select-none">Advanced</summary>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2">
+            Scenario
+            <select
+              value={scenario}
+              onChange={(event) => {
+                onScenarioChange(event.target.value);
+              }}
+              className={SELECT}
+            >
+              {SCENARIOS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            Mode
+            <select
+              value={mode}
+              onChange={(event) => {
+                const next = MODES.find((item) => item === event.target.value);
+                if (next !== undefined) onModeChange(next);
+              }}
+              className={SELECT}
+            >
+              {shown.map((option) => (
+                <option key={option.mode} value={option.mode} disabled={!option.enabled}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {disabledNotes.map((text) => (
+            <span key={text} data-mode-note className="text-xs text-muted-foreground">
+              {text}
+            </span>
+          ))}
+          {mode === "live" ? (
+            <span className="text-xs text-muted-foreground">live runs are not reproducible</span>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            aria-pressed={viewMode === "three-lane"}
+            className="h-9 text-sm"
+            onClick={() => {
+              onViewModeChange(viewMode === "three-lane" ? "single" : "three-lane");
+            }}
+            disabled={!threeLaneAvailable}
+          >
+            Three-lane view
+          </Button>
+          {threeLaneAvailable ? null : (
+            <span className="text-xs text-muted-foreground">
+              only the NOTARY lane has a recorded stream for this scenario
+            </span>
+          )}
+        </div>
+      </details>
     </div>
   );
 }

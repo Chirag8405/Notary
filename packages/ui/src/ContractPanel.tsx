@@ -20,7 +20,7 @@ export function ContractPanel({ contract }: ContractPanelProps) {
   if (contract === null) {
     return (
       <section aria-label="Intent contract" className="text-sm">
-        <p className="text-neutral-500">No contract yet</p>
+        <p className="text-muted-foreground">No contract yet</p>
       </section>
     );
   }
@@ -42,7 +42,7 @@ export function ContractPanel({ contract }: ContractPanelProps) {
               className="flex flex-wrap items-center gap-2"
             >
               <code>{scope.tool}</code>
-              <span data-effect className="text-xs text-neutral-600">
+              <span data-effect className="text-xs text-muted-foreground">
                 {scope.effect}
               </span>
               <span
@@ -61,7 +61,7 @@ export function ContractPanel({ contract }: ContractPanelProps) {
                 </span>
               ) : null}
               {params.length === 0 ? (
-                <span data-no-params className="text-xs text-neutral-500">
+                <span data-no-params className="text-xs text-muted-foreground">
                   no parameters
                 </span>
               ) : (
@@ -77,7 +77,7 @@ export function ContractPanel({ contract }: ContractPanelProps) {
                       >
                         {param}: {markerLabel(marker)}
                       </span>
-                      <span data-tone-label className="text-[10px] uppercase text-neutral-500">
+                      <span data-tone-label className="text-[10px] uppercase text-muted-foreground">
                         {tone}
                       </span>
                     </span>
@@ -90,14 +90,16 @@ export function ContractPanel({ contract }: ContractPanelProps) {
       </ul>
       <dl aria-label="Effect budget" className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
         {Object.entries(contract.budget).flatMap(([field, value]) => [
-          <dt key={`${field}:dt`} className="font-mono text-neutral-600">
+          <dt key={`${field}:dt`} className="font-mono text-muted-foreground">
             {field}
           </dt>,
-          <dd key={`${field}:dd`}>{String(value)}</dd>,
+          <dd key={`${field}:dd`} className="font-mono text-xs">
+            {String(value)}
+          </dd>,
         ])}
       </dl>
       {contract.egress_hosts.length === 0 ? (
-        <p data-egress-empty className="text-xs text-neutral-600">
+        <p data-egress-empty className="text-xs text-muted-foreground">
           no egress allowed
         </p>
       ) : (
@@ -110,11 +112,11 @@ export function ContractPanel({ contract }: ContractPanelProps) {
         </ul>
       )}
       <div>
-        <h4 className="text-xs font-semibold uppercase text-neutral-500">
+        <h4 className="text-xs font-semibold uppercase text-muted-foreground">
           authorized irreversible
         </h4>
         {contract.authorized_irreversible.length === 0 ? (
-          <p data-irreversible-none className="text-xs text-neutral-600">
+          <p data-irreversible-none className="text-xs text-muted-foreground">
             none
           </p>
         ) : (

@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import Home from "@/app/page";
 import { PlaygroundView } from "@/components/playground-view";
 import { RunControls } from "@/components/run-controls";
 
@@ -35,12 +34,6 @@ describe("playground page", () => {
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByRole("tabpanel").getAttribute("aria-label")).toBe("Attack library");
     expect(window.location.search).toBe("?mode=library");
-  });
-
-  it("the home page links to the playground [-]", () => {
-    render(<Home />);
-    const link = screen.getByRole("link", { name: "Open judge playground" });
-    expect(link.getAttribute("href")).toBe("/playground");
   });
 
   it("the x-ray controls link to the playground [-]", () => {

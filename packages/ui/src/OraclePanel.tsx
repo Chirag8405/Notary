@@ -79,7 +79,7 @@ export function OraclePanel({ view, unresolvedEndorsements }: OraclePanelProps) 
       <h2 className="text-sm font-semibold">
         Oracle
         {lane === "" ? null : (
-          <span data-lane-label className="ml-2 font-normal text-neutral-500">
+          <span data-lane-label className="ml-2 font-normal text-muted-foreground">
             {lane}
           </span>
         )}

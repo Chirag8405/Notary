@@ -21,9 +21,14 @@ import type { ReactNode } from "react";
 import { AnchorFooter } from "@/components/anchor-footer";
 import { EffectsList } from "@/components/effects-list";
 import { EndorsementPanel } from "@/components/endorsement-panel";
+import { DemoGuide, DemoStepNav } from "@/components/demo-steps";
 import { RunControls } from "@/components/run-controls";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { DEMO_STEPS, activeStep } from "@/lib/demo-steps";
 import {
   DEFAULT_MODE,
   callIdForSelection,
@@ -43,11 +48,20 @@ export interface XRayViewProps {
   scenario: string;
   mode?: RunMode;
   initialViewMode?: ViewMode;
+  /** The demo step named in the address; tells step 2 from step 1 (same screen). */
+  initialStep?: number;
   /** Test seam: the socket factory. */
   webSocket?: WebSocketFactory;
 }
 
 type Stream = ReturnType<typeof useRunStream>;
+
+const STATUS_VARIANT = {
+  connecting: "muted",
+  open: "secondary",
+  finished: "default",
+  error: "destructive",
+} as const;
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -122,6 +136,7 @@ function XRayRun({
   viewMode,
   webSocket,
   onUseCassette,
+  controls,
 }: {
   apiUrl: string;
   scenario: string;
@@ -129,6 +144,7 @@ function XRayRun({
   viewMode: ViewMode;
   webSocket: WebSocketFactory | undefined;
   onUseCassette: () => void;
+  controls: ReactNode;
 }) {
   const stream = useRunStream(apiUrl, scenario, {
     lane: "notary",
@@ -175,20 +191,25 @@ function XRayRun({
 
   return (
     <>
-      <header>
-        <h1 className="flex flex-wrap items-baseline gap-3 text-xl font-semibold">
-          Trust X-ray{" "}
-          <span className="text-sm font-normal text-muted-foreground">({stream.status})</span>{" "}
-          <span className="text-sm font-normal text-muted-foreground">
-            {laneLabel("notary", null)}
-          </span>
+      <header className="space-y-1">
+        <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+          NOTARY
+        </p>
+        <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+          Trust X-ray
+          <Badge variant={STATUS_VARIANT[stream.status]} data-status={stream.status}>
+            {stream.status}
+          </Badge>
+          <Badge variant="outline">{laneLabel("notary", null)}</Badge>
         </h1>
       </header>
+      <Separator />
+      {controls}
       {problem === null ? null : (
         <div className="flex flex-wrap items-center gap-3">
-          <div role="alert" className="text-red-700">
+          <Alert variant="destructive" className="w-auto">
             {problem.text}
-          </div>
+          </Alert>
           {problem.offerCassette ? (
             <Button type="button" variant="outline" onClick={onUseCassette}>
               Use cassette instead
@@ -259,12 +280,13 @@ function XRayRun({
   );
 }
 
-/** The Trust X-ray: controls on top, then the regions of one run. */
+/** The Trust X-ray: the demo steps and controls on top, then the regions of one run. */
 export function XRayView({
   apiUrl,
   scenario: initialScenario,
   mode: initialMode = DEFAULT_MODE,
   initialViewMode = "single",
+  initialStep,
   webSocket,
 }: XRayViewProps) {
   // Every choice goes through `settleSelection`, so a combination the server cannot serve (golden
@@ -273,43 +295,74 @@ export function XRayView({
     settleSelection({ scenario: initialScenario, mode: initialMode, viewMode: initialViewMode }),
   );
   const [selection, setSelection] = useState(initial);
+  // Steps 1 and 2 are the same screen; the address tells them apart.
+  const [stepHint, setStepHint] = useState(initialStep);
   const [runKey, setRunKey] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // An address that asked for such a combination is corrected in the address bar too.
   useEffect(() => {
-    if (initial.note !== null) window.history.replaceState(null, "", xrayUrl(initial));
-  }, [initial]);
+    if (initial.note !== null) {
+      window.history.replaceState(
+        null,
+        "",
+        xrayUrl({ ...initial, ...(initialStep === undefined ? {} : { step: initialStep }) }),
+      );
+    }
+  }, [initial, initialStep]);
 
-  const apply = (next: Selection) => {
+  const apply = (next: Selection, hint?: number) => {
     const settled = settleSelection(next);
     setSelection(settled);
+    setStepHint(hint);
     if (settled.scenario !== selection.scenario || settled.mode !== selection.mode) {
       setRunKey((key) => key + 1);
     }
-    window.history.replaceState(null, "", xrayUrl(settled));
+    window.history.replaceState(
+      null,
+      "",
+      xrayUrl({ ...settled, ...(hint === undefined ? {} : { step: hint }) }),
+    );
   };
 
+  const active = activeStep(selection.scenario, selection.mode, selection.viewMode, stepHint);
+  const selectStep = (id: number) => {
+    const step = DEMO_STEPS.find((item) => item.id === id);
+    if (step === undefined) return;
+    apply(
+      { scenario: step.scenario, mode: step.mode, viewMode: step.viewMode },
+      id === 2 ? 2 : undefined,
+    );
+  };
+
+  const controls = (
+    <RunControls
+      apiUrl={apiUrl}
+      scenario={selection.scenario}
+      mode={selection.mode}
+      viewMode={selection.viewMode}
+      note={selection.note}
+      steps={<DemoStepNav active={active} onSelect={selectStep} />}
+      guide={<DemoGuide active={active} />}
+      advancedOpen={advancedOpen}
+      onAdvancedToggle={setAdvancedOpen}
+      onScenarioChange={(next) => {
+        apply({ ...selection, scenario: next });
+      }}
+      onModeChange={(next) => {
+        apply({ ...selection, mode: next });
+      }}
+      onViewModeChange={(next) => {
+        apply({ ...selection, viewMode: next });
+      }}
+      onRunAgain={() => {
+        setRunKey((key) => key + 1);
+      }}
+    />
+  );
+
   return (
-    <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6 text-sm">
-      <RunControls
-        apiUrl={apiUrl}
-        scenario={selection.scenario}
-        mode={selection.mode}
-        viewMode={selection.viewMode}
-        note={selection.note}
-        onScenarioChange={(next) => {
-          apply({ ...selection, scenario: next });
-        }}
-        onModeChange={(next) => {
-          apply({ ...selection, mode: next });
-        }}
-        onViewModeChange={(next) => {
-          apply({ ...selection, viewMode: next });
-        }}
-        onRunAgain={() => {
-          setRunKey((key) => key + 1);
-        }}
-      />
+    <main className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 text-sm sm:px-6">
       <XRayRun
         key={runKey}
         apiUrl={apiUrl}
@@ -320,6 +373,7 @@ export function XRayView({
         onUseCassette={() => {
           apply({ ...selection, mode: "cassette" });
         }}
+        controls={controls}
       />
     </main>
   );

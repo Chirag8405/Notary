@@ -18,6 +18,12 @@ export interface EndorsementCardProps {
   error?: string | null;
 }
 
+const BUTTON =
+  "inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50";
+/** Reject keeps the call blocked: the primary action. Confirm approves the value shown: outlined. */
+const REJECT_BUTTON = `${BUTTON} bg-primary text-primary-foreground hover:bg-primary/90`;
+const CONFIRM_BUTTON = `${BUTTON} border border-amber-500 bg-background text-amber-900 hover:bg-amber-50`;
+
 const STATE_TEXT: Partial<Record<CardState, string>> = {
   sending: "Sending...",
   approved: "You confirmed this request",
@@ -69,7 +75,7 @@ function LedgerValue({ row }: { row: DiffRow }) {
         )}
       </code>
       {comparable ? null : (
-        <span data-length-note className="ml-2 text-xs text-neutral-600">
+        <span data-length-note className="ml-2 text-xs text-muted-foreground">
           different length: positions not comparable
         </span>
       )}
@@ -146,10 +152,11 @@ export function EndorsementCard({
         </p>
       )}
       {state === "conflict" ? null : (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             disabled={disabled}
+            className={CONFIRM_BUTTON}
             onClick={() => {
               onDecide("approve");
             }}
@@ -159,6 +166,7 @@ export function EndorsementCard({
           <button
             type="button"
             disabled={disabled}
+            className={REJECT_BUTTON}
             onClick={() => {
               onDecide("reject");
             }}

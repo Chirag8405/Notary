@@ -312,6 +312,7 @@ describe("no raw content leaks into the page", () => {
     sourceText(resolve(import.meta.dirname, "../../../packages/ui/src"), [".ts", ".tsx"]),
     sourceText(resolve(import.meta.dirname, "../components"), [".tsx"]),
     readFileSync(resolve(import.meta.dirname, "../lib/x-ray-state.ts"), "utf8"),
+    readFileSync(resolve(import.meta.dirname, "../lib/demo-steps.ts"), "utf8"),
   ].join("\n");
 
   it("has a corpus that is not vacuous, and a detector that flags an unknown token [I6]", () => {
