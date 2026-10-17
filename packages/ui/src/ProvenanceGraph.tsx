@@ -93,7 +93,6 @@ export function ProvenanceGraph({
           nodesConnectable={false}
           onNodeClick={(_event, node) => onSelect?.(node.id)}
           onPaneClick={() => onSelect?.(null)}
-          proOptions={{ hideAttribution: true }}
         >
           <Background />
           <Controls showInteractive={false} />
