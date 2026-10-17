@@ -105,7 +105,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
 - Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.
 
-**P3 status (CP2, #142).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. No real `ANTHROPIC_API_KEY` has been configured or tested; recording and verifying with a key is tracked in #182. Known world gap: `check_i3` ignores order (#183).
+**P3 status (CP2, #142).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. No real `ANTHROPIC_API_KEY` has been configured or tested; recording and verifying with a key is tracked in #182. The I3 order gap in `check_i3` (#183) is fixed: a message is compared only with secrets stored before it was sent.
 
 ## P3a Deterministic pipeline (lane A)
 
