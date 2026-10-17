@@ -6,6 +6,13 @@ export { OraclePanel, type OraclePanelProps } from "./OraclePanel";
 export { ProvenanceGraph, type ProvenanceGraphProps } from "./ProvenanceGraph";
 export { ReplayScrubber, type ReplayScrubberProps } from "./ReplayScrubber";
 export { ThreeLaneView, type ThreeLaneViewProps } from "./ThreeLaneView";
+export {
+  laneHeading,
+  summarizeLane,
+  type LaneInput,
+  type LaneStatus,
+  type LaneSummary,
+} from "./lane-summary";
 export { describeEvent } from "./describe-event";
 export { goalLights, laneLabel, type GoalLights, type LightState } from "./goal-lights";
 export { layout } from "./graph-layout";
