@@ -784,7 +784,6 @@ def test_endorsement_flow_over_the_socket() -> None:
     assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
 
 
-
 @pytest.mark.attack("A3")
 @pytest.mark.invariant("I4")
 def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> None:
@@ -796,10 +795,19 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     results: list[list[Event]] = []
 
     def drive() -> None:
-        with client.websocket_connect(with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")) as ws:
+        with client.websocket_connect(
+            with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+        ) as ws:
             before = read_until(ws, "endorsement_requested")
             wait_until(
-                lambda: len(client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"]) == 1
+                lambda: (
+                    len(
+                        client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()[
+                            "pending"
+                        ]
+                    )
+                    == 1
+                )
             )
             card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
             command = EndorsementDecisionCommand(
