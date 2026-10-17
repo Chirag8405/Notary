@@ -2,11 +2,12 @@
 
 `build_app` is the only place that decides which source answers which mode, which LLM client
 backs it, and which decider answers an escalation. Environment access is limited to
-`Settings.from_env` (three `NOTARY_*` variables and whether `ANTHROPIC_API_KEY` is set, never its
+`Settings.from_env` (the `NOTARY_*` variables and whether `ANTHROPIC_API_KEY` is set, never its
 value). A cassette miss, a missing cassette or a missing key is an error with a fixed reason; no
 mode ever falls back to another.
 """
 
+import time
 from collections.abc import Callable, Iterator, Mapping
 from typing import Annotated
 
@@ -26,7 +27,14 @@ from notary_server.anthropic_client import AnthropicClient
 from notary_server.arena import AttackerFactory
 from notary_server.commands import CLOSE_CASSETTE_MISS, CLOSE_MODE_UNAVAILABLE
 from notary_server.endorsement import EndorsementBroker, EndorsementRun
+from notary_server.hijacked import (
+    DEFAULT_IDLE_TTL_SECONDS,
+    DEFAULT_MAX_AGE_SECONDS,
+    DEFAULT_SESSIONS_PER_CLIENT,
+    HijackedSessions,
+)
 from notary_server.lanes import lane_hooks, stream_for_lane
+from notary_server.limits import Clock, PlaygroundLimits, RateLimiter
 from notary_server.llm import CassetteClient, CassetteMissError, LlmClient
 from notary_server.playground import LaneRunner
 from notary_server.runner import ScenarioNotFoundError
@@ -43,6 +51,10 @@ from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 DEFAULT_ANCHOR_DB = ":memory:"
 DEFAULT_ENDORSEMENT_TIMEOUT_SECONDS = 300.0
 DEFAULT_ARENA_MAX_ROUNDS = 10
+DEFAULT_START_LIMIT = 10
+DEFAULT_CALL_LIMIT = 60
+DEFAULT_RUN_LIMIT = 10
+DEFAULT_LIMIT_WINDOW_SECONDS = 60.0
 
 
 class Settings(NotaryModel):
@@ -54,10 +66,30 @@ class Settings(NotaryModel):
     arena_max_rounds: Annotated[int, Field(ge=1, le=100)] = DEFAULT_ARENA_MAX_ROUNDS
     live_available: bool = False
     """Whether `ANTHROPIC_API_KEY` is set. Only the fact is kept, never the key."""
+    hijacked_idle_ttl_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)] = (
+        DEFAULT_IDLE_TTL_SECONDS
+    )
+    """A Hijacked Mode session with no accepted call for this long expires."""
+    hijacked_max_age_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)] = (
+        DEFAULT_MAX_AGE_SECONDS
+    )
+    hijacked_sessions_per_client: Annotated[int, Field(ge=1, le=64)] = DEFAULT_SESSIONS_PER_CLIENT
+    start_limit: Annotated[int, Field(ge=1)] = DEFAULT_START_LIMIT
+    """Hijacked Mode starts per client per window."""
+    call_limit: Annotated[int, Field(ge=1)] = DEFAULT_CALL_LIMIT
+    """Hijacked Mode calls per client per window."""
+    run_limit: Annotated[int, Field(ge=1)] = DEFAULT_RUN_LIMIT
+    """`poison`, `attacks/{id}/run` and `arena` requests per client per window."""
+    limit_window_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)] = (
+        DEFAULT_LIMIT_WINDOW_SECONDS
+    )
 
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
-        """Read `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS`.
+        """Read `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS` and the
+        limits of the playground (`NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`,
+        `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
+        `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -73,7 +105,23 @@ class Settings(NotaryModel):
         rounds = environ.get("NOTARY_ARENA_MAX_ROUNDS")
         if rounds is not None:
             values["arena_max_rounds"] = _number("NOTARY_ARENA_MAX_ROUNDS", rounds, int)
+        for name, field, parse in _LIMIT_VARIABLES:
+            raw = environ.get(name)
+            if raw is not None:
+                values[field] = _number(name, raw, parse)
         return Settings.model_validate(values)
+
+
+_LIMIT_VARIABLES: tuple[tuple[str, str, Callable[[str], float]], ...] = (
+    ("NOTARY_HIJACKED_IDLE_TTL", "hijacked_idle_ttl_seconds", float),
+    ("NOTARY_HIJACKED_MAX_AGE", "hijacked_max_age_seconds", float),
+    ("NOTARY_HIJACKED_SESSIONS_PER_CLIENT", "hijacked_sessions_per_client", int),
+    ("NOTARY_START_LIMIT", "start_limit", int),
+    ("NOTARY_CALL_LIMIT", "call_limit", int),
+    ("NOTARY_RUN_LIMIT", "run_limit", int),
+    ("NOTARY_LIMIT_WINDOW", "limit_window_seconds", float),
+)
+"""Environment name, `Settings` field and parser of each limit."""
 
 
 def _number[N: (int, float)](name: str, raw: str, parse: Callable[[str], N]) -> N:
@@ -219,7 +267,22 @@ def arena_attackers() -> AttackerFactory:
     return attacker
 
 
-def build_app(settings: Settings, *, event_delay: float = 0.4) -> FastAPI:
+def build_limits(settings: Settings, clock: Clock = time.monotonic) -> PlaygroundLimits:
+    """The three per-client budgets of the playground, from the settings."""
+
+    def limiter(limit: int) -> RateLimiter:
+        return RateLimiter(limit=limit, window_seconds=settings.limit_window_seconds, clock=clock)
+
+    return PlaygroundLimits(
+        starts=limiter(settings.start_limit),
+        calls=limiter(settings.call_limit),
+        runs=limiter(settings.run_limit),
+    )
+
+
+def build_app(
+    settings: Settings, *, event_delay: float = 0.4, clock: Clock = time.monotonic
+) -> FastAPI:
     from notary_server.app import create_app
 
     anchors = AnchorStore(settings.anchor_db)
@@ -238,4 +301,11 @@ def build_app(settings: Settings, *, event_delay: float = 0.4) -> FastAPI:
         attacker_llm=arena_attackers(),
         arena_max_rounds=settings.arena_max_rounds,
         broker=broker,
+        hijacked=HijackedSessions(
+            clock=clock,
+            idle_ttl_seconds=settings.hijacked_idle_ttl_seconds,
+            max_age_seconds=settings.hijacked_max_age_seconds,
+            max_sessions_per_client=settings.hijacked_sessions_per_client,
+        ),
+        limits=build_limits(settings, clock),
     )

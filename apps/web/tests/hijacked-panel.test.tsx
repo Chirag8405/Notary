@@ -305,6 +305,57 @@ describe("HijackedPanel", () => {
     expect(submitButton().disabled).toBe(false);
   });
 
+  it("tells the judge when the server dropped the session, and a new Start recovers", async () => {
+    let expired = false;
+    const { calls } = stubPlayground((request) => {
+      if (request.path.endsWith("/calls") && expired) {
+        return { status: 404, body: { detail: "unknown session" } };
+      }
+      return replyFromFixtures(request);
+    });
+    render(<HijackedPanel apiUrl={API} />);
+    await start();
+    chooseTool("read_inbox");
+    await submitCall("c1");
+    expired = true;
+    fireEvent.click(submitButton());
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Your session expired. Start a new session.",
+    );
+    expect(submitButton().disabled).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Delete an email" }).disabled,
+    ).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Start session" }).disabled).toBe(
+      false,
+    );
+    expired = false;
+    await start();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(submitButton().disabled).toBe(false);
+    expect(document.querySelectorAll("[data-call-id]")).toHaveLength(0);
+    chooseTool("read_inbox");
+    await submitCall("c1"); // the counter restarts with the session
+    expect(submits(calls).map((call) => bodyOf(call).call_id)).toEqual(["c1", "c2", "c1"]);
+  });
+
+  it("shows a rate limit as the server's text and keeps the session usable", async () => {
+    let limited = true;
+    stubPlayground((request) =>
+      request.path.endsWith("/calls") && limited
+        ? { status: 429, body: { detail: "too many requests" } }
+        : replyFromFixtures(request),
+    );
+    render(<HijackedPanel apiUrl={API} />);
+    await start();
+    chooseTool("read_inbox");
+    fireEvent.click(submitButton());
+    expect((await screen.findByRole("alert")).textContent).toBe("too many requests (HTTP 429)");
+    expect(submitButton().disabled).toBe(false); // not an expiry: the judge can try again
+    limited = false;
+    await submitCall("c2");
+  });
+
   it("shows the session cap on Start", async () => {
     stubPlayground(() => ({ status: 429, body: { detail: "too many sessions" } }));
     render(<HijackedPanel apiUrl={API} />);

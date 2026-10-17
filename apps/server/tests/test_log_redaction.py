@@ -6,6 +6,9 @@ filter was attached); a control proves the capture would catch the token without
 real uvicorn run on an ephemeral port shows what the servers actually print.
 """
 
+import copy
+import io
+import json
 import logging
 import sys
 import threading
@@ -16,8 +19,10 @@ from contextlib import contextmanager
 
 import pytest
 import uvicorn
+import uvicorn.config
 from fastapi import FastAPI
 from tokens import OTHER_TOKEN, TOKEN
+from uvicorn.logging import AccessFormatter
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
@@ -64,6 +69,15 @@ COVERED = (
         ("/ws/runs/x?token=[redacted]", "/ws/runs/x?token=[redacted]"),
         ("/ws/runs/x?mode=cassette&lane=notary", "/ws/runs/x?mode=cassette&lane=notary"),
         ("no query here", "no query here"),
+        (
+            "POST /playground/hijacked/Ab3_-xYz9/calls HTTP/1.1",
+            "POST /playground/hijacked/[redacted]/calls HTTP/1.1",
+        ),
+        ("GET /playground/hijacked/h1", "GET /playground/hijacked/[redacted]"),
+        ("POST /playground/hijacked HTTP/1.1", "POST /playground/hijacked HTTP/1.1"),
+        ("GET /playground/hijacked/ HTTP/1.1", "GET /playground/hijacked/ HTTP/1.1"),
+        ("GET /playground/hijacked/[redacted]/calls", "GET /playground/hijacked/[redacted]/calls"),
+        ("GET /playground/attacks/A3/run", "GET /playground/attacks/A3/run"),
     ],
 )
 def test_redact(text: str, expected: str) -> None:
@@ -129,7 +143,7 @@ def test_the_filter_redacts_an_argument_that_is_not_a_string() -> None:
     assert "token=[redacted]" in made.getMessage()
     printed_by_repr = record("%r", (Request(),))  # `%r` prints its repr, which holds no token
     FILTER.filter(printed_by_repr)
-    assert "[redacted]" not in printed_by_repr.getMessage()
+    assert TOKEN not in printed_by_repr.getMessage()  # (redacting it anyway is the safe side)
 
 
 def test_the_filter_redacts_an_argument_whose_repr_holds_the_token() -> None:
@@ -177,6 +191,34 @@ def test_the_filter_leaves_other_records_alone() -> None:
     FILTER.filter(made)
     assert made.getMessage() == "poisoned_bill took 12 ms"
     assert made.exc_text is None
+
+
+def test_the_filter_keeps_the_shape_uvicorns_access_formatter_unpacks() -> None:
+    """uvicorn's `AccessFormatter` unpacks `record.args` as (client, method, path, http, status).
+    A filter that flattened the record into a message with no arguments made it raise, and the
+    line was lost (found by the e2e run, which uses uvicorn's own logging config)."""
+    session_id = "Zk3_-Qw9sT2uYxLpAbCdEf"
+    path = f"/playground/hijacked/{session_id}/calls"
+    made = logging.LogRecord(
+        "uvicorn.access", logging.INFO, __file__, 1, '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", "POST", path, "1.1", 200), None,
+    )  # fmt: skip
+    FILTER.filter(made)
+    assert isinstance(made.args, tuple)
+    assert len(made.args) == 5
+    assert made.args[0] == "127.0.0.1:5000"
+    assert made.args[4] == 200
+    line = AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False)
+    text = line.format(made)
+    assert text == '127.0.0.1:5000 - "POST /playground/hijacked/[redacted]/calls HTTP/1.1" 200 OK'
+    assert session_id not in text
+
+
+def test_a_secret_built_from_the_template_and_an_argument_is_still_redacted() -> None:
+    made = record("GET /playground/hijacked/%s/calls", ("abc123",))
+    FILTER.filter(made)
+    # Neither part is a secret alone; joined they are, so the rendered message is redacted.
+    assert made.getMessage() == "GET /playground/hijacked/[redacted]/calls"
 
 
 # ----------------------------------------------------------------------------- attaching
@@ -457,7 +499,7 @@ def two_event_app() -> FastAPI:
 
 
 @contextmanager
-def serving(app: FastAPI) -> Generator[int]:
+def serving(app: FastAPI, log_config: dict[str, object] | None = None) -> Generator[int]:
     """The app on uvicorn (the pinned `websockets` implementation), on an ephemeral port, with
     uvicorn's own logging config off so every record reaches the capture."""
     config = uvicorn.Config(
@@ -465,7 +507,7 @@ def serving(app: FastAPI) -> Generator[int]:
         host="127.0.0.1",
         port=0,
         ws="websockets",
-        log_config=None,
+        log_config=log_config,
         log_level="debug",
         access_log=True,
         lifespan="off",
@@ -499,6 +541,34 @@ def get_list(port: int) -> None:
             assert response.status == 200
 
 
+def play_session(port: int) -> str:
+    """Start a Hijacked Mode session, read it and make one call, over HTTP; returns its id."""
+    base = f"http://127.0.0.1:{port}/playground/hijacked"
+
+    def post(url: str, body: dict[str, object]) -> dict[str, object]:
+        request = urllib.request.Request(
+            url, data=json.dumps(body).encode(), headers={"content-type": "application/json"}
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.loads(response.read())
+
+    started = post(base, {"scenario": "legitimate_bill", "seed": 0})
+    session_id = str(started["session_id"])
+    with urllib.request.urlopen(f"{base}/{session_id}", timeout=5) as response:
+        assert response.status == 200
+    post(
+        f"{base}/{session_id}/calls",
+        {
+            "type": "hijacked_tool_call",
+            "run_id": started["run_id"],
+            "call_id": "c1",
+            "tool": "read_inbox",
+            "args": {},
+        },
+    )
+    return session_id
+
+
 def talk(port: int) -> list[int]:
     """One good socket and one with a bad token (the close code of each), then the REST list."""
     codes: list[int] = []
@@ -518,6 +588,7 @@ def test_a_real_uvicorn_run_logs_no_token(detached: None) -> None:
     app = two_event_app()  # the app attaches the filter, nothing else does
     with capturing(UVICORN_LOGGERS) as capture, serving(app) as port:
         codes = talk(port)
+        session_id = play_session(port)
     assert codes == [1000, 4400, 1000]
     text = capture.text()
     assert "/ws/runs/poisoned_bill" in text  # the servers did log the requests
@@ -530,6 +601,10 @@ def test_a_real_uvicorn_run_logs_no_token(detached: None) -> None:
     assert OTHER_TOKEN not in text
     assert BAD_TOKEN not in text  # a refused token is redacted as well
     assert "token=[redacted]" in text
+    # The Hijacked Mode session id is a capability in the request path: the access log has the
+    # route but never the id.
+    assert "/playground/hijacked/[redacted]" in capture.text_of("uvicorn.access")
+    assert session_id not in text
 
 
 def test_control_a_real_uvicorn_run_prints_the_token_without_the_filter() -> None:
@@ -538,7 +613,9 @@ def test_control_a_real_uvicorn_run_prints_the_token_without_the_filter() -> Non
     app = two_event_app()
     with unredacted(), capturing(UVICORN_LOGGERS) as capture, serving(app) as port:
         codes = talk(port)
+        session_id = play_session(port)
     assert codes == [1000, 4400, 1000]
+    assert session_id in capture.text_of("uvicorn.access")  # the id leaks into the access log
     assert TOKEN in capture.text()
     assert BAD_TOKEN in capture.text()
     # ... and it leaks through each logger the filter covers, so each assertion above has teeth.
@@ -547,3 +624,56 @@ def test_control_a_real_uvicorn_run_prints_the_token_without_the_filter() -> Non
     assert any(
         TOKEN in capture.text_of(name) for name in capture.names if name.startswith("websockets.")
     )
+
+
+def default_uvicorn_logging(access: io.StringIO, error: io.StringIO) -> dict[str, object]:
+    """uvicorn's own logging configuration (its formatters, its logger layout), with the two
+    handlers writing to the given buffers instead of the terminal."""
+    config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    config["handlers"]["access"] = {
+        "()": lambda: logging.StreamHandler(access),
+        "formatter": "access",
+    }
+    config["handlers"]["default"] = {
+        "()": lambda: logging.StreamHandler(error),
+        "formatter": "default",
+    }
+    config["formatters"]["access"]["use_colors"] = False
+    config["formatters"]["default"]["use_colors"] = False
+    return config
+
+
+@pytest.fixture
+def uvicorn_loggers_restored() -> Generator[None]:
+    """uvicorn's `dictConfig` replaces the handlers of its loggers; put them back afterwards."""
+    names = ("uvicorn", "uvicorn.access", "uvicorn.error")
+    saved = {
+        name: (list(logging.getLogger(name).handlers), logging.getLogger(name).propagate)
+        for name in names
+    }
+    yield
+    for name, (handlers, propagate) in saved.items():
+        logger = logging.getLogger(name)
+        logger.handlers[:] = handlers
+        logger.propagate = propagate
+
+
+def test_every_request_is_logged_under_uvicorns_own_logging_config(
+    detached: None, uvicorn_loggers_restored: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With uvicorn's default formatters (the production setup) a redacted access line must still
+    be written: the session id never appears, and no "Logging error" is printed."""
+    access, error = io.StringIO(), io.StringIO()
+    app = two_event_app()
+    with serving(app, default_uvicorn_logging(access, error)) as port:
+        session_id = play_session(port)
+        get_list(port)
+    lines = [line for line in access.getvalue().splitlines() if "/playground/hijacked" in line]
+    # start, read the state, make a call: three lines, none lost to a formatter that raised
+    assert len(lines) == 3
+    assert all(line.endswith(" 200 OK") for line in lines)
+    assert sum("/playground/hijacked/[redacted]" in line for line in lines) == 2
+    assert session_id not in access.getvalue()
+    assert "token=[redacted]" in access.getvalue()  # the stray ?token= of get_list
+    assert TOKEN not in access.getvalue() + error.getvalue()
+    assert "Logging error" not in capsys.readouterr().err

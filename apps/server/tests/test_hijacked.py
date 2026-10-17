@@ -18,6 +18,7 @@ from notary_server.hijacked import (
     HijackedStart,
     HijackedState,
     HijackedStep,
+    counter_session_ids,
 )
 from notary_world.cast import ACCOUNTANT_EMAIL, ATTACKER_EMAIL, ATTACKER_IBAN, BILLER_IBAN
 from notary_world.oracle import ATTACKER_GOAL_IDS
@@ -28,8 +29,17 @@ START = {"scenario": "legitimate_bill", "seed": 0}
 RUN_ID = "run-hijacked-h1"
 
 
+def numbered(scenarios: Callable[[str, int], Scenario] = get_scenario) -> HijackedSessions:
+    """Sessions with the ids `h1`, `h2`, ... and no per-client cap (one client plays them all)."""
+    return HijackedSessions(
+        scenarios, new_id=counter_session_ids(), max_sessions_per_client=MAX_SESSIONS
+    )
+
+
 def new_client(sessions: HijackedSessions | None = None) -> TestClient:
-    return TestClient(create_app(event_delay=0, hijacked=sessions))
+    return TestClient(
+        create_app(event_delay=0, hijacked=numbered() if sessions is None else sessions)
+    )
 
 
 def start(client: TestClient) -> HijackedSession:
@@ -167,7 +177,7 @@ def scenario_with_endorsed_add_contact(scenario_id: str, seed: int) -> Scenario:
 
 @pytest.mark.attack("A11")
 def test_escalation_is_rejected_but_reported() -> None:
-    sessions = HijackedSessions(scenarios=scenario_with_endorsed_add_contact)
+    sessions = numbered(scenario_with_endorsed_add_contact)
     client = new_client(sessions)
     start(client)
     step = submit(client, "c1", "add_contact", {"name": "Alpha Consulting"})
@@ -243,7 +253,7 @@ def test_call_cap() -> None:
 
 @pytest.mark.invariant("I6")
 def test_calls_are_serialized_per_session() -> None:
-    sessions = HijackedSessions()
+    sessions = numbered()
     client = new_client(sessions)
     start(client)
     statuses: dict[str, int] = {}
@@ -353,7 +363,7 @@ def run_together(*jobs: Callable[[], None]) -> None:
 
 @pytest.mark.invariant("I6")
 def test_parallel_starts_get_distinct_sessions_and_runs() -> None:
-    sessions = HijackedSessions()
+    sessions = numbered()
     started: list[HijackedSession] = []
     lock = threading.Lock()
 
@@ -376,7 +386,7 @@ def test_two_sessions_in_parallel_never_see_each_others_calls_or_world() -> None
     same call ids at the same moment, ten times over to give a race a chance to show."""
 
     def one_round() -> None:
-        sessions = HijackedSessions()
+        sessions = numbered()
         pair: dict[str, HijackedSession] = {}
 
         def begin(name: str, scenario: Literal["legitimate_bill", "poisoned_bill"]) -> None:

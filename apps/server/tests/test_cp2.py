@@ -374,6 +374,13 @@ def test_live_mode_needs_a_key() -> None:
         "NOTARY_ANCHOR_DB",
         "NOTARY_ENDORSEMENT_TIMEOUT",
         "NOTARY_ARENA_MAX_ROUNDS",
+        "NOTARY_HIJACKED_IDLE_TTL",
+        "NOTARY_HIJACKED_MAX_AGE",
+        "NOTARY_HIJACKED_SESSIONS_PER_CLIENT",
+        "NOTARY_START_LIMIT",
+        "NOTARY_CALL_LIMIT",
+        "NOTARY_RUN_LIMIT",
+        "NOTARY_LIMIT_WINDOW",
     }
     client = TestClient(build_app(settings, event_delay=0))
     events, closed = replay(client, POISONED, "notary", mode="live")
@@ -415,6 +422,35 @@ def test_settings_from_env() -> None:
     assert (custom.endorsement_timeout_seconds, custom.arena_max_rounds) == (2.5, 25)
     assert custom.live_available is True
     assert "sk-not-stored" not in custom.model_dump_json()
+    assert (
+        defaults.hijacked_idle_ttl_seconds,
+        defaults.hijacked_max_age_seconds,
+        defaults.hijacked_sessions_per_client,
+    ) == (1800.0, 7200.0, 4)
+    assert (
+        defaults.start_limit,
+        defaults.call_limit,
+        defaults.run_limit,
+        defaults.limit_window_seconds,
+    ) == (10, 60, 10, 60.0)
+    limits = Settings.from_env(
+        {
+            "NOTARY_HIJACKED_IDLE_TTL": "90",
+            "NOTARY_HIJACKED_MAX_AGE": "600.5",
+            "NOTARY_HIJACKED_SESSIONS_PER_CLIENT": "2",
+            "NOTARY_START_LIMIT": "5",
+            "NOTARY_CALL_LIMIT": "30",
+            "NOTARY_RUN_LIMIT": "3",
+            "NOTARY_LIMIT_WINDOW": "10",
+        }
+    )
+    assert (
+        limits.hijacked_idle_ttl_seconds,
+        limits.hijacked_max_age_seconds,
+        limits.hijacked_sessions_per_client,
+    ) == (90.0, 600.5, 2)
+    assert (limits.start_limit, limits.call_limit, limits.run_limit) == (5, 30, 3)
+    assert limits.limit_window_seconds == 10.0
     bad: list[dict[str, str]] = [
         {"NOTARY_ENDORSEMENT_TIMEOUT": "soon"},
         {"NOTARY_ENDORSEMENT_TIMEOUT": "0"},
@@ -426,6 +462,17 @@ def test_settings_from_env() -> None:
         {"NOTARY_ARENA_MAX_ROUNDS": "1.5"},
         {"NOTARY_ARENA_MAX_ROUNDS": "101"},
         {"NOTARY_ANCHOR_DB": ""},
+        {"NOTARY_HIJACKED_IDLE_TTL": "0"},
+        {"NOTARY_HIJACKED_IDLE_TTL": "soon"},
+        {"NOTARY_HIJACKED_MAX_AGE": "-1"},
+        {"NOTARY_HIJACKED_SESSIONS_PER_CLIENT": "0"},
+        {"NOTARY_HIJACKED_SESSIONS_PER_CLIENT": "65"},
+        {"NOTARY_HIJACKED_SESSIONS_PER_CLIENT": "2.5"},
+        {"NOTARY_START_LIMIT": "0"},
+        {"NOTARY_CALL_LIMIT": "many"},
+        {"NOTARY_RUN_LIMIT": "-4"},
+        {"NOTARY_LIMIT_WINDOW": "0"},
+        {"NOTARY_LIMIT_WINDOW": "inf"},
     ]
     for environ in bad:
         with pytest.raises(ValueError):  # noqa: PT011 - the message is the variable's name
