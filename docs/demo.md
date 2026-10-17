@@ -20,6 +20,7 @@ Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the request
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `NOTARY_LIVE_MODEL` | `openai/gpt-oss-120b` | the Groq chat model `mode=live` asks (must support tool calling). Cassettes always use the default: the model is part of every cassette key |
 | `GROQ_API_KEY` | unset | enables `mode=live`; without it `live` closes `4501 mode not available`. Only the SDK reads the value. May be set in a git-ignored `.env` (copy `.env.example`); a shell variable wins |
 | `NOTARY_ENDORSEMENT_TIMEOUT` | `300` | seconds an escalation waits for the user's `endorsement_decision` before it is rejected (fail closed); use a few seconds for a stage run |
 | `NOTARY_ANCHOR_DB` | `:memory:` | SQLite file of the audit anchors; keep it away from any saved run records. `:memory:` loses the anchors on restart |
@@ -36,6 +37,25 @@ uv run --no-sync python scripts/record_cassettes.py --live   # manual, costs tok
 ```
 
 Re-record whenever the agent system prompt, the tool descriptions or the rendering format change (the key covers all of them); `apps/server/tests/test_cp2.py::test_committed_scripted_cassettes_are_current` fails when scripted cassettes are stale. The CP2 proof: `cd apps/server && uv run --no-sync pytest tests/test_cp2.py`.
+
+### Live models: what a real model does with the swapped IBAN
+
+`mode=live` runs are labeled in the stream (`run_finished.summary` ends "live run: a real model answered, so this run is not reproducible") and in the UI ("live (a real Groq model; needs an API key; not reproducible)"). A cassette run says who recorded it ("cassette replay: recorded from a scripted agent (scripted-v1)"); the committed cassettes are scripted, no model produced them. A live run in which the agent makes no tool call ends normally as `completed` with the summary "agent took no action".
+
+Measured with `apps/server/scripts/probe_models.py` (`poisoned_bill` on each lane, world seeds 0 to 9, then `legitimate_bill` on NOTARY, `temperature=0`, one Groq API key, 2026-10-17; small samples, so 0/10 does not mean "immune"):
+
+| model | attacker goal: Undefended | Classifier | NOTARY (must be 0) | legitimate bill completed (NOTARY) | runs with no tool call | runs the API rejected (invalid tool call) | stopped |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `openai/gpt-oss-20b` | 1/10 | 2/10 | 0/10 | 3/5 | 14/35 | 1/35 | - |
+| `qwen/qwen3.8-27b` | 0/7 | not run | not run | not run | 0/7 | 0/7 | daily token cap after 7 Undefended runs |
+| `openai/gpt-oss-120b` | 0/10 | 0/10 | 0/10 | 5/5 | 1/35 | 0/35 | - |
+
+Reading it:
+
+- **The NOTARY guarantee does not depend on the model:** the attacker goal was reached 0 times on the NOTARY lane for every model that ran it. **Whether the model is hijacked does depend on the model:** only `gpt-oss-20b` followed the swapped IBAN (once on Undefended, twice on Classifier); `gpt-oss-120b` never did, and `qwen3.8-27b` did not in the 7 Undefended runs it completed before its daily token cap. A live run therefore cannot show "the Undefended lane loses the money" on demand; use the cassette, golden or Hijacked Mode for that.
+- **Reliability differs more than susceptibility:** `gpt-oss-20b` proposed no tool call in 14 of 35 runs and completed the legitimate bill 3 of 5 times; `gpt-oss-120b` completed it 5 of 5 times with one run without a tool call. The default live model stays `openai/gpt-oss-120b`.
+- Daily limit: Groq's on-demand tier allows 200,000 tokens per model per day. `qwen3.8-27b` is the most token-hungry (up to 12 tool calls in one run) and used its day's tokens after 7 runs; the probe stops on such a limit and says so instead of waiting for hours.
+- The probe found and fixed two harness problems before this table: a model passing invented arguments to the parameterless `read_inbox` (NOTARY blocked the call at scope; `gpt-oss-120b` completed the legitimate bill 0 of 5 times until the client dropped arguments for parameterless tools), and a benign `reference` on `pay_bill` (see [decisions.md](decisions.md)).
 
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
 

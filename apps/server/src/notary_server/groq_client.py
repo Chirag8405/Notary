@@ -177,6 +177,34 @@ def _call_args(call: ChatCompletionMessageToolCall) -> dict[str, str]:
     }
 
 
+def drop_args_of_parameterless_tools(
+    turn: CassetteTurn, tools: Sequence[LlmToolSpec]
+) -> CassetteTurn:
+    """Clear the arguments of a call to a tool whose schema declares no parameters.
+
+    Several models invent arguments for such a tool (`read_inbox` called with `message_id` or with
+    an empty name, borrowed from a neighbouring tool). Nothing in an empty schema can mean
+    anything, so this is a transport repair, not a judgement: a tool WITH parameters keeps every
+    argument, declared or not, and the monitor sees it.
+    """
+    parameterless = {spec.name for spec in tools if not _declares_parameters(spec)}
+    if not any(call.tool in parameterless and call.args for call in turn.tool_calls):
+        return turn
+    calls = tuple(
+        CassetteToolCall(tool=call.tool, args={}) if call.tool in parameterless else call
+        for call in turn.tool_calls
+    )
+    return turn.model_copy(update={"tool_calls": calls})
+
+
+def _declares_parameters(spec: LlmToolSpec) -> bool:
+    schema: object = json.loads(spec.input_schema)
+    if not isinstance(schema, dict):
+        return True
+    properties = cast(dict[str, object], schema).get("properties")
+    return bool(properties)
+
+
 def from_groq_completion(completion: ChatCompletion) -> CassetteTurn:
     """The assistant turn for an SDK answer: its text and its tool calls in order."""
     if not completion.choices:
@@ -225,4 +253,4 @@ class GroqClient:
             messages=to_groq_messages(request.system, request.messages),
             tools=[_tool_param(spec) for spec in request.tools],
         )
-        return from_groq_completion(completion)
+        return drop_args_of_parameterless_tools(from_groq_completion(completion), request.tools)

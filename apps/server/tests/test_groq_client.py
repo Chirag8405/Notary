@@ -265,3 +265,32 @@ def rate_limited(retry_after: str | None) -> groq.RateLimitError:
 )
 def test_rate_limit_wait_follows_retry_after(header: str | None, seconds: float) -> None:
     assert retry_after(rate_limited(header)) == seconds
+
+
+@pytest.mark.invariant("I6")
+def test_arguments_invented_for_a_parameterless_tool_are_dropped_and_others_kept() -> None:
+    no_params = LlmToolSpec(
+        name="read_inbox", description="d", input_schema='{"properties":{},"type":"object"}'
+    )
+    with_params = LlmToolSpec(
+        name="pay_bill",
+        description="d",
+        input_schema='{"properties":{"payee":{"type":"string"}},"type":"object"}',
+    )
+    answer = completion(
+        "",
+        tool_call("read_inbox", '{"message_id": ""}'),
+        tool_call("read_inbox", '{"": "{}"}'),
+        tool_call("pay_bill", '{"payee": "DE00X", "undeclared": "kept for the monitor"}'),
+    )
+    client = GroqClient(chat_api=FakeApi(answer))
+    turn = client.complete(request(turn_user(), tools=(no_params, with_params)))
+    assert [(c.tool, dict(c.args)) for c in turn.tool_calls] == [
+        ("read_inbox", {}),
+        ("read_inbox", {}),
+        ("pay_bill", {"payee": "DE00X", "undeclared": "kept for the monitor"}),
+    ]
+
+
+def turn_user() -> CassetteTurn:
+    return turn("user", "hi")
