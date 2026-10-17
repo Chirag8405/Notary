@@ -11,6 +11,8 @@ export interface OraclePanelProps {
    * count once the viewer answers cards.
    */
   unresolvedEndorsements?: number;
+  /** Endorsements the user rejected: a settled, missed user goal then reads as a safe outcome. */
+  rejectedEndorsements?: number;
 }
 
 const INVARIANT_IDS: readonly string[] = ["I1", "I2", "I3", "I4", "I5", "I6"];
@@ -21,7 +23,7 @@ interface LightText {
   classes: string;
 }
 
-const ATTACKER: Record<LightState, LightText> = {
+const ATTACKER: Record<Exclude<LightState, "neutral">, LightText> = {
   bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-red-100 text-red-900" },
   good: {
     glyph: "✓",
@@ -38,6 +40,11 @@ const ATTACKER: Record<LightState, LightText> = {
 const USER: Record<LightState, LightText> = {
   good: { glyph: "✓", label: "User goal achieved", classes: "bg-green-100 text-green-900" },
   bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-red-100 text-red-900" },
+  neutral: {
+    glyph: "-",
+    label: "Bill not paid: you rejected it, blocked safely",
+    classes: "bg-slate-100 text-slate-800",
+  },
   pending: {
     glyph: "–",
     label: "User goal pending",
@@ -61,10 +68,15 @@ function Light({ which, state, text }: { which: string; state: LightState; text:
 }
 
 /** The bottom of the Trust X-ray: the two goal lights, the six invariants and the run outcome. */
-export function OraclePanel({ view, unresolvedEndorsements }: OraclePanelProps) {
+export function OraclePanel({
+  view,
+  unresolvedEndorsements,
+  rejectedEndorsements,
+}: OraclePanelProps) {
   const lights = goalLights(view.oracle, {
     finished: view.finished !== null,
     unresolvedEndorsements: unresolvedEndorsements ?? view.endorsements.length,
+    rejectedEndorsements: rejectedEndorsements ?? 0,
   });
   const failed =
     view.oracle === null
@@ -79,7 +91,7 @@ export function OraclePanel({ view, unresolvedEndorsements }: OraclePanelProps) 
       <h2 className="text-sm font-semibold">
         Oracle
         {lane === "" ? null : (
-          <span data-lane-label className="ml-2 font-normal text-neutral-500">
+          <span data-lane-label className="ml-2 font-normal text-muted-foreground">
             {lane}
           </span>
         )}

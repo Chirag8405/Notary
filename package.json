@@ -15,7 +15,9 @@
     "schema:generate": "turbo run schema:generate api:generate fixtures:generate",
     "schema:check": "turbo run schema:check",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "playground:fixtures": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py",
+    "playground:fixtures:check": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py --check"
   },
   "devDependencies": {
     "prettier": "3.9.10",

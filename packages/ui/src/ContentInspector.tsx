@@ -44,7 +44,7 @@ export function ContentInspector({ view, valueId }: ContentInspectorProps) {
   if (valueId === null) {
     return (
       <section aria-label="Content inspector" className="text-sm">
-        <p className="text-neutral-500">Select a node or chip to inspect it</p>
+        <p className="text-muted-foreground">Select a node or chip to inspect it</p>
       </section>
     );
   }
@@ -52,7 +52,7 @@ export function ContentInspector({ view, valueId }: ContentInspectorProps) {
   if (found === null) {
     return (
       <section aria-label="Content inspector" className="text-sm">
-        <p className="text-neutral-500">Value not found</p>
+        <p className="text-muted-foreground">Value not found</p>
       </section>
     );
   }
@@ -69,37 +69,37 @@ export function ContentInspector({ view, valueId }: ContentInspectorProps) {
         </p>
       ) : null}
       <dl aria-label="Value details" className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-neutral-500">value</dt>
+        <dt className="text-muted-foreground">value</dt>
         <dd className="font-mono">{found.valueId}</dd>
-        <dt className="text-neutral-500">origin</dt>
+        <dt className="text-muted-foreground">origin</dt>
         <dd>{origin}</dd>
-        <dt className="text-neutral-500">integrity</dt>
+        <dt className="text-muted-foreground">integrity</dt>
         <dd>{found.integrity}</dd>
-        <dt className="text-neutral-500">readers</dt>
+        <dt className="text-muted-foreground">readers</dt>
         <dd>{readersText(found.readers)}</dd>
-        <dt className="text-neutral-500">unit</dt>
+        <dt className="text-muted-foreground">unit</dt>
         <dd>{found.unit ?? "none"}</dd>
-        <dt className="text-neutral-500">content hash</dt>
+        <dt className="text-muted-foreground">content hash</dt>
         <dd className="font-mono" title={found.contentHash}>
           {found.contentHash.slice(0, HASH_SHORT)}
         </dd>
       </dl>
       <div>
-        <h4 className="text-xs font-semibold uppercase text-neutral-500">preview</h4>
+        <h4 className="text-xs font-semibold uppercase text-muted-foreground">preview</h4>
         <p data-testid="preview" className="whitespace-pre-wrap break-words font-mono">
           {found.preview === "" && !found.labeled ? "preview not available yet" : found.preview}
         </p>
       </div>
       {source === null ? null : (
         <div data-testid="source">
-          <h4 className="text-xs font-semibold uppercase text-neutral-500">
+          <h4 className="text-xs font-semibold uppercase text-muted-foreground">
             taken from <span className="font-mono normal-case">{source.valueId}</span>{" "}
             <span className="normal-case">
               ({source.start}..{source.end})
             </span>
           </h4>
           {source.sourcePreview === null ? (
-            <p className="text-neutral-500">source value not seen yet</p>
+            <p className="text-muted-foreground">source value not seen yet</p>
           ) : (
             <p className="whitespace-pre-wrap break-words font-mono">
               {source.before}
@@ -108,7 +108,7 @@ export function ContentInspector({ view, valueId }: ContentInspectorProps) {
             </p>
           )}
           {source.approximate ? (
-            <p data-testid="approximate" className="text-xs text-neutral-600">
+            <p data-testid="approximate" className="text-xs text-muted-foreground">
               span is approximate: only a redacted preview is available
             </p>
           ) : null}

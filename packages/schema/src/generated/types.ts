@@ -308,7 +308,7 @@ summary: string
 type: "run_finished"
 }
 export interface EndorsementDecisionCommand {
-decision: ("approve" | "reject")
+decision: ("approve" | "reject" | "use_nearest")
 endorsement_id: string
 run_id: string
 type: "endorsement_decision"

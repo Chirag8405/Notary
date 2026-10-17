@@ -28,9 +28,11 @@ export interface EndorsementPanelProps {
   toolByCallId?: Readonly<Record<string, string>>;
   /** Called, never during render, when the set of answered cards changes. */
   onResolvedChange?: (resolved: ReadonlySet<string>) => void;
+  /** Called, never during render, when the set of cards the user rejected changes. */
+  onRejectedChange?: (rejected: ReadonlySet<string>) => void;
 }
 
-type Decision = "approve" | "reject";
+type Decision = "approve" | "reject" | "use_nearest";
 
 interface CardInfo {
   state: CardState;
@@ -38,7 +40,11 @@ interface CardInfo {
   error: string | null;
 }
 
-const RESOLVED: Record<Decision, CardState> = { approve: "approved", reject: "rejected" };
+const RESOLVED: Record<Decision, CardState> = {
+  approve: "approved",
+  reject: "rejected",
+  use_nearest: "replaced",
+};
 
 /**
  * The cards of the run's pending endorsements and the answers the user gives.
@@ -57,6 +63,7 @@ export function EndorsementPanel({
   eventCount,
   toolByCallId,
   onResolvedChange,
+  onRejectedChange,
 }: EndorsementPanelProps) {
   const [cards, setCards] = useState<ReadonlyMap<string, CardInfo>>(() => new Map());
   const [remaining, setRemaining] = useState<ReadonlyMap<string, number>>(() => new Map());
@@ -93,13 +100,32 @@ export function EndorsementPanel({
   const lastResolved = useRef("");
   useEffect(() => {
     const ids = [...cards]
-      .filter(([, info]) => info.state === "approved" || info.state === "rejected")
+      .filter(
+        ([, info]) =>
+          info.state === "approved" || info.state === "rejected" || info.state === "replaced",
+      )
       .map(([id]) => id)
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const key = ids.join("\n");
     if (key === lastResolved.current) return;
     lastResolved.current = key;
     onResolvedRef.current?.(new Set(ids));
+  }, [cards]);
+
+  const onRejectedRef = useRef(onRejectedChange);
+  useEffect(() => {
+    onRejectedRef.current = onRejectedChange;
+  });
+  const lastRejected = useRef("");
+  useEffect(() => {
+    const ids = [...cards]
+      .filter(([, info]) => info.state === "rejected")
+      .map(([id]) => id)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const key = ids.join("\n");
+    if (key === lastRejected.current) return;
+    lastRejected.current = key;
+    onRejectedRef.current?.(new Set(ids));
   }, [cards]);
 
   const poll = useCallback(() => {

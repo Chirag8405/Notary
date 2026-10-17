@@ -779,10 +779,27 @@ def _approval_entries(
     return tuple(entries)
 
 
+EscalationChoice = Literal["approve", "reject", "use_nearest"]
+
+
+def _nearest_call(call: RawToolCall, card: DiffCard | None) -> RawToolCall | None:
+    """The call proposed again with the nearest known ledger value of every card row, or None
+    when the card is empty or a row has no known value to offer."""
+    if card is None or not card.rows:
+        return None
+    args = dict(call.args)
+    for row in card.rows:
+        if row.nearest_ledger_value is None or row.param not in args:
+            return None
+        args[row.param] = row.nearest_ledger_value
+    return RawToolCall(call_id=f"{call.call_id}.nearest", tool=call.tool, args=args)
+
+
 def resolve_escalation(
-    engine: RunEngine, endorsement_id: str, decision: Literal["approve", "reject"]
+    engine: RunEngine, endorsement_id: str, decision: EscalationChoice
 ) -> tuple[RunEngine, CallOutcome | None]:
-    """Reject, or approve (endorse into the ledger, then decide the same proposal again)."""
+    """Reject; approve (endorse into the ledger, then decide the same proposal again); or use the
+    nearest known value (reject the proposed value, then propose a new call with the ledger's)."""
     _check_open(engine)
     if engine.halted is not None:
         return engine, None
@@ -801,6 +818,14 @@ def resolve_escalation(
     )
     if decision == "reject":
         return _set_resolution(engine, endorsement_id, "rejected"), blocked
+    if decision == "use_nearest":
+        # The swapped value is not endorsed: no ledger write, no approval used. The replacement is
+        # an ordinary new proposal that the monitor judges like any other.
+        engine = _set_resolution(engine, endorsement_id, "rejected")
+        replacement = _nearest_call(call, escalated.diff_card)
+        if replacement is None:
+            return engine, blocked
+        return propose(engine, replacement)
     built = _approval_entries(
         engine, endorsement_id, proposal, escalated.diff_card or DiffCard(rows=())
     )

@@ -1,3 +1,14 @@
+export { AsrChart, type AsrChartProps } from "./AsrChart";
+export {
+  DEFAULT_GEOMETRY,
+  asrSeries,
+  chartPoints,
+  type AsrPoint,
+  type AsrRoundInput,
+  type AsrSeries,
+  type AsrSeriesInput,
+  type ChartGeometry,
+} from "./asr";
 export { ContentInspector, type ContentInspectorProps } from "./ContentInspector";
 export { ContractPanel, type ContractPanelProps } from "./ContractPanel";
 export { DecisionStream, type DecisionStreamProps } from "./DecisionStream";
@@ -6,6 +17,7 @@ export { toDecisionRows, type ArgChip, type DecisionRow } from "./decision-rows"
 export { OracleLights, type OracleLightsProps } from "./OracleLights";
 export { OraclePanel, type OraclePanelProps } from "./OraclePanel";
 export { ProvenanceGraph, type ProvenanceGraphProps } from "./ProvenanceGraph";
+export { ReplayPlayer, type ReplayPlayerProps } from "./ReplayPlayer";
 export { ReplayScrubber, type ReplayScrubberProps } from "./ReplayScrubber";
 export { ThreeLaneView, type ThreeLaneViewProps } from "./ThreeLaneView";
 export {
@@ -15,6 +27,7 @@ export {
   type LaneStatus,
   type LaneSummary,
 } from "./lane-summary";
+export { clampPosition, positionLabel, stepPosition, viewAt, type Step } from "./replay";
 export { describeEvent } from "./describe-event";
 export { highlightDiff, type Segment } from "./diff-highlight";
 export { inspectValue, type Inspection } from "./inspect";

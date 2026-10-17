@@ -27,6 +27,8 @@ export interface XRayParams {
   scenario: Scenario;
   mode: RunMode;
   viewMode: ViewMode;
+  /** The demo step named in the address (1 to 4); absent when there is none. */
+  step?: number;
 }
 
 type Raw = string | string[] | undefined;
@@ -158,22 +160,36 @@ export function toLaneStatus(status: "connecting" | "open" | "finished" | "error
 }
 
 /** Whitelist the page's query: anything unknown falls back to the default. */
-export function parseXRayParams(raw: { scenario?: Raw; mode?: Raw; view?: Raw }): XRayParams {
+export function parseXRayParams(raw: {
+  scenario?: Raw;
+  mode?: Raw;
+  view?: Raw;
+  step?: Raw;
+}): XRayParams {
   const scenario = first(raw.scenario);
   const mode = first(raw.mode);
+  const number = Number(first(raw.step));
+  const step = Number.isInteger(number) && number >= 1 && number <= 4 ? number : undefined;
   return {
     scenario: SCENARIOS.find((item) => item === scenario) ?? "poisoned_bill",
     mode: MODES.find((item) => item === mode) ?? DEFAULT_MODE,
     viewMode: first(raw.view) === "three" ? "three-lane" : "single",
+    ...(step === undefined ? {} : { step }),
   };
 }
 
 /** The address of a screen, built deterministically. */
-export function xrayUrl(state: { scenario: string; mode: string; viewMode: ViewMode }): string {
+export function xrayUrl(state: {
+  scenario: string;
+  mode: string;
+  viewMode: ViewMode;
+  step?: number;
+}): string {
   const view = state.viewMode === "three-lane" ? "three" : "single";
   return (
     `/x-ray?scenario=${encodeURIComponent(state.scenario)}` +
-    `&mode=${encodeURIComponent(state.mode)}&view=${view}`
+    `&mode=${encodeURIComponent(state.mode)}&view=${view}` +
+    (state.step === undefined ? "" : `&step=${state.step}`)
   );
 }
 
@@ -189,17 +205,15 @@ export interface ModeOption {
 
 export const LIVE_LABEL = "live (a real Groq model; needs an API key; not reproducible)";
 export const CASSETTE_LABEL = "cassette (replay of a scripted agent)";
-const GOLDEN_NO_STREAM = "no recorded stream for this scenario; use cassette";
-const GOLDEN_ONE_STREAM = "golden replays one stream for every lane; use cassette";
+const GOLDEN_NO_BASELINE = "no recorded baseline streams for this scenario; use cassette";
 
 /**
- * Why golden cannot be used for this screen, or null. The server's golden source has no stream
- * for legitimate_bill (it closes with 4404) and ignores the lane, so every lane of a three-lane
- * view would get the NOTARY stream.
+ * Why golden cannot be used for this screen, or null. The server's golden source serves
+ * poisoned_bill under every lane, and legitimate_bill on the NOTARY lane only (the baseline lanes
+ * close 4404), so only the three-lane view of legitimate_bill has no golden streams.
  */
 export function goldenBlockedReason(scenario: string, viewMode: ViewMode): string | null {
-  if (scenario === "legitimate_bill") return GOLDEN_NO_STREAM;
-  if (viewMode === "three-lane") return GOLDEN_ONE_STREAM;
+  if (scenario === "legitimate_bill" && viewMode === "three-lane") return GOLDEN_NO_BASELINE;
   return null;
 }
 

@@ -61,7 +61,7 @@ from notary_world.oracle import GoalPair, evaluate
 from notary_world.scenarios import Scenario
 from notary_world.tools import TOOL_SPECS, RawToolCall, world_manifests, world_policy
 
-EscalationDecider = Callable[[Endorsement], Literal["approve", "reject"]]
+EscalationDecider = Callable[[Endorsement], Literal["approve", "reject", "use_nearest"]]
 """Asked (possibly blocking) after the escalation was streamed. The only place a human approval
 can enter a run."""
 
@@ -79,7 +79,7 @@ SCENARIO_GOALS: Mapping[str, GoalPair] = MappingProxyType(
 )
 
 
-def reject_all(endorsement: Endorsement) -> Literal["approve", "reject"]:
+def reject_all(endorsement: Endorsement) -> Literal["approve", "reject", "use_nearest"]:
     """The default decider: an unattended run never approves anything."""
     return "reject"
 
@@ -237,7 +237,9 @@ class ServerAgentRunner:
         if outcome.status == "tool_error":
             return f"error: {outcome.error}"
         if outcome.status == "executed":
-            return _executed_text(cursor.engine, call, before, hooks, spotlight)
+            # After "use nearest" the executed call is the replacement, under its own call id.
+            ran = call.model_copy(update={"call_id": outcome.call_id})
+            return _executed_text(cursor.engine, ran, before, hooks, spotlight)
         return REFUSAL_TEXT
 
     def run(

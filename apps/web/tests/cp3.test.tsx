@@ -242,8 +242,7 @@ describe("stage step 3: NOTARY escalates and asks", () => {
 
 describe("stage step 4: the legitimate bill pays silently", () => {
   it("has no card, two ALLOW rows and both lights good [I1]", async () => {
-    const page = await opened({ scenario: "legitimate_bill" });
-    // legitimate_bill has no golden stream on the server: the page uses cassette.
+    const page = await opened({ scenario: "legitimate_bill", mode: "cassette" });
     expect(new Set(modesOf(page))).toEqual(new Set(["cassette"]));
     expect(screen.queryByRole("group", { name: "Endorsement request" })).toBeNull();
 
@@ -312,6 +311,7 @@ describe("no raw content leaks into the page", () => {
     sourceText(resolve(import.meta.dirname, "../../../packages/ui/src"), [".ts", ".tsx"]),
     sourceText(resolve(import.meta.dirname, "../components"), [".tsx"]),
     readFileSync(resolve(import.meta.dirname, "../lib/x-ray-state.ts"), "utf8"),
+    readFileSync(resolve(import.meta.dirname, "../lib/demo-steps.ts"), "utf8"),
   ].join("\n");
 
   it("has a corpus that is not vacuous, and a detector that flags an unknown token [I6]", () => {

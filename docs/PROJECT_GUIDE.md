@@ -400,7 +400,7 @@ Per bucket (fully-specified / parameter-open / action-open): clean utility close
 
 ### Commands (client → server)
 
-`endorsement_decision` (approve/reject), `hijacked_tool_call`, `poison_world` (vector, payload, task, lanes), `arena_start` (attacker arena: rounds, lanes, seed).
+`endorsement_decision` (approve/reject/use_nearest), `hijacked_tool_call`, `poison_world` (vector, payload, task, lanes), `arena_start` (attacker arena: rounds, lanes, seed).
 
 ### Trust X-ray (`/x-ray`)
 
@@ -416,7 +416,7 @@ Four modes: **Poison the world**, **Be the hijacked LLM**, **Attack library** (o
 
 1. Undefended agent on the poisoned bill → money lost (red light).
 2. Classifier lane, same run → passes, red again.
-3. NOTARY lane → IBAN doesn't match prior payments → block/diff card; attacker light green; task completes once the correct payee is confirmed.
+3. NOTARY lane → IBAN doesn't match prior payments → block/diff card; the presenter presses Reject; attacker light green (the run ends blocked, nothing is paid).
 4. A legitimate bill pays silently via ledger match.
 5. Hijacked Mode with a judge at the keyboard → every attempt blocked with a reason.
 6. Close on evaluation numbers and the fuzz result.
