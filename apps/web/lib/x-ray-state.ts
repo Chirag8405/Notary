@@ -231,8 +231,7 @@ export function modeOptions(
   return (listed.length === 0 ? MODES : listed).map((mode): ModeOption => {
     if (mode === "golden") return { mode, enabled: blocked === null, note: blocked, label: mode };
     if (mode === "live") return { mode, enabled: true, note: null, label: LIVE_LABEL };
-    if (mode === "cassette") return { mode, enabled: true, note: null, label: CASSETTE_LABEL };
-    return { mode, enabled: true, note: null, label: mode };
+    return { mode, enabled: true, note: null, label: CASSETTE_LABEL };
   });
 }
 
