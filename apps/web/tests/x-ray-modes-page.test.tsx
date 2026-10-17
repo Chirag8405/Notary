@@ -58,64 +58,53 @@ describe("x-ray page modes", () => {
     expect(new Set(socketModes(page))).toEqual(new Set(["live"]));
   });
 
-  it("opens cassette for legitimate_bill with golden in the address, and says so [I6]", async () => {
+  it("opens golden for legitimate_bill on the NOTARY lane, with golden still offered [I6]", async () => {
     const replace = vi.spyOn(window.history, "replaceState");
     const page = await opened({ scenario: "legitimate_bill" });
-    expect(new Set(socketModes(page))).toEqual(new Set(["cassette"]));
-    expect(modeSelect().value).toBe("cassette");
-    expect(screen.getByRole("status").textContent).toBe(
-      "Switched to cassette: no recorded stream for this scenario; use cassette",
-    );
+    expect(new Set(socketModes(page))).toEqual(new Set(["golden"]));
+    expect(modeSelect().value).toBe("golden");
+    expect(screen.queryByRole("status")).toBeNull();
     const golden = must(
       [...modeSelect().options].find((o) => o.value === "golden"),
       "golden option",
     );
-    expect(golden.disabled).toBe(true);
-    expect(
-      screen.getByText("golden is off: no recorded stream for this scenario; use cassette"),
-    ).toBeTruthy();
-    expect(replace).toHaveBeenCalledWith(
-      null,
-      "",
-      "/x-ray?scenario=legitimate_bill&mode=cassette&view=single",
-    );
+    expect(golden.disabled).toBe(false);
+    expect(page.urls().map((u) => new URL(u).searchParams.get("lane"))).toEqual(["notary"]);
+    expect(replace).not.toHaveBeenCalledWith(null, "", expect.stringContaining("mode=cassette"));
   });
 
-  it("moves to cassette when the three-lane view is switched on over golden [I6]", async () => {
+  it("keeps golden when the three-lane view is switched on over golden [I6]", async () => {
     const replace = vi.spyOn(window.history, "replaceState");
     const page = await opened();
     expect(modeSelect().value).toBe("golden");
     fireEvent.click(screen.getByRole("button", { name: "Three-lane view" }));
     await screen.findByLabelText("Three lanes");
-    expect(modeSelect().value).toBe("cassette");
-    expect(screen.getByRole("status").textContent).toBe(
-      "Switched to cassette: golden replays one stream for every lane; use cassette",
-    );
+    expect(modeSelect().value).toBe("golden");
+    expect(screen.queryByRole("status")).toBeNull();
     const lanes = page
       .urls()
-      .filter((u) => new URL(u).searchParams.get("mode") === "cassette")
+      .filter((u) => new URL(u).searchParams.get("mode") === "golden")
       .map((u) => new URL(u).searchParams.get("lane"));
     expect(new Set(lanes)).toEqual(new Set(["notary", "undefended", "classifier"]));
     expect(replace).toHaveBeenLastCalledWith(
       null,
       "",
-      "/x-ray?scenario=poisoned_bill&mode=cassette&view=three",
+      "/x-ray?scenario=poisoned_bill&mode=golden&view=three",
     );
   });
 
-  it("opens the three-lane view on cassette from the start [I6]", async () => {
+  it("opens the three-lane view on golden from the start [I6]", async () => {
     const page = await opened({ initialViewMode: "three-lane" });
-    expect(new Set(socketModes(page))).toEqual(new Set(["cassette"]));
-    expect(modeSelect().value).toBe("cassette");
+    expect(new Set(socketModes(page))).toEqual(new Set(["golden"]));
+    expect(modeSelect().value).toBe("golden");
   });
 
-  it("clears the switch note once the next choice needs none [I6]", async () => {
+  it("keeps golden when the scenario changes and needs no switch note [I6]", async () => {
     await opened({ scenario: "legitimate_bill" });
-    expect(screen.queryByRole("status")).not.toBeNull();
     fireEvent.change(screen.getByLabelText("Scenario"), { target: { value: "poisoned_bill" } });
     await screen.findByText(/ESCALATE for c2/);
     expect(screen.queryByRole("status")).toBeNull();
-    expect(modeSelect().value).toBe("cassette");
+    expect(modeSelect().value).toBe("golden");
   });
 });
 

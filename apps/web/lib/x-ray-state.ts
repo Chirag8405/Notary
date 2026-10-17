@@ -204,17 +204,15 @@ export interface ModeOption {
 }
 
 export const LIVE_LABEL = "live (needs an API key; not reproducible)";
-const GOLDEN_NO_STREAM = "no recorded stream for this scenario; use cassette";
-const GOLDEN_ONE_STREAM = "golden replays one stream for every lane; use cassette";
+const GOLDEN_NO_BASELINE = "no recorded baseline streams for this scenario; use cassette";
 
 /**
- * Why golden cannot be used for this screen, or null. The server's golden source has no stream
- * for legitimate_bill (it closes with 4404) and ignores the lane, so every lane of a three-lane
- * view would get the NOTARY stream.
+ * Why golden cannot be used for this screen, or null. The server's golden source serves
+ * poisoned_bill under every lane, and legitimate_bill on the NOTARY lane only (the baseline lanes
+ * close 4404), so only the three-lane view of legitimate_bill has no golden streams.
  */
 export function goldenBlockedReason(scenario: string, viewMode: ViewMode): string | null {
-  if (scenario === "legitimate_bill") return GOLDEN_NO_STREAM;
-  if (viewMode === "three-lane") return GOLDEN_ONE_STREAM;
+  if (scenario === "legitimate_bill" && viewMode === "three-lane") return GOLDEN_NO_BASELINE;
   return null;
 }
 
