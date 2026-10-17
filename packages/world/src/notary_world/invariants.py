@@ -357,25 +357,52 @@ def _stored_at(run: RunRecord) -> dict[str, int]:
     return stored
 
 
+_ORDINAL = re.compile(r"([a-z]+)([0-9]+)")
+
+
+def _creation_order(keys: Sequence[str]) -> list[str] | None:
+    """The keys of added entities in creation order, or None if that cannot be shown.
+
+    The world names a new entity `<prefix><n>` and `n` grows by one per call, while the diff sorts
+    keys as strings (`o1, o10, o11, o2, ...`). The order is only trusted when every key has the
+    same prefix and the numbers are consecutive; anything else means the entities did not all come
+    from the executed calls.
+    """
+    parsed: list[tuple[int, str]] = []
+    prefixes: set[str] = set()
+    for key in keys:
+        match = _ORDINAL.fullmatch(key)
+        if match is None:
+            return None
+        prefixes.add(match.group(1))
+        parsed.append((int(match.group(2)), key))
+    parsed.sort()
+    numbers = [n for n, _ in parsed]
+    if len(prefixes) > 1 or numbers != list(range(numbers[0], numbers[0] + len(numbers))):
+        return None
+    return [key for _, key in parsed]
+
+
 def _sent_at(run: RunRecord) -> dict[tuple[EntityKind, str], int]:
     """Chain index of the `effect_executed` that created each added outbound entity.
 
-    The world numbers new entities in the order its tools run (`o1`, `o2`, ...), so the n-th added
-    entity of a kind belongs to the n-th executed call of the tools that create it. If the counts
-    disagree (a record that does not line up) nothing is mapped, and the check compares such an
-    entity with every secret, as if it were sent last.
+    The n-th entity created (by its numeric id, not by diff order) belongs to the n-th executed
+    call of the tools that create it. If that cannot be shown (the ids are not one consecutive run
+    or the counts disagree), nothing is mapped for the kind, and the check compares its entities
+    with every secret, as if they were sent last.
     """
     sent: dict[tuple[EntityKind, str], int] = {}
     for entity, tools in _OUTBOUND_TOOLS.items():
-        added = [c for c in run.world_diff.changes if c.entity == entity and c.kind == "added"]
+        added = [c.key for c in run.world_diff.changes if c.entity == entity and c.kind == "added"]
         executed = sorted(
             c.effect_index
             for c in run.calls
             if c.status == "executed" and c.tool in tools and c.effect_index is not None
         )
-        if len(added) == len(executed):
-            for change, index in zip(added, executed, strict=True):
-                sent[(entity, change.key)] = index
+        ordered = _creation_order(added) if added else None
+        if ordered is not None and len(ordered) == len(executed):
+            for key, index in zip(ordered, executed, strict=True):
+                sent[(entity, key)] = index
     return sent
 
 
