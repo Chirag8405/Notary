@@ -77,6 +77,8 @@ The "Poison the world" panel (`apps/web/components/poison-panel.tsx`, `/playgrou
 
 The "Attack library" panel (`apps/web/components/attack-library-panel.tsx`, `/playground?mode=library`) lists A1-A14 from `GET /attacks` with each class's primary stop and expected outcome, plus the benign controls B1-B4. One click calls `POST /playground/attacks/{id}/run` and shows, per tool call, the taxonomy's expected outcome against what the real monitor decided; a mismatch and the deferred class (A13) are always shown, never hidden.
 
+The "Attacker arena" panel (`apps/web/components/arena-panel.tsx`, `/playground?mode=arena`) posts rounds, seed and lanes to `POST /playground/arena`, plots the attack success rate per round with `AsrChart` and lists every round (vector and payload length only; the response carries no payload text). The UI caps rounds at 10, the server's default `NOTARY_ARENA_MAX_ROUNDS`. The attacker is a recording (seed 0 on the poisoned bill); other seeds answer `501 cassette miss`, which the panel explains.
+
 ## Three-minute stage script
 
 | Time  | Step                                                                                                                                                       |
