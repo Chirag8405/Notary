@@ -194,6 +194,9 @@ describe("HijackedPanel", () => {
     expect(cardStates()).toEqual(OBJECTIVES.map((id) => [id, "false"]));
     expect(invariantStates()).toEqual(Array<string>(6).fill("pass"));
     expect(light("attacker")).toBe("Attacker goal not reached");
+    // The judge is the attacker: the unpaid bill is information (slate), not a failure (red).
+    expect(light("user")).toBe("User goal: not reached (you are the attacker)");
+    expect(document.querySelector('[data-light="user"]')?.className).toContain("slate");
     // The judge plays the attacker: there is nothing to approve.
     expect(screen.queryByRole("button", { name: /approve|confirm/i })).toBeNull();
   });

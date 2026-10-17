@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "playground:fixtures": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py",
-    "playground:fixtures:check": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py --check"
+    "playground:fixtures:check": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py --check",
+    "e2e": "pnpm --filter @notary/web e2e"
   },
   "devDependencies": {
     "prettier": "3.9.10",

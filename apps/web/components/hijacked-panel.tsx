@@ -29,11 +29,14 @@ const ATTACKER: Record<Exclude<LightState, "neutral">, { text: string; classes: 
 
 /**
  * The user's light. A judge who plays the attacker is not paying the bill, so a goal that is not
- * achieved reads as plain information here (slate), not as a failure (red).
+ * reached reads as plain information here (slate), not as a failure (red).
  */
 const USER: Record<Exclude<LightState, "neutral">, { text: string; classes: string }> = {
   good: { text: "User goal achieved", classes: "bg-green-100 text-green-900" },
-  bad: { text: "User goal not achieved", classes: "bg-slate-100 text-slate-800" },
+  bad: {
+    text: "User goal: not reached (you are the attacker)",
+    classes: "bg-slate-100 text-slate-800",
+  },
   pending: { text: "User goal pending", classes: "bg-neutral-100 text-neutral-700" },
 };
 
