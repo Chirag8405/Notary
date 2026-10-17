@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from typing import Annotated, Literal
 
 import anyio
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BeforeValidator, ValidationError
@@ -40,6 +40,7 @@ from notary_server.hijacked import (
     HijackedState,
     HijackedStep,
 )
+from notary_server.log_redaction import attach_redaction
 from notary_server.playground import (
     AttackRunResponse,
     LaneRunner,
@@ -47,8 +48,10 @@ from notary_server.playground import (
     PlaygroundService,
     PoisonResponse,
 )
+from notary_server.read_token import TOKEN_HEADER, TOKEN_QUERY_PARAM, read_key, valid_token
 from notary_server.runner import scenario_names
 from notary_server.sources import (
+    CheckedSource,
     RunMode,
     RunRequest,
     RunSource,
@@ -58,6 +61,7 @@ from notary_server.sources import (
 from notary_server.wiring import Settings, build_app
 from notary_world.golden import EVENT_ADAPTER
 from notary_world.loader import load_attacks
+from notary_world.scenarios import golden_run_id
 
 EVENT_DELAY_SECONDS = 0.4
 
@@ -157,7 +161,12 @@ def create_app(
     attacker_llm: AttackerFactory | None = None,
     arena_max_rounds: int = 10,
     broker: EndorsementBroker | None = None,
+    server_key: bytes | None = None,
 ) -> FastAPI:
+    """`server_key` keys the read tokens (#235). Leave it out: it is made here, kept in memory only,
+    and a restart drops every key together with every card. A test passes one to compute keys."""
+    attach_redaction()  # the read token must never reach a log
+    token_key = secrets.token_bytes(32) if server_key is None else server_key
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
     if broker is not None:
@@ -231,8 +240,17 @@ def create_app(
         return playground.run_attack(attack_id)
 
     @app.get("/runs/{run_id}/endorsements", operation_id="listEndorsements")
-    def run_endorsements(run_id: str) -> PendingList:
-        return PendingList(pending=() if broker is None else broker.pending_for_run(run_id))
+    def run_endorsements(
+        run_id: str, token: Annotated[str | None, Header(alias=TOKEN_HEADER)] = None
+    ) -> PendingList:
+        """The unresolved cards of the sockets that hold this read token. A missing, malformed or
+        wrong token lists nothing and is still a 200: the answer never tells a guess from a run
+        that does not exist. The token reads only; answering needs the socket (#235)."""
+        if broker is None or token is None or not valid_token(token):
+            return PendingList(pending=())
+        return PendingList(
+            pending=broker.pending_for_reader(run_id, read_key(token_key, run_id, token))
+        )
 
     @app.get("/runs/{run_id}/anchor", operation_id="getAnchor")
     def run_anchor(run_id: str) -> Anchor:
@@ -262,6 +280,22 @@ def create_app(
         if source is None:
             await websocket.close(code=CLOSE_MODE_UNAVAILABLE, reason="mode not available")
             return
+        if isinstance(source, CheckedSource):
+            try:
+                source.check_available()
+            except RunUnavailableError as unavailable:
+                await websocket.close(code=unavailable.code, reason=unavailable.reason)
+                return
+        if request.mode in BROKER_MODES:
+            # The sockets that own cards need a read token; a golden socket owns none. The
+            # reason is a fixed phrase: no part of the query is ever echoed.
+            tokens = websocket.query_params.getlist(TOKEN_QUERY_PARAM)
+            token = tokens[0] if len(tokens) == 1 else None
+            if token is None or not valid_token(token):
+                await websocket.close(code=CLOSE_BAD_REQUEST, reason="invalid token")
+                return
+            run_id = golden_run_id(request.scenario, request.lane)
+            request = request.model_copy(update={"read_key": read_key(token_key, run_id, token)})
 
         progress = _Progress()
 

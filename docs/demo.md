@@ -14,7 +14,7 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 ### Run modes and recording
 
-`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
+`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>[&token=<tab token>]` (`GET /runs/modes` lists the modes; `cassette` and `live` need the tab's read token, which the UI makes by itself, see the deploy notes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
 
 Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) and `legitimate_bill` on the NOTARY lane only (#196: the baseline lanes have no golden `legitimate_bill` stream and close `4404`). The x-ray page uses `golden` for both scenarios and for the three-lane view of `poisoned_bill` (#206); the three-lane view of `legitimate_bill` does not exist (only the NOTARY lane has a stream), so the page shows its single view.
 
@@ -103,6 +103,15 @@ Steps on the page (cassette stack, [CP3](phase.md#integration-checkpoints)):
 - Step 4: `/x-ray?scenario=legitimate_bill&mode=cassette` (`cassette` is the recorded run; `golden` also works for this scenario on the NOTARY lane): no card, two ALLOW rows, green user light, payment to the ledger IBAN.
 - Steps 5 and 6 are not on this page.
 
+## Deploy notes
+
+The endorsement cards, the owner secrets and the read-token key (#235) live in the server process, and the log filter that hides the read token covers one WebSocket implementation. So for every deploy (the public one, the offline `docker compose up`):
+
+- **One worker process.** Run `uvicorn` with a single worker: no `--workers` above 1, no several replicas behind a balancer. With more, a card list or an answer reaches a process that has no such run. The Dockerfile `CMD` and the compose `command` run one worker, and a test keeps them, the `pnpm dev` script and `--ws websockets` equal.
+- **Pin `--ws websockets`** in every command that runs the server (dev script, Dockerfile, compose file). This flag is deprecated upstream: uvicorn 0.54 warns that `--ws websockets` will point at the `websockets-sansio` implementation in a future release. So the server pins `uvicorn>=0.54,<0.55` and `websockets>=17,<18` (`apps/server/pyproject.toml`, `uv.lock`), and a test keeps the lock inside those ranges. **Review the pin on every uvicorn or websockets upgrade:** check what `--ws websockets` selects, that the `websockets` logger tree still carries the request lines the log filter must redact (`apps/server/tests/test_log_redaction.py`, the real-uvicorn test), and update the flag in all three commands together.
+- **Proxies must not log query strings.** The tab's read token travels in the WebSocket URL (`?token=`), so a reverse proxy, TLS terminator, CDN or load balancer in front of the server must log the path only (for nginx a `log_format` without `$args` and `$request`, or a redacting format) and must not forward the query in a `Referer`. The app redacts `token=` in its own loggers only.
+- **Serve over TLS** (`wss://`): the token is a read credential for one tab's card list.
+
 ## Fallback plan
 
 - Offline `docker compose up` (see root `docker-compose.yml`): server `:8000`, web `:3000/x-ray`.
@@ -117,7 +126,7 @@ Steps on the page (cassette stack, [CP3](phase.md#integration-checkpoints)):
 - [ ] `notary fuzz` result for the commit saved
 - [ ] Offline `docker compose up` works with no network
 - [ ] Recorded-run video and screenshots present
-- [ ] Public deploy reachable
+- [ ] Public deploy reachable, one worker, `--ws websockets`, TLS, and no query strings in any proxy log (see [deploy notes](#deploy-notes))
 - [ ] Each lane labeled in the UI (including any stand-in classifier)
 - [ ] Browser zoom, projector resolution and font sizes checked
 - [ ] Hijacked Mode objective cards verified against the oracle

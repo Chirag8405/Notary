@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DEMO_STEPS, activeStep } from "@/lib/demo-steps";
+import { newTabToken } from "@/lib/tab-token";
 import {
   DEFAULT_MODE,
   callIdForSelection,
@@ -52,6 +53,8 @@ export interface XRayViewProps {
   initialStep?: number;
   /** Test seam: the socket factory. */
   webSocket?: WebSocketFactory;
+  /** Test seam: makes the tab's read token (default `crypto.randomUUID()`), called once. */
+  makeToken?: () => string;
 }
 
 type Stream = ReturnType<typeof useRunStream>;
@@ -105,18 +108,20 @@ function ThreeLaneContainer({
   apiUrl,
   scenario,
   mode,
+  token,
   webSocket,
   notary,
 }: {
   apiUrl: string;
   scenario: string;
   mode: RunMode;
+  token: string;
   webSocket: WebSocketFactory | undefined;
   notary: LaneInput;
 }) {
   const socket = webSocket === undefined ? {} : { webSocket };
-  const undefended = useRunStream(apiUrl, scenario, { lane: "undefended", mode, ...socket });
-  const classifier = useRunStream(apiUrl, scenario, { lane: "classifier", mode, ...socket });
+  const undefended = useRunStream(apiUrl, scenario, { lane: "undefended", mode, token, ...socket });
+  const classifier = useRunStream(apiUrl, scenario, { lane: "classifier", mode, token, ...socket });
   const undefendedView = useMemo(() => foldEvents(undefended.events), [undefended.events]);
   const classifierView = useMemo(() => foldEvents(classifier.events), [classifier.events]);
 
@@ -134,6 +139,7 @@ function XRayRun({
   scenario,
   mode,
   viewMode,
+  token,
   webSocket,
   onUseCassette,
   controls,
@@ -142,6 +148,7 @@ function XRayRun({
   scenario: string;
   mode: RunMode;
   viewMode: ViewMode;
+  token: string;
   webSocket: WebSocketFactory | undefined;
   onUseCassette: () => void;
   controls: ReactNode;
@@ -149,6 +156,7 @@ function XRayRun({
   const stream = useRunStream(apiUrl, scenario, {
     lane: "notary",
     mode,
+    token,
     ...(webSocket === undefined ? {} : { webSocket }),
   });
   const view = useMemo(() => foldEvents(stream.events), [stream.events]);
@@ -160,12 +168,12 @@ function XRayRun({
   const runId = view.runId;
   const fetchPending = useCallback(async () => {
     if (runId === null) return [];
-    const list = await getPendingEndorsements(client, runId);
+    const list = await getPendingEndorsements(client, runId, token);
     return list.pending.map((item) => ({
       endorsement: item.endorsement,
       remaining_approvals: item.remaining_approvals,
     }));
-  }, [client, runId]);
+  }, [client, runId, token]);
   const onResolvedChange = useCallback((next: ReadonlySet<string>) => {
     setResolved((previous) =>
       previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next,
@@ -281,6 +289,7 @@ function XRayRun({
             apiUrl={apiUrl}
             scenario={scenario}
             mode={mode}
+            token={token}
             webSocket={webSocket}
             notary={notary}
           />
@@ -299,7 +308,11 @@ export function XRayView({
   initialViewMode = "single",
   initialStep,
   webSocket,
+  makeToken,
 }: XRayViewProps) {
+  // One read token per tab, made once. Every socket of the tab and the pending list carry it, so
+  // two tabs on the same scenario and lane list and resolve their own cards (#235).
+  const [token] = useState(() => newTabToken(makeToken));
   // Every choice goes through `settleSelection`, so a combination the server cannot serve (golden
   // for legitimate_bill or for the three-lane view) is never opened.
   const [initial] = useState(() =>
@@ -380,6 +393,7 @@ export function XRayView({
         scenario={selection.scenario}
         mode={selection.mode}
         viewMode={selection.viewMode}
+        token={token}
         webSocket={webSocket}
         onUseCassette={() => {
           apply({ ...selection, mode: "cassette" });

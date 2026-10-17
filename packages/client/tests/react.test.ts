@@ -112,6 +112,44 @@ describe("useRunStream", () => {
     );
   });
 
+  it("puts the tab's token on the cassette and live sockets, and none on golden [I4]", () => {
+    const token = "123e4567-e89b-12d3-a456-426614174000";
+    const seen: string[] = [];
+    for (const mode of ["cassette", "live", "golden"] as const) {
+      const { factory, sockets } = rig();
+      renderHook(() => useRunStream(BASE, "poisoned_bill", { mode, token, webSocket: factory }));
+      seen.push(firstSocket(sockets).url);
+    }
+    expect(seen).toEqual([
+      `ws://localhost:8000/ws/runs/poisoned_bill?mode=cassette&token=${token}`,
+      `ws://localhost:8000/ws/runs/poisoned_bill?mode=live&token=${token}`,
+      "ws://localhost:8000/ws/runs/poisoned_bill?mode=golden",
+    ]);
+  });
+
+  it("an equal token on a re-render keeps the socket; a missing token is an error [I4]", async () => {
+    const token = "123e4567-e89b-12d3-a456-426614174000";
+    const { factory, sockets } = rig();
+    const hook = renderHook(() =>
+      useRunStream(BASE, "poisoned_bill", {
+        mode: "cassette",
+        token,
+        webSocket: factory,
+      }),
+    );
+    hook.rerender();
+    hook.rerender();
+    expect(sockets).toHaveLength(1);
+
+    const missing = rig();
+    const bare = renderHook(() =>
+      useRunStream(BASE, "poisoned_bill", { mode: "cassette", webSocket: missing.factory }),
+    );
+    await flush();
+    expect(missing.sockets).toHaveLength(0); // never opened without a token
+    expect(bare.result.current.status).toBe("error");
+  });
+
   it("still works with the old positional factory argument [I6]", async () => {
     const { factory, sockets } = rig();
     const hook = renderHook(() => useRunStream(BASE, "poisoned_bill", factory));

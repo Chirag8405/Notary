@@ -43,7 +43,9 @@ function toPublic(state: Keyed): RunStreamState {
  * `useRunStream(baseUrl, scenario, webSocket)` calls keep working.
  *
  * Only `baseUrl`, `scenario`, `options.lane`, `options.mode` and the `webSocket` factory decide
- * when the hook reconnects; a new but equal `options` object each render does not.
+ * when the hook reconnects; a new but equal `options` object each render does not. The
+ * `options.token` (needed by the `cassette` and `live` modes) also decides it: a tab keeps one
+ * token for its lifetime, and a different token is a different socket.
  */
 export function useRunStream(
   baseUrl: string,
@@ -51,7 +53,7 @@ export function useRunStream(
   third?: WebSocketFactory | RunOptions,
 ): RunStreamResult {
   const options: RunOptions = typeof third === "function" ? { webSocket: third } : (third ?? {});
-  const { lane, mode, webSocket } = options;
+  const { lane, mode, token, webSocket } = options;
   const key = `${baseUrl}|${scenario}|${lane ?? ""}|${mode ?? ""}`;
   const [keyed, setKeyed] = useState<Keyed>({ key, status: "connecting", events: [] });
   const optionsRef = useRef<RunOptions>(options);
@@ -85,6 +87,7 @@ export function useRunStream(
           signal: controller.signal,
           ...(lane === undefined ? {} : { lane }),
           ...(mode === undefined ? {} : { mode }),
+          ...(token === undefined ? {} : { token }),
           ...(webSocket === undefined ? {} : { webSocket }),
         });
         sessionRef.current = session;
@@ -112,7 +115,7 @@ export function useRunStream(
       if (sessionRef.current === session) sessionRef.current = null;
       outer?.removeEventListener("abort", abortFromOuter);
     };
-  }, [baseUrl, scenario, lane, mode, webSocket, key]);
+  }, [baseUrl, scenario, lane, mode, token, webSocket, key]);
 
   const send = useCallback((command: Command): void => {
     const session = sessionRef.current;

@@ -127,11 +127,16 @@ class RunStreamer:
         )
         return _guard(stream_for_lane(run, lane))
 
-    def socket_endorsements(self, scenario: Scenario, run_id: str, owner: str) -> EndorsementRun:
+    def socket_endorsements(
+        self, scenario: Scenario, run_id: str, owner: str, read_key: bytes | None
+    ) -> EndorsementRun:
         """Escalations of a watched run wait for the command of the socket that owns the run
-        (fail closed on timeout)."""
+        (fail closed on timeout). `read_key` lets the socket's token list the run's cards."""
         return self._broker.start_run(
-            run_id, owner=owner, max_approvals=scenario.contract.budget.max_approvals
+            run_id,
+            owner=owner,
+            max_approvals=scenario.contract.budget.max_approvals,
+            read_key=read_key,
         )
 
     def lane_runner(self) -> LaneRunner:
@@ -161,7 +166,9 @@ class CassetteSource:
         scenario = _scenario(request.scenario)
         run_id = golden_run_id(request.scenario, request.lane)
         client = load_cassette_client(f"{request.scenario}.{request.lane}")
-        endorsements = self._streamer.socket_endorsements(scenario, run_id, request.owner)
+        endorsements = self._streamer.socket_endorsements(
+            scenario, run_id, request.owner, request.read_key
+        )
         return self._streamer.stream(
             scenario, request.lane, run_id, client, endorsements.decide, endorsements.announce
         )
@@ -182,14 +189,19 @@ class LiveSource:
         self._factory = client_factory
         self._client: LlmClient | None = None
 
-    def events(self, request: RunRequest) -> Iterator[Event]:
+    def check_available(self) -> None:
         if not self._available:
             raise RunUnavailableError(CLOSE_MODE_UNAVAILABLE, "mode not available")
+
+    def events(self, request: RunRequest) -> Iterator[Event]:
+        self.check_available()
         scenario = _scenario(request.scenario)
         if self._client is None:
             self._client = self._factory()
         run_id = golden_run_id(request.scenario, request.lane)
-        endorsements = self._streamer.socket_endorsements(scenario, run_id, request.owner)
+        endorsements = self._streamer.socket_endorsements(
+            scenario, run_id, request.owner, request.read_key
+        )
         return self._streamer.stream(
             scenario,
             request.lane,
