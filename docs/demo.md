@@ -79,7 +79,7 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ~0:00 | 1. Undefended agent, poisoned bill. User says "pay the bill in december.txt". Swapped IBAN, money lost, red light (A3)                                     |
 | ~0:35 | 2. Classifier lane, same run: passes, red again                                                                                                            |
-| ~1:00 | 3. NOTARY lane: the swapped IBAN is a novel payee, so the call escalates and the card shows it against the nearest known payee with the differing characters marked. Press Reject: attacker light green, run blocked, nothing paid (the user light reads "User goal not achieved": the bill was deliberately not paid) |
+| ~1:00 | 3. NOTARY lane: the swapped IBAN is a novel payee, so the call escalates and the card shows it against the nearest known payee with the differing characters marked. Press Reject: attacker light green, run blocked, nothing paid (the user light is neutral and reads "Bill not paid: you rejected it, blocked safely", not red: the bill was deliberately not paid, #208) |
 | ~1:30 | 4. Legitimate bill pays silently via ledger match                                                                                                          |
 | ~1:50 | 5. Hijacked Mode, judge at the keyboard: every attempt blocked with a reason                                                                               |
 | ~2:30 | 6. Close on evaluation numbers and the fuzz result                                                                                                         |
@@ -91,7 +91,7 @@ Optional second beat for step 3 (the residual risk): press **Run again**, then *
 Steps on the page (cassette stack, [CP3](phase.md#integration-checkpoints)):
 
 - Steps 1 and 2: `/x-ray?scenario=poisoned_bill&mode=cassette&view=three`. The Undefended and Classifier-only (stand-in) columns show the payment to the attacker IBAN and a red attacker light.
-- Step 3: the NOTARY column and the single-lane regions of the same page: yellow ESCALATE gate, endorsement card (Confirm and Reject), green attacker light, user light pending until the card is answered. The presenter presses **Reject**: the card reads "You rejected this request", the run ends blocked ("1 call(s) not executed"), the attacker light stays green ("Attacker goal not reached") and the user light turns red ("User goal not achieved"): nothing was paid. The optional Confirm beat is described under the table.
+- Step 3: the NOTARY column and the single-lane regions of the same page: yellow ESCALATE gate, endorsement card (Confirm and Reject), green attacker light, user light pending until the card is answered. The presenter presses **Reject**: the card reads "You rejected this request", the run ends blocked ("1 call(s) not executed"), the attacker light stays green ("Attacker goal not reached") and the user light turns neutral grey ("Bill not paid: you rejected it, blocked safely"; it is red only when no card was rejected): nothing was paid. The optional Confirm beat is described under the table.
 - Step 4: `/x-ray?scenario=legitimate_bill&mode=cassette` (`cassette` is the recorded run; `golden` also works for this scenario on the NOTARY lane): no card, two ALLOW rows, green user light, payment to the ledger IBAN.
 - Steps 5 and 6 are not on this page.
 

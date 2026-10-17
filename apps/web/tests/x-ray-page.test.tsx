@@ -227,6 +227,36 @@ describe("x-ray page endorsement", () => {
     });
   });
 
+  it("shows a neutral user light after Reject and a red attacker light after Confirm [I4]", async () => {
+    const lightOf = (which: string): string | null =>
+      region("Oracle panel").querySelector(`[data-light="${which}"]`)?.getAttribute("data-state") ??
+      null;
+    const rejecting = await opened({}, { pending: [pendingItem(3)] });
+    const card = await screen.findByRole("group", { name: "Endorsement request" });
+    await within(card).findByText("Approvals left: 3");
+    expect(lightOf("user")).toBe("pending");
+    rejecting.rest.state.pending = [];
+    fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
+    await waitFor(() => {
+      expect(lightOf("user")).toBe("neutral");
+    });
+    expect(region("Oracle panel").textContent).toContain("Bill not paid: you rejected it");
+    expect(lightOf("attacker")).toBe("good");
+    cleanup();
+
+    const confirming = await opened({}, { pending: [pendingItem(3)] });
+    const second = await screen.findByRole("group", { name: "Endorsement request" });
+    await within(second).findByText("Approvals left: 3");
+    confirming.rest.state.pending = [];
+    fireEvent.click(within(second).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => {
+      expect(second.getAttribute("data-state")).toBe("approved");
+    });
+    await waitFor(() => {
+      expect(lightOf("user")).toBe("bad");
+    });
+  });
+
   it("turns the card into a conflict when the socket closes with 4409 [I4]", async () => {
     const page = await opened({}, { pending: [pendingItem(3)] });
     const card = await screen.findByRole("group", { name: "Endorsement request" });

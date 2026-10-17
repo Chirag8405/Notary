@@ -155,6 +155,7 @@ function XRayRun({
   const client = useMemo(() => createRestClient(apiUrl), [apiUrl]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resolved, setResolved] = useState<ReadonlySet<string>>(() => new Set());
+  const [rejected, setRejected] = useState<ReadonlySet<string>>(() => new Set());
 
   const runId = view.runId;
   const fetchPending = useCallback(async () => {
@@ -167,6 +168,11 @@ function XRayRun({
   }, [client, runId]);
   const onResolvedChange = useCallback((next: ReadonlySet<string>) => {
     setResolved((previous) =>
+      previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next,
+    );
+  }, []);
+  const onRejectedChange = useCallback((next: ReadonlySet<string>) => {
+    setRejected((previous) =>
       previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next,
     );
   }, []);
@@ -234,6 +240,7 @@ function XRayRun({
               eventCount={view.lastSeq + 1}
               toolByCallId={toolByCallId}
               onResolvedChange={onResolvedChange}
+              onRejectedChange={onRejectedChange}
               {...(stream.status === "error" && stream.closeCode !== undefined
                 ? { closeCode: stream.closeCode }
                 : {})}
@@ -257,7 +264,11 @@ function XRayRun({
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="text-sm">
           <CardContent>
-            <OraclePanel view={view} unresolvedEndorsements={unresolved} />
+            <OraclePanel
+              view={view}
+              unresolvedEndorsements={unresolved}
+              rejectedEndorsements={rejected.size}
+            />
           </CardContent>
         </Card>
         <Panel title="What changed">
