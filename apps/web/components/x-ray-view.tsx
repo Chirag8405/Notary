@@ -15,7 +15,7 @@ import {
   laneLabel,
 } from "@notary/ui";
 import type { LaneInput, LaneName } from "@notary/ui";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AnchorFooter } from "@/components/anchor-footer";
@@ -24,15 +24,17 @@ import { EndorsementPanel } from "@/components/endorsement-panel";
 import { RunControls } from "@/components/run-controls";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  DEFAULT_MODE,
   callIdForSelection,
   describeStreamError,
   scenarioLanes,
   selectionFromChip,
+  settleSelection,
   toLaneStatus,
   valueIdForSelection,
   xrayUrl,
 } from "@/lib/x-ray-state";
-import type { ViewMode } from "@/lib/x-ray-state";
+import type { Selection, ViewMode } from "@/lib/x-ray-state";
 
 export interface XRayViewProps {
   apiUrl: string;
@@ -233,44 +235,48 @@ function XRayRun({
 export function XRayView({
   apiUrl,
   scenario: initialScenario,
-  mode: initialMode = "golden",
+  mode: initialMode = DEFAULT_MODE,
   initialViewMode = "single",
   webSocket,
 }: XRayViewProps) {
-  const [scenario, setScenario] = useState(initialScenario);
-  const [mode, setMode] = useState<RunMode>(initialMode);
-  const [requestedView, setRequestedView] = useState<ViewMode>(initialViewMode);
+  // Every choice goes through `settleSelection`, so a combination the server cannot serve (golden
+  // for legitimate_bill or for the three-lane view) is never opened.
+  const [initial] = useState(() =>
+    settleSelection({ scenario: initialScenario, mode: initialMode, viewMode: initialViewMode }),
+  );
+  const [selection, setSelection] = useState(initial);
   const [runKey, setRunKey] = useState(0);
 
-  // Only a scenario with all three recorded streams can show the three-lane view.
-  const viewMode: ViewMode = scenarioLanes(scenario).length < 3 ? "single" : requestedView;
+  // An address that asked for such a combination is corrected in the address bar too.
+  useEffect(() => {
+    if (initial.note !== null) window.history.replaceState(null, "", xrayUrl(initial));
+  }, [initial]);
 
-  const remember = (next: { scenario: string; mode: RunMode; viewMode: ViewMode }) => {
-    window.history.replaceState(null, "", xrayUrl(next));
+  const apply = (next: Selection) => {
+    const settled = settleSelection(next);
+    setSelection(settled);
+    if (settled.scenario !== selection.scenario || settled.mode !== selection.mode) {
+      setRunKey((key) => key + 1);
+    }
+    window.history.replaceState(null, "", xrayUrl(settled));
   };
 
   return (
     <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <RunControls
         apiUrl={apiUrl}
-        scenario={scenario}
-        mode={mode}
-        viewMode={viewMode}
+        scenario={selection.scenario}
+        mode={selection.mode}
+        viewMode={selection.viewMode}
+        note={selection.note}
         onScenarioChange={(next) => {
-          const nextView: ViewMode = scenarioLanes(next).length < 3 ? "single" : requestedView;
-          setScenario(next);
-          setRequestedView(nextView);
-          setRunKey((key) => key + 1);
-          remember({ scenario: next, mode, viewMode: nextView });
+          apply({ ...selection, scenario: next });
         }}
         onModeChange={(next) => {
-          setMode(next);
-          setRunKey((key) => key + 1);
-          remember({ scenario, mode: next, viewMode });
+          apply({ ...selection, mode: next });
         }}
         onViewModeChange={(next) => {
-          setRequestedView(next);
-          remember({ scenario, mode, viewMode: next });
+          apply({ ...selection, viewMode: next });
         }}
         onRunAgain={() => {
           setRunKey((key) => key + 1);
@@ -279,9 +285,9 @@ export function XRayView({
       <XRayRun
         key={runKey}
         apiUrl={apiUrl}
-        scenario={scenario}
-        mode={mode}
-        viewMode={viewMode}
+        scenario={selection.scenario}
+        mode={selection.mode}
+        viewMode={selection.viewMode}
         webSocket={webSocket}
       />
     </main>

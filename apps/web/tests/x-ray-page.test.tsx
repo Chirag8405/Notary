@@ -242,7 +242,7 @@ describe("x-ray page endorsement", () => {
 
 describe("x-ray page three-lane view", () => {
   it("opens the two baseline sockets and never a second NOTARY socket [A3]", async () => {
-    const page = await opened();
+    const page = await opened({ mode: "cassette" });
     expect(page.urls().filter((u) => u.includes("lane=notary"))).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Three-lane view" }));
     await screen.findByLabelText("Three lanes");
@@ -359,7 +359,7 @@ describe("x-ray page anchor and errors", () => {
 });
 
 describe("x-ray page controls", () => {
-  it("offers the modes the server lists, and golden when it cannot be asked [I6]", async () => {
+  it("offers the modes the server lists, and all three when it cannot be asked [I6]", async () => {
     await opened({}, { modes: ["golden", "cassette"] });
     const select = screen.getByLabelText<HTMLSelectElement>("Mode");
     await waitFor(() => {
@@ -370,7 +370,7 @@ describe("x-ray page controls", () => {
     await opened({}, { modes: "fail" });
     const failed = screen.getByLabelText<HTMLSelectElement>("Mode");
     await waitFor(() => {
-      expect([...failed.options].map((o) => o.value)).toEqual(["golden"]);
+      expect([...failed.options].map((o) => o.value)).toEqual(["golden", "cassette", "live"]);
     });
   });
 
@@ -389,12 +389,12 @@ describe("x-ray page controls", () => {
 
   it("writes the choice to the address and reopens the stream [I6]", async () => {
     const replace = vi.spyOn(window.history, "replaceState");
-    const page = await opened();
+    const page = await opened({ mode: "cassette" });
     fireEvent.change(screen.getByLabelText("Scenario"), { target: { value: "legitimate_bill" } });
     expect(replace).toHaveBeenLastCalledWith(
       null,
       "",
-      "/x-ray?scenario=legitimate_bill&mode=golden&view=single",
+      "/x-ray?scenario=legitimate_bill&mode=cassette&view=single",
     );
     expect(page.urls().at(-1)).toContain("/ws/runs/legitimate_bill?lane=notary");
     await waitFor(() => {
@@ -407,7 +407,7 @@ describe("x-ray page controls", () => {
     expect(replace).toHaveBeenLastCalledWith(
       null,
       "",
-      "/x-ray?scenario=poisoned_bill&mode=golden&view=three",
+      "/x-ray?scenario=poisoned_bill&mode=cassette&view=three",
     );
   });
 

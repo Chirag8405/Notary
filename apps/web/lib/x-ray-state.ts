@@ -20,6 +20,9 @@ export type Scenario = (typeof SCENARIOS)[number];
 
 export const MODES: readonly RunMode[] = ["golden", "cassette", "live"];
 
+/** The mode used when the address names none (or names an unknown one): never "live". */
+export const DEFAULT_MODE: RunMode = "golden";
+
 export interface XRayParams {
   scenario: Scenario;
   mode: RunMode;
@@ -160,7 +163,7 @@ export function parseXRayParams(raw: { scenario?: Raw; mode?: Raw; view?: Raw })
   const mode = first(raw.mode);
   return {
     scenario: SCENARIOS.find((item) => item === scenario) ?? "poisoned_bill",
-    mode: MODES.find((item) => item === mode) ?? "golden",
+    mode: MODES.find((item) => item === mode) ?? DEFAULT_MODE,
     viewMode: first(raw.view) === "three" ? "three-lane" : "single",
   };
 }
@@ -172,4 +175,75 @@ export function xrayUrl(state: { scenario: string; mode: string; viewMode: ViewM
     `/x-ray?scenario=${encodeURIComponent(state.scenario)}` +
     `&mode=${encodeURIComponent(state.mode)}&view=${view}`
   );
+}
+
+// --- modes that can work
+
+export interface ModeOption {
+  mode: RunMode;
+  enabled: boolean;
+  /** Why the option is disabled; null when it is enabled. */
+  note: string | null;
+  label: string;
+}
+
+export const LIVE_LABEL = "live (needs an API key; not reproducible)";
+const GOLDEN_NO_STREAM = "no recorded stream for this scenario; use cassette";
+const GOLDEN_ONE_STREAM = "golden replays one stream for every lane; use cassette";
+
+/**
+ * Why golden cannot be used for this screen, or null. The server's golden source has no stream
+ * for legitimate_bill (it closes with 4404) and ignores the lane, so every lane of a three-lane
+ * view would get the NOTARY stream.
+ */
+export function goldenBlockedReason(scenario: string, viewMode: ViewMode): string | null {
+  if (scenario === "legitimate_bill") return GOLDEN_NO_STREAM;
+  if (viewMode === "three-lane") return GOLDEN_ONE_STREAM;
+  return null;
+}
+
+/**
+ * The mode selector's options in a fixed order (golden, cassette, live), whatever order the
+ * server lists them in. While the list is unknown or unusable, all three are shown.
+ */
+export function modeOptions(
+  scenario: string,
+  serverModes: readonly string[] | null,
+  viewMode: ViewMode,
+): readonly ModeOption[] {
+  const listed = serverModes === null ? MODES : MODES.filter((mode) => serverModes.includes(mode));
+  const blocked = goldenBlockedReason(scenario, viewMode);
+  return (listed.length === 0 ? MODES : listed).map((mode): ModeOption => {
+    if (mode === "golden") return { mode, enabled: blocked === null, note: blocked, label: mode };
+    if (mode === "live") return { mode, enabled: true, note: null, label: LIVE_LABEL };
+    return { mode, enabled: true, note: null, label: mode };
+  });
+}
+
+/** The mode a screen actually uses: golden becomes cassette where it cannot work. Never "live". */
+export function effectiveMode(scenario: string, mode: RunMode, viewMode: ViewMode): RunMode {
+  return mode === "golden" && goldenBlockedReason(scenario, viewMode) !== null ? "cassette" : mode;
+}
+
+export interface Selection {
+  scenario: string;
+  mode: RunMode;
+  viewMode: ViewMode;
+}
+
+/**
+ * A choice made consistent: the three-lane view needs a scenario with three streams, and the mode
+ * is the effective one. `note` says what was changed, for the screen to show.
+ */
+export function settleSelection(selection: Selection): Selection & { note: string | null } {
+  const viewMode: ViewMode =
+    scenarioLanes(selection.scenario).length < 3 ? "single" : selection.viewMode;
+  const mode = effectiveMode(selection.scenario, selection.mode, viewMode);
+  const reason = mode === selection.mode ? null : goldenBlockedReason(selection.scenario, viewMode);
+  return {
+    scenario: selection.scenario,
+    mode,
+    viewMode,
+    note: reason === null ? null : `Switched to cassette: ${reason}`,
+  };
 }
