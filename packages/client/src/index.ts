@@ -27,15 +27,7 @@ export {
   type PoisonWorldBody,
   type WithEvents,
 } from "./playground";
-export {
-  createRestClient,
-  getAnchor,
-  getPendingEndorsements,
-  listModes,
-  type Anchor,
-  type PendingList,
-  type RestClient,
-} from "./rest";
+export { createRestClient, getAnchor, listModes, type Anchor, type RestClient } from "./rest";
 export { openRun, streamRun, type RunSession } from "./run-session";
 export {
   EventValidationError,

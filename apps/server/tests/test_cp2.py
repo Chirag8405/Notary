@@ -13,13 +13,13 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
-from tokens import HEADERS, with_token
 
 from notary_core.audit import append, verify_chain_detailed
 from notary_core.gateway import ToolResultField, make_labeler
 from notary_core.models import (
     ArenaStartCommand,
     AuditEntry,
+    CallProposed,
     DecisionMade,
     EffectExecuted,
     EndorsementDecisionCommand,
@@ -97,12 +97,18 @@ def app_client(timeout: float = SHORT_TIMEOUT) -> TestClient:
     return TestClient(build_app(settings, event_delay=0))
 
 
+def app_with_broker(timeout: float) -> tuple[TestClient, EndorsementBroker]:
+    """The running app and its broker, to look at the cards the broker holds."""
+    broker = EndorsementBroker(timeout_seconds=timeout)
+    settings = Settings(endorsement_timeout_seconds=timeout)
+    return TestClient(build_app(settings, event_delay=0, broker=broker)), broker
+
+
 def replay(
     client: TestClient, scenario: str, lane: Lane, mode: str = "cassette"
 ) -> tuple[list[Event], WebSocketDisconnect]:
     events: list[Event] = []
-    path = f"/ws/runs/{scenario}?lane={lane}&mode={mode}"
-    with client.websocket_connect(path if mode == "golden" else with_token(path)) as ws:
+    with client.websocket_connect(f"/ws/runs/{scenario}?lane={lane}&mode={mode}") as ws:
         while True:
             try:
                 events.append(EVENT_ADAPTER.validate_json(ws.receive_text()))
@@ -647,23 +653,24 @@ def read_until(ws: WebSocketTestSession, event_type: str) -> list[Event]:
 
 
 def run_to_the_end_with_approval(
-    client: TestClient, *, golden: Callable[[TestClient], None] | None = None
+    stack: tuple[TestClient, EndorsementBroker],
+    *,
+    golden: Callable[[TestClient], None] | None = None,
 ) -> list[Event]:
     """Run poisoned_bill / notary in cassette mode, approve its card, and return every event.
 
     `golden` runs while the card is pending, after the cassette socket stopped at it.
     """
+    client, broker = stack
     run_id = golden_run_id(POISONED, "notary")
 
     def pending() -> int:
-        return len(client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"])
+        return len(broker.pending_for_run(run_id))
 
-    with client.websocket_connect(
-        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
-    ) as ws:
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
         before = read_until(ws, "endorsement_requested")
         assert len(before) == 18
-        wait_until(lambda: pending() == 1)
+        assert pending() == 1  # registered before the event was sent (#195)
         if golden is not None:
             golden(client)
             assert pending() == 1
@@ -708,8 +715,8 @@ def test_closing_a_golden_socket_leaves_a_pending_cassette_card_alone(
     """Golden and cassette runs share `run-poisoned_bill-notary` (#194). A golden socket closing
     must not reject the cassette run's card: it stays pending, answerable, and the cassette stream
     is byte-identical to the run without a golden socket."""
-    alone = run_to_the_end_with_approval(app_client(timeout=5.0))
-    beside_golden = run_to_the_end_with_approval(app_client(timeout=5.0), golden=golden)
+    alone = run_to_the_end_with_approval(app_with_broker(5.0))
+    beside_golden = run_to_the_end_with_approval(app_with_broker(5.0), golden=golden)
     assert lines(beside_golden) == lines(alone)
     pay_decisions = [e for e in beside_golden if isinstance(e, DecisionMade) and e.call_id == "c2"]
     assert [d.decision.verdict for d in pay_decisions] == ["ESCALATE", "ALLOW"]
@@ -739,11 +746,11 @@ def test_a_golden_run_never_registers_a_card_or_touches_the_broker() -> None:
     with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=golden") as ws:
         seen = read_until(ws, "endorsement_requested")
         assert any(isinstance(e, EndorsementRequested) for e in seen)
-        assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
+        assert broker.pending_for_run(run_id) == ()
         golden_rest = [EVENT_ADAPTER.validate_json(ws.receive_text()) for _ in range(2)]
         assert golden_rest
     golden_run_abandoned(client)  # the path that used to cancel the run id
-    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
+    assert broker.pending_for_run(run_id) == ()
     assert broker.calls == []
 
 
@@ -755,9 +762,7 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
     sources: dict[RunMode, RunSource] = {"cassette": CassetteSource(streamer)}
     client = TestClient(create_app(event_delay=0, sources=sources, broker=broker))
     run_id = golden_run_id(POISONED, "notary")
-    with client.websocket_connect(
-        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
-    ) as ws:
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
         read_until(ws, "endorsement_requested")
         wait_until(lambda: len(broker.pending_for_run(run_id)) == 1)
     wait_until(lambda: broker.pending_for_run(run_id) == ())
@@ -765,20 +770,19 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
 
 
 @pytest.mark.invariant("I4")
-def test_the_card_is_listed_when_the_cassette_frame_arrives() -> None:
-    """#195: no wait between the `endorsement_requested` frame and the pending list."""
-    client = TestClient(build_app(Settings(endorsement_timeout_seconds=5.0), event_delay=0.05))
+def test_the_card_is_registered_when_the_cassette_frame_arrives() -> None:
+    """#195: no wait between the `endorsement_requested` frame and the broker holding the card."""
+    broker = EndorsementBroker(timeout_seconds=5.0)
+    client = TestClient(
+        build_app(Settings(endorsement_timeout_seconds=5.0), event_delay=0.05, broker=broker)
+    )
     run_id = golden_run_id(POISONED, "notary")
-    with client.websocket_connect(
-        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
-    ) as ws:
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
         seen = read_until(ws, "endorsement_requested")
         card = next(e for e in reversed(seen) if isinstance(e, EndorsementRequested))
-        listed = client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"]
-        assert [p["endorsement"]["endorsement_id"] for p in listed] == [
-            card.endorsement.endorsement_id
-        ]
-        assert listed[0]["remaining_approvals"] == 3
+        (held,) = broker.pending_for_run(run_id)
+        assert held.endorsement.endorsement_id == card.endorsement.endorsement_id
+        assert held.remaining_approvals == 3
 
 
 @pytest.mark.invariant("I4")
@@ -786,25 +790,14 @@ def test_endorsement_flow_over_the_socket() -> None:
     """A determined user can still say yes (A11): the approved payment runs, and only because of
     the command; the engine wrote the endorsed payee to the ledger, so the re-decision is ALLOW
     with an exact ledger match."""
-    client = app_client(timeout=5.0)
+    client, broker = app_with_broker(5.0)
     run_id = golden_run_id(POISONED, "notary")
     results: list[list[Event]] = []
 
     def drive() -> None:
-        with client.websocket_connect(
-            with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
-        ) as ws:
+        with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
             before = read_until(ws, "endorsement_requested")
-            wait_until(
-                lambda: (
-                    len(
-                        client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()[
-                            "pending"
-                        ]
-                    )
-                    == 1
-                )
-            )
+            assert len(broker.pending_for_run(run_id)) == 1  # registered before the event (#195)
             card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
             command = EndorsementDecisionCommand(
                 type="endorsement_decision",
@@ -831,7 +824,74 @@ def test_endorsement_flow_over_the_socket() -> None:
     assert "LEDGER_EXACT_MATCH" in [r.code for r in pay_decisions[1].decision.reasons]
     assert any(isinstance(e, EffectExecuted) and e.tool == "pay_bill" for e in events)
     assert BILLER_IBAN not in lines(events)[-1]
-    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
+    assert broker.pending_for_run(run_id) == ()
+
+
+Beat = tuple[str, str | None, str | None]
+"""An event as the web client reads it after a card: (type, call id, verdict)."""
+
+
+def beats_after_the_card(decision: str | None) -> list[Beat]:
+    """Run poisoned_bill / notary in cassette mode, answer the card with `decision` (None leaves
+    it to time out) and return the events after `endorsement_requested`."""
+    client, _broker = app_with_broker(5.0 if decision is not None else SHORT_TIMEOUT)
+    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        seen = read_until(ws, "endorsement_requested")
+        card = next(e for e in reversed(seen) if isinstance(e, EndorsementRequested))
+        if decision is not None:
+            command = EndorsementDecisionCommand.model_validate(
+                {
+                    "type": "endorsement_decision",
+                    "run_id": card.run_id,
+                    "endorsement_id": card.endorsement.endorsement_id,
+                    "decision": decision,
+                }
+            )
+            ws.send_text(COMMAND_ADAPTER.dump_json(command).decode("utf-8"))
+        after: list[Event] = []
+        while True:
+            try:
+                after.append(EVENT_ADAPTER.validate_json(ws.receive_text()))
+            except WebSocketDisconnect:
+                break
+
+    def beat(event: Event) -> Beat:
+        if isinstance(event, DecisionMade):
+            return (event.type, event.call_id, event.decision.verdict)
+        if isinstance(event, CallProposed):
+            return (event.type, event.proposal.call_id, None)
+        if isinstance(event, EffectExecuted):
+            return (event.type, event.call_id, None)
+        return (event.type, None, None)
+
+    return [beat(event) for event in after]
+
+
+@pytest.mark.invariant("I4")
+def test_what_follows_a_card() -> None:
+    """The web client resolves a card from the run's own events (#239), so the order of the events
+    after a card is a contract: the first event that is not a `value_labeled` says how it ended.
+
+    - approve: the same call decided again, ALLOW, then its effect;
+    - use nearest: a new call `<call>.nearest` is proposed (after its value is labeled);
+    - reject, a timeout and a cancel: none of that, the run just goes on to the oracle.
+
+    A reject and a timeout look the same in the stream; only the user's click tells them apart.
+    """
+    approved = beats_after_the_card("approve")
+    assert approved[:2] == [("decision_made", "c2", "ALLOW"), ("effect_executed", "c2", None)]
+    assert approved[-2:] == [("oracle_updated", None, None), ("run_finished", None, None)]
+
+    rejected = beats_after_the_card("reject")
+    assert rejected == [("oracle_updated", None, None), ("run_finished", None, None)]
+
+    nearest = beats_after_the_card("use_nearest")
+    first_not_labeled = next(beat for beat in nearest if beat[0] != "value_labeled")
+    assert first_not_labeled == ("call_proposed", "c2.nearest", None)
+    assert ("decision_made", "c2.nearest", "ALLOW") in nearest
+    assert ("decision_made", "c2", "ALLOW") not in nearest  # the original call is not approved
+
+    assert beats_after_the_card(None) == rejected  # a timeout is a reject as far as the stream goes
 
 
 @pytest.mark.invariant("I6")
@@ -930,25 +990,14 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     """The user answers the card with the nearest known payee instead of the swapped one: the
     swapped IBAN is not paid, a new call is proposed with the ledger's value and judged by the
     monitor like any other, and the run ends with both goals met (#207)."""
-    client = app_client(timeout=5.0)
+    client, broker = app_with_broker(5.0)
     run_id = golden_run_id(POISONED, "notary")
     results: list[list[Event]] = []
 
     def drive() -> None:
-        with client.websocket_connect(
-            with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
-        ) as ws:
+        with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
             before = read_until(ws, "endorsement_requested")
-            wait_until(
-                lambda: (
-                    len(
-                        client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()[
-                            "pending"
-                        ]
-                    )
-                    == 1
-                )
-            )
+            assert len(broker.pending_for_run(run_id)) == 1  # registered before the event (#195)
             card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
             command = EndorsementDecisionCommand(
                 type="endorsement_decision",
@@ -991,4 +1040,4 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     assert finished.outcome == "completed"
     # The summary is the engine's, then who recorded the cassette (a scripted agent, #182).
     assert finished.summary.startswith("all calls executed; cassette replay:")
-    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
+    assert broker.pending_for_run(run_id) == ()

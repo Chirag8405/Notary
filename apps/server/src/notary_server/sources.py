@@ -1,7 +1,7 @@
 """Run sources: where the events of a run come from (golden replay now; cassette and live later)."""
 
 from collections.abc import Iterator, Mapping
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol
 
 from notary_core.models import Event, Lane, NotaryModel
 from notary_server.runner import ScenarioNotFoundError
@@ -29,25 +29,12 @@ class RunRequest(NotaryModel):
     owner: str = ""
     """The server-side identity of the socket (see `CommandContext.owner`). The socket sets it;
     it is never read from the query. Empty outside a socket."""
-    read_key: bytes | None = None
-    """`HMAC(server_key, run_id, token)` of the socket's read token (#235), or None. Only the
-    digest is kept; the raw token never reaches a source."""
 
 
 class RunSource(Protocol):
     def events(self, request: RunRequest) -> Iterator[Event]:
         """Return the events of the run. Raise `KeyError` (or `ScenarioNotFoundError`) for an
         unknown scenario. The iterator may block: the server drives it from a worker thread."""
-        ...
-
-
-@runtime_checkable
-class CheckedSource(Protocol):
-    """A source that can say at once that it cannot serve any run (no key). The socket asks
-    before it reads the token, so "mode not available" (4501) wins over "invalid token" (4400)."""
-
-    def check_available(self) -> None:
-        """Raise `RunUnavailableError` when the source cannot serve."""
         ...
 
 

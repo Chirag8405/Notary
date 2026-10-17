@@ -197,16 +197,13 @@ class RunStreamer:
         )
         return _guard(stream_for_lane(run, lane))
 
-    def socket_endorsements(
-        self, scenario: Scenario, run_id: str, owner: str, read_key: bytes | None
-    ) -> EndorsementRun:
+    def socket_endorsements(self, scenario: Scenario, run_id: str, owner: str) -> EndorsementRun:
         """Escalations of a watched run wait for the command of the socket that owns the run
-        (fail closed on timeout). `read_key` lets the socket's token list the run's cards."""
+        (fail closed on timeout)."""
         return self._broker.start_run(
             run_id,
             owner=owner,
             max_approvals=scenario.contract.budget.max_approvals,
-            read_key=read_key,
         )
 
     def lane_runner(self) -> LaneRunner:
@@ -238,9 +235,7 @@ class CassetteSource:
         scenario = _scenario(request.scenario)
         run_id = golden_run_id(request.scenario, request.lane)
         client = load_cassette_client(f"{request.scenario}.{request.lane}")
-        endorsements = self._streamer.socket_endorsements(
-            scenario, run_id, request.owner, request.read_key
-        )
+        endorsements = self._streamer.socket_endorsements(scenario, run_id, request.owner)
         return self._streamer.stream(
             scenario,
             request.lane,
@@ -275,17 +270,15 @@ class LiveSource:
 
     def events(self, request: RunRequest) -> Iterator[Event]:
         self.check_available()  # before the scenario lookup: no key is 4501 whatever the name
-        return self.run(_scenario(request.scenario), request.lane, request.owner, request.read_key)
+        return self.run(_scenario(request.scenario), request.lane, request.owner)
 
-    def run(
-        self, scenario: Scenario, lane: Lane, owner: str = "", read_key: bytes | None = None
-    ) -> Iterator[Event]:
+    def run(self, scenario: Scenario, lane: Lane, owner: str = "") -> Iterator[Event]:
         """The live run of an already built scenario (the model probe varies the world seed)."""
         self.check_available()
         if self._client is None:
             self._client = self._factory()
         run_id = golden_run_id(scenario.scenario_id, lane)
-        endorsements = self._streamer.socket_endorsements(scenario, run_id, owner, read_key)
+        endorsements = self._streamer.socket_endorsements(scenario, run_id, owner)
         return self._streamer.stream(
             scenario,
             lane,
@@ -319,12 +312,19 @@ def build_limits(settings: Settings, clock: Clock = time.monotonic) -> Playgroun
 
 
 def build_app(
-    settings: Settings, *, event_delay: float = 0.4, clock: Clock = time.monotonic
+    settings: Settings,
+    *,
+    event_delay: float = 0.4,
+    clock: Clock = time.monotonic,
+    broker: EndorsementBroker | None = None,
 ) -> FastAPI:
+    """The running app. `broker` is a seam for tests, which look at the broker's cards; leave it
+    out and the app makes its own."""
     from notary_server.app import create_app
 
     anchors = AnchorStore(settings.anchor_db)
-    broker = EndorsementBroker(timeout_seconds=settings.endorsement_timeout_seconds)
+    if broker is None:
+        broker = EndorsementBroker(timeout_seconds=settings.endorsement_timeout_seconds)
     streamer = RunStreamer(broker=broker, anchors=anchors)
     sources: dict[RunMode, RunSource] = {
         "golden": GoldenSource(),

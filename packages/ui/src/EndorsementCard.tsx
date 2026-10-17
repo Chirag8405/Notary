@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import { highlightDiff } from "./diff-highlight";
 import type { Segment } from "./diff-highlight";
 
-export type CardState = "pending" | "sending" | "approved" | "rejected" | "replaced" | "conflict";
+export type CardState =
+  "pending" | "sending" | "approved" | "rejected" | "replaced" | "blocked" | "conflict";
 
 export interface EndorsementCardProps {
   endorsement: Endorsement;
@@ -32,6 +33,7 @@ const STATE_TEXT: Partial<Record<CardState, string>> = {
   approved: "You confirmed this request",
   rejected: "You rejected this request",
   replaced: "You asked for the nearest known value instead",
+  blocked: "You confirmed this request, but the monitor blocked the call",
   conflict: "This request is no longer open",
 };
 

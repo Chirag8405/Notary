@@ -16,7 +16,7 @@ afterEach(() => {
 
 function setup() {
   // The REST client binds `fetch` when it is created, so the stub comes first.
-  const rest = stubRest({ modes: [], pending: [], anchor: ANCHOR });
+  const rest = stubRest({ modes: [], anchor: ANCHOR });
   return { rest, client: createRestClient(API) };
 }
 

@@ -1,29 +1,28 @@
 "use client";
 
 import { describeClose } from "@notary/client";
-import type { PendingList } from "@notary/client";
 import { CommandSchema } from "@notary/schema";
-import type { Endorsement } from "@notary/schema";
-import type { Command } from "@notary/schema";
-import { EndorsementCard } from "@notary/ui";
-import type { CardState, EndorsementView } from "@notary/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { Command, Event } from "@notary/schema";
+import { EndorsementCard, cardOutcomes } from "@notary/ui";
+import type { CardOutcome, CardState, EndorsementView } from "@notary/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-/** What the panel needs from one entry of the server's pending list. */
-export type PendingItem = Pick<PendingList["pending"][number], "remaining_approvals"> & {
-  endorsement: Pick<Endorsement, "endorsement_id">;
-};
+import { shownState } from "@/lib/card-state";
+import type { Decision } from "@/lib/card-state";
 
 export interface EndorsementPanelProps {
   runId: string;
   endorsements: readonly EndorsementView[];
+  /** Every event of the run so far. The stream decides when a card is resolved. */
+  events: readonly Event[];
   /** Answers on the run socket; throws when the socket is closed. */
   send: (command: Command) => void;
-  /** The endorsements that still wait for the user, with the approvals left. */
-  fetchPending: () => Promise<readonly PendingItem[]>;
   closeCode?: number;
-  /** Changes when new stream events arrive: the pending list is read again. */
-  eventCount?: number;
+  /**
+   * Whether the events answer the cards. False for the golden replay, whose events after a card
+   * are canned text, not an answer: its cards stay as they are (a click ends in 4409).
+   */
+  resolveFromEvents?: boolean;
   /** Call id to tool name, for the card title. */
   toolByCallId?: Readonly<Record<string, string>>;
   /** Called, never during render, when the set of answered cards changes. */
@@ -32,154 +31,87 @@ export interface EndorsementPanelProps {
   onRejectedChange?: (rejected: ReadonlySet<string>) => void;
 }
 
-type Decision = "approve" | "reject" | "use_nearest";
-
-interface CardInfo {
-  state: CardState;
-  decision: Decision | null;
-  error: string | null;
+interface Click {
+  decision: Decision;
 }
 
-const RESOLVED: Record<Decision, CardState> = {
-  approve: "approved",
-  reject: "rejected",
-  use_nearest: "replaced",
-};
+const OPEN: CardOutcome = { kind: "open" };
+const RESOLVED: ReadonlySet<CardState> = new Set<CardState>([
+  "approved",
+  "rejected",
+  "replaced",
+  "blocked",
+]);
+
+function sortedKey(ids: readonly string[]): string {
+  return [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join("\n");
+}
 
 /**
- * The cards of the run's pending endorsements and the answers the user gives.
+ * The cards of the run's endorsements and the answers the user gives.
  *
- * A card moves to "sending" when its command was sent, and to approved or rejected once a
- * SUCCESSFUL pending list no longer contains it; a failed read never resolves anything. A socket
- * closed with 4409 turns every open card into "conflict". The decision shown is the user's click:
- * the stream's own events carry the outcome the server confirmed.
+ * The panel makes no request. A click sends the command and the card reads "sending"; the run's
+ * own events then say how it ended (`cardOutcomes`): approved, replaced by the nearest known
+ * value, blocked after the answer, or closed. "Approvals left" comes from the contract in the
+ * stream. A closed socket never resolves a card; only one closed with 4409 turns an open card
+ * into "no longer open".
  */
 export function EndorsementPanel({
   runId,
   endorsements,
+  events,
   send,
-  fetchPending,
   closeCode,
-  eventCount,
+  resolveFromEvents = true,
   toolByCallId,
   onResolvedChange,
   onRejectedChange,
 }: EndorsementPanelProps) {
-  const [cards, setCards] = useState<ReadonlyMap<string, CardInfo>>(() => new Map());
-  const [remaining, setRemaining] = useState<ReadonlyMap<string, number>>(() => new Map());
-
-  // The map is mirrored in a ref so that every update starts from the latest value, even when two
-  // events arrive before React has rendered.
-  const cardsRef = useRef<ReadonlyMap<string, CardInfo>>(cards);
-  const inFlight = useRef(new Set<string>());
-  const requests = useRef(0);
-  const alive = useRef(true);
+  const [clicks, setClicks] = useState<ReadonlyMap<string, Click>>(() => new Map());
+  const [errors, setErrors] = useState<ReadonlyMap<string, string>>(() => new Map());
+  // Mirrors `clicks` so two clicks in the same tick still send one command.
+  const clicked = useRef(new Set<string>());
   const sendRef = useRef(send);
-  const fetchRef = useRef(fetchPending);
-
   useEffect(() => {
     sendRef.current = send;
-    fetchRef.current = fetchPending;
   });
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
 
-  const write = useCallback((next: ReadonlyMap<string, CardInfo>) => {
-    cardsRef.current = next;
-    setCards(next);
-  }, []);
+  const outcomes = useMemo(() => cardOutcomes(events), [events]);
+  const conflict = closeCode !== undefined && describeClose(closeCode) === "run_conflict";
 
+  const shown = endorsements.map((view) => {
+    const id = view.endorsement.endorsement_id;
+    const outcome = resolveFromEvents ? (outcomes.byEndorsementId.get(id) ?? OPEN) : OPEN;
+    const state = shownState(outcome, clicks.get(id)?.decision ?? null, conflict);
+    return { view, id, outcome, state };
+  });
+
+  const resolvedKey = sortedKey(shown.filter((card) => RESOLVED.has(card.state)).map((c) => c.id));
+  const rejectedKey = sortedKey(shown.filter((card) => card.state === "rejected").map((c) => c.id));
   const onResolvedRef = useRef(onResolvedChange);
+  const onRejectedRef = useRef(onRejectedChange);
   useEffect(() => {
     onResolvedRef.current = onResolvedChange;
+    onRejectedRef.current = onRejectedChange;
   });
   const lastResolved = useRef("");
   useEffect(() => {
-    const ids = [...cards]
-      .filter(
-        ([, info]) =>
-          info.state === "approved" || info.state === "rejected" || info.state === "replaced",
-      )
-      .map(([id]) => id)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const key = ids.join("\n");
-    if (key === lastResolved.current) return;
-    lastResolved.current = key;
-    onResolvedRef.current?.(new Set(ids));
-  }, [cards]);
-
-  const onRejectedRef = useRef(onRejectedChange);
-  useEffect(() => {
-    onRejectedRef.current = onRejectedChange;
-  });
+    if (resolvedKey === lastResolved.current) return;
+    lastResolved.current = resolvedKey;
+    onResolvedRef.current?.(new Set(resolvedKey === "" ? [] : resolvedKey.split("\n")));
+  }, [resolvedKey]);
   const lastRejected = useRef("");
   useEffect(() => {
-    const ids = [...cards]
-      .filter(([, info]) => info.state === "rejected")
-      .map(([id]) => id)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const key = ids.join("\n");
-    if (key === lastRejected.current) return;
-    lastRejected.current = key;
-    onRejectedRef.current?.(new Set(ids));
-  }, [cards]);
-
-  const poll = useCallback(() => {
-    requests.current += 1;
-    const mine = requests.current;
-    const accept = (list: readonly PendingItem[]) => {
-      if (!alive.current || mine !== requests.current) return;
-      const listed = new Map(list.map((item) => [item.endorsement.endorsement_id, item]));
-      setRemaining(new Map([...listed].map(([id, item]) => [id, item.remaining_approvals])));
-      const next = new Map(cardsRef.current);
-      let changed = false;
-      for (const [id, info] of cardsRef.current) {
-        if (info.state === "sending" && info.decision !== null && !listed.has(id)) {
-          next.set(id, { state: RESOLVED[info.decision], decision: info.decision, error: null });
-          inFlight.current.delete(id);
-          changed = true;
-        }
-      }
-      if (changed) write(next);
-    };
-    // A failed read changes nothing; the next trigger tries again.
-    const ignore = () => undefined;
-    try {
-      fetchRef.current().then(accept, ignore);
-    } catch {
-      ignore();
-    }
-  }, [write]);
-
-  useEffect(() => {
-    poll();
-  }, [poll, endorsements, eventCount]);
-
-  useEffect(() => {
-    if (closeCode === undefined || describeClose(closeCode) !== "run_conflict") return;
-    const next = new Map(cardsRef.current);
-    let changed = false;
-    for (const view of endorsements) {
-      const id = view.endorsement.endorsement_id;
-      const info = cardsRef.current.get(id);
-      const state = info?.state ?? "pending";
-      if (state === "pending" || state === "sending") {
-        next.set(id, { state: "conflict", decision: info?.decision ?? null, error: null });
-        inFlight.current.delete(id);
-        changed = true;
-      }
-    }
-    if (changed) write(next);
-  }, [closeCode, endorsements, write]);
+    if (rejectedKey === lastRejected.current) return;
+    lastRejected.current = rejectedKey;
+    onRejectedRef.current?.(new Set(rejectedKey === "" ? [] : rejectedKey.split("\n")));
+  }, [rejectedKey]);
 
   const decide = (endorsementId: string, decision: Decision) => {
-    if (inFlight.current.has(endorsementId)) return;
-    if ((cardsRef.current.get(endorsementId)?.state ?? "pending") !== "pending") return;
-    inFlight.current.add(endorsementId);
+    const card = shown.find((item) => item.id === endorsementId);
+    if (card?.state !== "pending") return;
+    if (clicked.current.has(endorsementId)) return;
+    clicked.current.add(endorsementId);
     try {
       const command = CommandSchema.parse({
         type: "endorsement_decision",
@@ -189,36 +121,32 @@ export function EndorsementPanel({
       });
       sendRef.current(command);
     } catch (error) {
-      inFlight.current.delete(endorsementId);
+      clicked.current.delete(endorsementId);
       const message = error instanceof Error ? error.message : "could not send the decision";
-      write(
-        new Map(cardsRef.current).set(endorsementId, {
-          state: "pending",
-          decision: null,
-          error: message,
-        }),
-      );
+      setErrors((current) => new Map(current).set(endorsementId, message));
       return;
     }
-    write(
-      new Map(cardsRef.current).set(endorsementId, { state: "sending", decision, error: null }),
-    );
-    poll();
+    setErrors((current) => {
+      const next = new Map(current);
+      next.delete(endorsementId);
+      return next;
+    });
+    setClicks((current) => new Map(current).set(endorsementId, { decision }));
   };
 
   return (
     <section aria-label="Endorsements" className="space-y-3">
-      {endorsements.map((view) => {
-        const id = view.endorsement.endorsement_id;
-        const info = cards.get(id);
+      {shown.map(({ view, id, outcome, state }) => {
         const tool = toolByCallId?.[view.endorsement.call_id];
         return (
           <EndorsementCard
             key={id}
             endorsement={view.endorsement}
-            remainingApprovals={remaining.get(id) ?? null}
-            state={info?.state ?? "pending"}
-            error={info?.error ?? null}
+            remainingApprovals={
+              outcome.kind === "open" ? (outcomes.remainingBefore.get(id) ?? null) : null
+            }
+            state={state}
+            error={errors.get(id) ?? null}
             onDecide={(decision) => {
               decide(id, decision);
             }}

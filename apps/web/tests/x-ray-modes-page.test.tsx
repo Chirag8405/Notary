@@ -19,7 +19,7 @@ afterEach(() => {
 
 async function opened(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
   const sockets = socketFactory();
-  stubRest({ modes: ["cassette", "golden", "live"], pending: [], anchor: "missing", ...rest });
+  stubRest({ modes: ["cassette", "golden", "live"], anchor: "missing", ...rest });
   const utils = render(
     <XRayView apiUrl={API} scenario="poisoned_bill" webSocket={sockets.factory} {...props} />,
   );

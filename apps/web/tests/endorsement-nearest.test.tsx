@@ -1,62 +1,47 @@
-import { CommandSchema, EventSchema } from "@notary/schema";
-import type { Command } from "@notary/schema";
+import { CommandSchema } from "@notary/schema";
+import type { Command, Event } from "@notary/schema";
 import { foldEvents } from "@notary/ui";
-import type { EndorsementView } from "@notary/ui";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EndorsementPanel } from "@/components/endorsement-panel";
-import type { PendingItem } from "@/components/endorsement-panel";
 
-const file = resolve(
-  import.meta.dirname,
-  "../../../packages/world/fixtures/streams/poisoned_bill.notary.json",
-);
-const view = foldEvents(EventSchema.array().parse(JSON.parse(readFileSync(file, "utf8"))));
-const FIRST = view.endorsements[0];
-if (FIRST === undefined) throw new Error("fixture has no endorsement");
-const ID = FIRST.endorsement.endorsement_id;
-const RUN_ID = view.runId ?? "";
+import { CARD, REPLACED, TO_REQUEST } from "./card-events";
+
+const RUN_ID = foldEvents(TO_REQUEST).runId ?? "";
 
 afterEach(cleanup);
 
-async function settle(run: () => void = () => undefined): Promise<void> {
-  await act(async () => {
-    run();
-    await Promise.resolve();
-  });
-}
-
-function mount(list: readonly PendingItem[][]) {
+function mount() {
   const send = vi.fn<(command: Command) => void>();
-  const fetchPending = vi.fn<() => Promise<readonly PendingItem[]>>();
-  for (const answer of list.slice(0, -1)) fetchPending.mockResolvedValueOnce(answer);
-  fetchPending.mockResolvedValue(list.at(-1) ?? []);
   const onResolved = vi.fn<(resolved: ReadonlySet<string>) => void>();
   const onRejected = vi.fn<(rejected: ReadonlySet<string>) => void>();
-  render(
-    <EndorsementPanel
-      runId={RUN_ID}
-      endorsements={[FIRST] as readonly EndorsementView[]}
-      send={send}
-      fetchPending={fetchPending}
-      onResolvedChange={onResolved}
-      onRejectedChange={onRejected}
-    />,
-  );
-  return { send, onResolved, onRejected };
+  const props = (events: readonly Event[]) => ({
+    runId: RUN_ID,
+    events,
+    endorsements: foldEvents(events).endorsements,
+    send,
+    onResolvedChange: onResolved,
+    onRejectedChange: onRejected,
+  });
+  const { rerender } = render(<EndorsementPanel {...props(TO_REQUEST)} />);
+  return {
+    send,
+    onResolved,
+    onRejected,
+    /** The stream moved on. */
+    stream: (events: readonly Event[]) => {
+      rerender(<EndorsementPanel {...props(events)} />);
+    },
+  };
 }
 
-const pending: PendingItem = { endorsement: { endorsement_id: ID }, remaining_approvals: 3 };
 const nearest = (): HTMLButtonElement =>
   screen.getByRole<HTMLButtonElement>("button", { name: "Use nearest known value" });
 
 describe("EndorsementPanel: use the nearest known value", () => {
-  it("sends exactly one valid use_nearest command [I4]", async () => {
-    const d = mount([[pending]]);
-    await settle();
+  it("sends exactly one valid use_nearest command [I4]", () => {
+    const d = mount();
     fireEvent.click(nearest());
     fireEvent.click(nearest());
     expect(d.send).toHaveBeenCalledTimes(1);
@@ -65,21 +50,20 @@ describe("EndorsementPanel: use the nearest known value", () => {
     expect(command).toEqual({
       type: "endorsement_decision",
       run_id: RUN_ID,
-      endorsement_id: ID,
+      endorsement_id: CARD,
       decision: "use_nearest",
     });
   });
 
-  it("resolves to replaced once the card leaves the pending list, and is not a rejection [I4]", async () => {
-    const d = mount([[pending], []]);
-    await settle();
+  it("resolves to replaced once the stream proposes the nearest call, and is not a rejection [I4]", () => {
+    const d = mount();
     fireEvent.click(nearest());
-    await settle();
+    d.stream(REPLACED);
     expect(
-      document.querySelector(`[data-endorsement-id="${ID}"]`)?.getAttribute("data-state"),
+      document.querySelector(`[data-endorsement-id="${CARD}"]`)?.getAttribute("data-state"),
     ).toBe("replaced");
     expect(screen.getByText("You asked for the nearest known value instead")).toBeTruthy();
-    expect([...(d.onResolved.mock.calls.at(-1)?.[0] ?? [])]).toEqual([ID]);
+    expect([...(d.onResolved.mock.calls.at(-1)?.[0] ?? [])]).toEqual([CARD]);
     expect(d.onRejected).not.toHaveBeenCalled();
   });
 });

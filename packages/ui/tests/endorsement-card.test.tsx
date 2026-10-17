@@ -142,6 +142,7 @@ describe("EndorsementCard states and buttons", () => {
       ["sending", "Sending..."],
       ["approved", "You confirmed this request"],
       ["rejected", "You rejected this request"],
+      ["blocked", "You confirmed this request, but the monitor blocked the call"],
     ];
     for (const [state, text] of expected) {
       const { onDecide, unmount } = show({ state });

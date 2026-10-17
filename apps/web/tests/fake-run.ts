@@ -1,3 +1,4 @@
+import type { Event } from "@notary/schema";
 import type { WebSocketFactory } from "@notary/client";
 import { vi } from "vitest";
 
@@ -14,7 +15,10 @@ export class FakeSocket extends EventTarget {
   readonly sent: string[] = [];
   readonly url: string;
 
-  constructor(url: string, options: { autoClose: boolean; ignoreLane: boolean }) {
+  constructor(
+    url: string,
+    options: { autoClose: boolean; ignoreLane: boolean; stopAtCard: boolean },
+  ) {
     super();
     this.url = url;
     const parsed = new URL(url);
@@ -31,6 +35,8 @@ export class FakeSocket extends EventTarget {
       this.readyState = 1;
       for (const event of load(stream satisfies StreamName)) {
         this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(event) }));
+        // A real cassette run waits at its card for the answer; the test pushes what follows.
+        if (options.stopAtCard && event.type === "endorsement_requested") return;
       }
       if (options.autoClose) this.closeWith(1000, "");
     });
@@ -38,6 +44,11 @@ export class FakeSocket extends EventTarget {
 
   send(data: string): void {
     this.sent.push(data);
+  }
+
+  /** A later event of the run, as the server would stream it after an answer. */
+  push(event: Event): void {
+    this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(event) }));
   }
 
   close(): void {
@@ -51,12 +62,15 @@ export class FakeSocket extends EventTarget {
 }
 
 /** A socket factory that remembers every socket it opened. */
-export function socketFactory(options: { autoClose?: boolean; ignoreLane?: boolean } = {}) {
+export function socketFactory(
+  options: { autoClose?: boolean; ignoreLane?: boolean; stopAtCard?: boolean } = {},
+) {
   const sockets: FakeSocket[] = [];
   const factory: WebSocketFactory = (url) => {
     const socket = new FakeSocket(url, {
       autoClose: options.autoClose ?? false,
       ignoreLane: options.ignoreLane ?? false,
+      stopAtCard: options.stopAtCard ?? false,
     });
     sockets.push(socket);
     return socket as unknown as WebSocket;
@@ -66,17 +80,12 @@ export function socketFactory(options: { autoClose?: boolean; ignoreLane?: boole
 
 export interface RestState {
   modes: readonly string[] | "fail";
-  pending: readonly unknown[];
-  /** The HTTP status of the pending list (default 200); anything else carries an empty body. */
-  pendingStatus?: number;
   anchor: { head: string; length: number } | "missing" | "fail";
 }
 
-/** Stubs `fetch` for the three REST calls the page makes; read `calls` to see what was asked. */
+/** Stubs `fetch` for the two REST calls the page makes; read `calls` to see what was asked. */
 export function stubRest(state: RestState) {
   const calls: string[] = [];
-  /** The `X-Notary-Token` header of every pending-list request, in order (null when absent). */
-  const tokens: (string | null)[] = [];
   const respond = (status: number, body: unknown): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -91,14 +100,6 @@ export function stubRest(state: RestState) {
         state.modes === "fail" ? respond(500, {}) : respond(200, { modes: state.modes }),
       );
     }
-    const endorsements = /^\/runs\/([^/]+)\/endorsements$/.exec(path);
-    if (endorsements !== null) {
-      tokens.push(input instanceof Request ? input.headers.get("X-Notary-Token") : null);
-      const status = state.pendingStatus ?? 200;
-      return Promise.resolve(
-        status === 200 ? respond(200, { pending: state.pending }) : respond(status, {}),
-      );
-    }
     const anchor = /^\/runs\/([^/]+)\/anchor$/.exec(path);
     if (anchor !== null) {
       if (state.anchor === "fail") return Promise.reject(new Error("network down"));
@@ -110,5 +111,5 @@ export function stubRest(state: RestState) {
     return Promise.resolve(respond(404, {}));
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls, tokens, fetchMock, state };
+  return { calls, fetchMock, state };
 }

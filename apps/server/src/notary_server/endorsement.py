@@ -24,7 +24,6 @@ from notary_server.commands import (
     CommandHandler,
     CommandRejected,
 )
-from notary_server.read_token import same_key
 
 SubmitResult = Literal["accepted", "unknown_endorsement", "already_resolved"]
 DEFAULT_TIMEOUT_SECONDS: float = 300.0
@@ -47,10 +46,6 @@ class PendingEndorsement(NotaryModel):
     """`max_approvals` minus the approvals accepted so far for this run, when registered."""
 
 
-class PendingList(NotaryModel):
-    pending: tuple[PendingEndorsement, ...]
-
-
 class _Slot:
     def __init__(self, endorsement: Endorsement, remaining_approvals: int) -> None:
         self.endorsement = endorsement
@@ -59,10 +54,7 @@ class _Slot:
 
 
 class _Run:
-    def __init__(self, read_key: bytes | None = None) -> None:
-        self.read_key = read_key
-        """`HMAC(server_key, run_id, token)` of the socket that owns the run: the right to READ its
-        cards (`pending_for_reader`), never to answer or cancel them."""
+    def __init__(self) -> None:
         self.slots: dict[str, _Slot] = {}
         self.approved = 0
         self.cancelled = False
@@ -94,13 +86,10 @@ class EndorsementBroker:
         """The decider of one run (see `start_run`)."""
         return self.start_run(run_id, owner=owner, max_approvals=max_approvals).decide
 
-    def start_run(
-        self, run_id: str, *, owner: str, max_approvals: int, read_key: bytes | None = None
-    ) -> EndorsementRun:
+    def start_run(self, run_id: str, *, owner: str, max_approvals: int) -> EndorsementRun:
         """Start a run owned by `owner`. State left by an earlier run of the same owner and id is
         rejected and dropped, so a stale decision can never answer a new run. A run of another
-        owner with the same id is a different run and is left alone. `read_key` is the digest of
-        the owner's read token; it only lets `pending_for_reader` list the run's cards.
+        owner with the same id is a different run and is left alone.
 
         `announce(endorsement)` registers the pending card without waiting; the runner calls it
         before it hands the `endorsement_requested` event to the client, so the card is already
@@ -112,7 +101,7 @@ class EndorsementBroker:
             if previous is not None:
                 previous.reject_unresolved()
                 self._cond.notify_all()
-            self._runs[key] = _Run(read_key)
+            self._runs[key] = _Run()
             self._evict()
 
         def announce(endorsement: Endorsement) -> None:
@@ -177,25 +166,10 @@ class EndorsementBroker:
             run = self._runs.get((owner, run_id))
             return () if run is None else self._unresolved(run_id, run)
 
-    def pending_for_reader(
-        self, run_id: str, read_key: bytes | None
-    ) -> tuple[PendingEndorsement, ...]:
-        """The unresolved cards of the runs with this id whose owner holds `read_key`: the list
-        behind `GET /runs/{run_id}/endorsements`. No key, or a key nobody holds, lists nothing.
-        It reads only; answering and cancelling need the owner."""
-        if read_key is None:
-            return ()
-        with self._cond:
-            return tuple(
-                entry
-                for (_owner, key_run_id), run in self._runs.items()
-                if key_run_id == run_id and same_key(run.read_key, read_key)
-                for entry in self._unresolved(run_id, run)
-            )
-
     def pending_for_run(self, run_id: str) -> tuple[PendingEndorsement, ...]:
         """The unresolved cards of every run with this id, whoever owns them. Unauthenticated:
-        for tests and diagnostics, never for a route (see `pending_for_reader`)."""
+        for tests and diagnostics, never for a route. A client learns the fate of its cards from the
+        run's own events."""
         with self._cond:
             return tuple(
                 entry

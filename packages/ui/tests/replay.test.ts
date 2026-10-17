@@ -49,7 +49,7 @@ describe("replay helpers", () => {
     for (let n = 0; n <= events.length; n += 1) {
       expect(viewAt(events, n)).toEqual(foldEvents(events.slice(0, n)));
     }
-    expect(viewAt(events, 0)).toBe(emptyRunView);
+    expect(viewAt(events, 0)).toEqual(emptyRunView); // a fresh copy: the fold never shares state
     expect(viewAt(events, events.length)).toEqual(foldEvents(events));
     expect(viewAt(events, events.length + 10)).toEqual(foldEvents(events));
     expect(events).toEqual(before);

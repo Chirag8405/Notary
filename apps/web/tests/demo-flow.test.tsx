@@ -8,10 +8,9 @@ import { DEMO_STEPS, stepUrl } from "@/lib/demo-steps";
 
 import { socketFactory, stubRest } from "./fake-run";
 import type { RestState } from "./fake-run";
-import { must, viewOf } from "./golden";
+import { must } from "./golden";
 
 const API = "http://localhost:8000";
-const NOTARY = viewOf("poisoned_bill.notary");
 
 afterEach(() => {
   cleanup();
@@ -19,20 +18,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function pendingItem(): unknown {
-  return {
-    run_id: must(NOTARY.runId, "run id"),
-    endorsement: must(NOTARY.endorsements[0], "an endorsement").endorsement,
-    card_text: "",
-    remaining_approvals: 3,
-  };
-}
-
-function open(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
-  const sockets = socketFactory();
+function open(
+  props: Partial<XRayViewProps> = {},
+  rest: Partial<RestState> = {},
+  socketOptions: Parameters<typeof socketFactory>[0] = {},
+) {
+  const sockets = socketFactory(socketOptions);
   stubRest({
     modes: ["cassette", "golden", "live"],
-    pending: [pendingItem()],
     anchor: "missing",
     ...rest,
   });
@@ -42,8 +35,12 @@ function open(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {})
   return { ...utils, ...sockets };
 }
 
-async function opened(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
-  const page = open(props, rest);
+async function opened(
+  props: Partial<XRayViewProps> = {},
+  rest: Partial<RestState> = {},
+  socketOptions: Parameters<typeof socketFactory>[0] = {},
+) {
+  const page = open(props, rest, socketOptions);
   await screen.findAllByText(/(ESCALATE|ALLOW) for c2/);
   return page;
 }
@@ -212,7 +209,7 @@ describe("the advanced controls", () => {
 
 describe("the endorsement buttons", () => {
   it("are real, enabled buttons with a clear hierarchy: Reject filled, Confirm outlined [I4]", async () => {
-    await opened({ mode: "cassette" });
+    await opened({ mode: "cassette" }, {}, { stopAtCard: true });
     const card = await screen.findByRole("group", { name: "Endorsement request" });
     const buttons = within(card).getAllByRole<HTMLButtonElement>("button");
     expect(buttons.map((b) => b.textContent)).toEqual([
