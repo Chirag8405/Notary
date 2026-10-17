@@ -2,7 +2,7 @@
 
 Scripted mode answers every prompt from fixed turns (no network, no key): the cassette keys are
 the real prompt hashes, so the stage replay works end to end, but the responses are written by
-this module, not by a model. Live mode answers from the Anthropic API (needs `ANTHROPIC_API_KEY`)
+this module, not by a model. Live mode answers from the Groq API (needs `GROQ_API_KEY`)
 and is what a real recording is. `scripts/record_cassettes.py` writes the result to
 `packages/world/fixtures/cassettes/`; nothing here touches the disk.
 """
@@ -22,7 +22,9 @@ from notary_server.llm import (
     LlmRequest,
     RecordingClient,
     ScriptedClient,
+    prompt_text,
 )
+from notary_world.cassette import cassette_key
 from notary_world.cast import ATTACKER_IBAN, BILL_AMOUNT, BILLER_IBAN
 from notary_world.models import (
     Cassette,
@@ -171,6 +173,20 @@ class Recorder:
                 raise CassetteConflictError(entry.key)
             known.setdefault(entry.key, entry)
 
+    def lane_of(self, name: str) -> Lane:
+        return self._lanes[name]
+
+    def recorded(self, name: str, request: LlmRequest) -> CassetteTurn | None:
+        """The answer already recorded for this prompt, if any.
+
+        A cassette holds one answer per prompt, and a replay always gets that one. A later
+        variant that sends the same prompt (the plan reruns the opening of a lane) must therefore
+        continue from the recorded answer, not from a fresh one a real model may word differently.
+        The model is still asked, so scripted clients keep their place in their scripts.
+        """
+        entry = self._entries[name].get(cassette_key(self._lanes[name], prompt_text(request)))
+        return None if entry is None else entry.response
+
     def cassettes(self) -> dict[str, Cassette]:
         return {
             name: Cassette(
@@ -193,7 +209,11 @@ class _Tap:
 
     def complete(self, request: LlmRequest) -> CassetteTurn:
         turn = self._client.complete(request)
-        self._recorder.absorb(self._name, self._client.cassette().entries)
+        known = self._recorder.recorded(self._name, request)
+        if known is not None:
+            return known  # the cassette keeps the first answer; the run continues from it
+        key = cassette_key(self._recorder.lane_of(self._name), prompt_text(request))
+        self._recorder.absorb(self._name, [CassetteEntry(key=key, response=turn)])
         return turn
 
 

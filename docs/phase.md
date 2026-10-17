@@ -105,7 +105,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
 - Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.
 
-**P3 status (CP2, #142).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. No real `ANTHROPIC_API_KEY` has been configured or tested; recording and verifying with a key is tracked in #182. The I3 order gap in `check_i3` (#183) is fixed: a message is compared only with secrets stored before it was sent.
+**P3 status (CP2, #142).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. Live mode runs on Groq (`GROQ_API_KEY`, `openai/gpt-oss-120b`). A first real recording was made and does not yet match the scripted behaviour (findings in #182), so the scripted cassettes stay committed. The I3 order gap in `check_i3` (#183) is fixed: a message is compared only with secrets stored before it was sent.
 
 ## P3a Deterministic pipeline (lane A)
 
@@ -124,7 +124,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Packages: `apps/server`
 - [x] Intent Compiler
 - [x] Quarantined Extractor (optional)
-- [x] Agent runner on the Anthropic SDK, hand-written tool loop; implements the `AgentRunner` hooks (pre-filter, Gateway/monitor) so all three lanes run on it; tool calls go through the P3a adapter once it lands
+- [x] Agent runner on the Groq SDK, hand-written tool loop; implements the `AgentRunner` hooks (pre-filter, Gateway/monitor) so all three lanes run on it; tool calls go through the P3a adapter once it lands
 - [x] Cassette record/replay keyed by prompt hash
 - [x] **Undefended** baseline agent (the Classifier-only baseline is in P2)
 - Needs P0b only (incl. `FakeMonitor`, `FakeGateway`, `AgentRunner` hooks); uses the fakes until P1 and P3a land.

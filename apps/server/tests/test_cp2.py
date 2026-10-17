@@ -41,6 +41,7 @@ from notary_server.compiler import compile_contract
 from notary_server.endorsement import EndorsementBroker
 from notary_server.lanes import LANES
 from notary_server.llm import (
+    DEFAULT_MODEL,
     CassetteClient,
     LlmClient,
     LlmRequest,
@@ -59,6 +60,7 @@ from notary_server.recording import (
 )
 from notary_server.sources import RunMode, RunRequest, RunSource
 from notary_server.wiring import (
+    LIVE_RUN_NOTE,
     CassetteSource,
     LiveSource,
     RunStreamer,
@@ -68,11 +70,11 @@ from notary_server.wiring import (
 from notary_world.attacks import KNOWN_REAL_MONITOR_DEVIATIONS
 from notary_world.cassette import cassette_key
 from notary_world.cast import ATTACKER_IBAN, BILLER_IBAN
-from notary_world.executor import default_monitor, execute_run
+from notary_world.executor import NO_ACTION_SUMMARY, default_monitor, execute_run
 from notary_world.golden import COMMAND_ADAPTER, EVENT_ADAPTER, golden_streams, sample_commands
 from notary_world.labeling import world_labeling_policy
 from notary_world.loader import FIXTURES_DIR, load_cassette
-from notary_world.models import Cassette
+from notary_world.models import Cassette, CassetteTurn
 from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 from notary_world.state import diff, seed_world
 from notary_world.tools import (
@@ -370,7 +372,8 @@ def test_live_mode_needs_a_key() -> None:
     settings = Settings.from_env(environ)
     assert settings.live_available is False
     assert environ.read <= {
-        "ANTHROPIC_API_KEY",
+        "GROQ_API_KEY",
+        "NOTARY_LIVE_MODEL",
         "NOTARY_ANCHOR_DB",
         "NOTARY_ENDORSEMENT_TIMEOUT",
         "NOTARY_ARENA_MAX_ROUNDS",
@@ -415,7 +418,7 @@ def test_settings_from_env() -> None:
             "NOTARY_ANCHOR_DB": "/var/lib/notary/anchors.sqlite",
             "NOTARY_ENDORSEMENT_TIMEOUT": "2.5",
             "NOTARY_ARENA_MAX_ROUNDS": "25",
-            "ANTHROPIC_API_KEY": "sk-not-stored",
+            "GROQ_API_KEY": "sk-not-stored",
         }
     )
     assert custom.anchor_db == "/var/lib/notary/anchors.sqlite"
@@ -831,6 +834,96 @@ def test_endorsement_flow_over_the_socket() -> None:
     assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
 
 
+@pytest.mark.invariant("I6")
+def test_a_repeated_prompt_continues_from_the_first_recorded_answer() -> None:
+    """A real model may word one prompt two ways; a cassette keeps one, and later runs follow it."""
+    from notary_server.recording import Recorder
+
+    request = LlmRequest(
+        model="m",
+        system="s",
+        messages=(CassetteTurn(role="user", content="hi", tool_calls=()),),
+        tools=(),
+        max_tokens=5,
+    )
+    first = CassetteTurn(role="assistant", content="one", tool_calls=())
+    second = CassetteTurn(role="assistant", content="two", tool_calls=())
+    inner = ScriptedClient([first, second])
+    recorder = Recorder("m")
+    assert recorder.wrap("x.notary", "notary", inner).complete(request) == first
+    assert recorder.wrap("x.notary", "notary", inner).complete(request) == first
+    assert len(inner.requests) == 2
+    (entry,) = recorder.cassettes()["x.notary"].entries
+    assert entry.response == first
+
+
+def finished(events: Sequence[Event]) -> RunFinished:
+    return [e for e in events if isinstance(e, RunFinished)][-1]
+
+
+@pytest.mark.invariant("I6")
+def test_a_live_run_is_labeled_non_deterministic_and_a_cassette_run_is_not() -> None:
+    scenario = get_scenario(POISONED)
+    live = LiveSource(
+        streamer(),
+        available=True,
+        client_factory=lambda: ScriptedClient(scripted_agent_turns(scenario)),
+    )
+    live_events = list(live.events(RunRequest(scenario=POISONED, lane="undefended", mode="live")))
+    assert LIVE_RUN_NOTE in finished(live_events).summary
+    assert "not reproducible" in LIVE_RUN_NOTE
+    cassette_events, _ = replay(app_client(), POISONED, "undefended")
+    assert LIVE_RUN_NOTE not in finished(cassette_events).summary
+
+
+@pytest.mark.invariant("I6")
+def test_a_live_run_where_the_agent_takes_no_action_ends_normally() -> None:
+    final = CassetteTurn(role="assistant", content="Which bill do you mean?", tool_calls=())
+    live = LiveSource(streamer(), available=True, client_factory=lambda: ScriptedClient([final]))
+    events = list(live.events(RunRequest(scenario=POISONED, lane="notary", mode="live")))
+    end = finished(events)
+    assert end.outcome == "completed"
+    assert end.summary == f"{NO_ACTION_SUMMARY}; {LIVE_RUN_NOTE}"
+    assert not any(isinstance(e, (EffectExecuted, DecisionMade)) for e in events)
+    result = last_oracle(events).result
+    assert (result.user_goal_achieved, result.attacker_goal_reached) == (False, False)
+
+
+@pytest.mark.invariant("I6")
+def test_live_model_setting_and_default() -> None:
+    assert Settings.from_env({}).live_model == DEFAULT_MODEL
+    assert Settings.from_env({"NOTARY_LIVE_MODEL": "openai/gpt-oss-20b"}).live_model == (
+        "openai/gpt-oss-20b"
+    )
+    with pytest.raises(ValueError):  # noqa: PT011 - an empty model name is invalid
+        Settings.from_env({"NOTARY_LIVE_MODEL": ""})
+
+
+@pytest.mark.invariant("I6")
+def test_the_live_source_asks_the_configured_model() -> None:
+    scenario = get_scenario(POISONED)
+    client = ScriptedClient(scripted_agent_turns(scenario))
+    source = LiveSource(
+        streamer(), available=True, client_factory=lambda: client, model="some/other-model"
+    )
+    list(source.events(RunRequest(scenario=POISONED, lane="undefended", mode="live")))
+    assert {r.model for r in client.requests} == {"some/other-model"}
+
+
+@pytest.mark.invariant("I6")
+@pytest.mark.parametrize("lane", LANES)
+def test_committed_cassette_runs_say_they_come_from_a_scripted_agent(lane: Lane) -> None:
+    """No stream or cassette file names a real model as the author of a committed cassette."""
+    events, _ = replay(app_client(), POISONED, lane)
+    summary = finished(events).summary
+    assert "scripted agent (scripted-v1)" in summary
+    assert DEFAULT_MODEL not in summary
+    assert LIVE_RUN_NOTE not in summary
+    for path in (FIXTURES_DIR / "cassettes").glob("*.json"):
+        committed = load_cassette(path.stem)
+        assert committed.model.startswith("scripted"), path.name
+
+
 @pytest.mark.attack("A3")
 @pytest.mark.invariant("I4")
 def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> None:
@@ -895,5 +988,7 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     assert oracle.user_goal_achieved is True
     assert all(i.passed for i in oracle.invariants)
     finished = [e for e in events if isinstance(e, RunFinished)][-1]
-    assert (finished.outcome, finished.summary) == ("completed", "all calls executed")
+    assert finished.outcome == "completed"
+    # The summary is the engine's, then who recorded the cassette (a scripted agent, #182).
+    assert finished.summary.startswith("all calls executed; cassette replay:")
     assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}

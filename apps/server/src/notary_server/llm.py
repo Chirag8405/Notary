@@ -15,7 +15,9 @@ from notary_core.models import Lane, NotaryModel
 from notary_world.cassette import cassette_key
 from notary_world.models import Cassette, CassetteEntry, CassetteTurn
 
-DEFAULT_MODEL: str = "claude-sonnet-5-5"
+DEFAULT_MODEL: str = "openai/gpt-oss-120b"
+"""The Groq model every prompt names and every live call uses. It is part of the prompt, so it is
+part of the cassette key: changing it means re-recording the cassettes."""
 DEFAULT_MAX_TOKENS: int = 1024
 
 
@@ -64,6 +66,8 @@ class CassetteClient:
     """Replays a cassette; a prompt it never recorded is an error, never a fallback."""
 
     def __init__(self, cassette: Cassette) -> None:
+        self.model = cassette.model
+        """Who recorded it: a model name, or `scripted-v1` for a scripted agent."""
         self._lane: Lane = cassette.lane
         answers: dict[str, CassetteTurn] = {}
         for entry in cassette.entries:

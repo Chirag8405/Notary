@@ -203,7 +203,8 @@ export interface ModeOption {
   label: string;
 }
 
-export const LIVE_LABEL = "live (needs an API key; not reproducible)";
+export const LIVE_LABEL = "live (a real Groq model; needs an API key; not reproducible)";
+export const CASSETTE_LABEL = "cassette (replay of a scripted agent)";
 const GOLDEN_NO_BASELINE = "no recorded baseline streams for this scenario; use cassette";
 
 /**
@@ -230,7 +231,7 @@ export function modeOptions(
   return (listed.length === 0 ? MODES : listed).map((mode): ModeOption => {
     if (mode === "golden") return { mode, enabled: blocked === null, note: blocked, label: mode };
     if (mode === "live") return { mode, enabled: true, note: null, label: LIVE_LABEL };
-    return { mode, enabled: true, note: null, label: mode };
+    return { mode, enabled: true, note: null, label: CASSETTE_LABEL };
   });
 }
 

@@ -11,7 +11,7 @@ dependencies = [
   "fastapi>=0.143",
   "uvicorn>=0.54,<0.55",
   "websockets>=17,<18",
-  "anthropic>=1.15",
+  "groq>=1.7.0",
 ]
 
 [build-system]

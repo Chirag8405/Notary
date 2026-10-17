@@ -98,16 +98,18 @@ class ToolProposal(NotaryModel):
 
 
 class BudgetProposal(NotaryModel):
-    max_effects: int
-    max_spend_cents: int
-    max_egress_bytes: int
-    max_call_amount_cents: int
-    max_approvals: int
+    """A field the model left out or set to 0 or less falls back to `DEFAULT_BUDGET`."""
+
+    max_effects: int | None = None
+    max_spend_cents: int | None = None
+    max_egress_bytes: int | None = None
+    max_call_amount_cents: int | None = None
+    max_approvals: int | None = None
 
 
 class CompilerOutput(NotaryModel):
     tools: tuple[ToolProposal, ...]
-    budget: BudgetProposal
+    budget: BudgetProposal = BudgetProposal()
     egress_hosts: tuple[str, ...]
     authorized_irreversible: tuple[str, ...]
 
@@ -198,8 +200,82 @@ def _scope(
     )
 
 
-def _clamp(value: int, cap: int) -> int:
-    return min(max(value, 0), cap)
+def _budget_value(name: str, wanted: int | None) -> int:
+    """The proposed value clamped to the cap; missing, 0 or negative is the default (a 0 budget
+    would block the very action the user asked for, and the model has no business granting
+    itself less or more than the system's bounds)."""
+    if wanted is None or wanted <= 0:
+        return DEFAULT_BUDGET[name]
+    return min(wanted, BUDGET_CAPS[name])
+
+
+COMPANION_READS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {"pay_bill": ("read_inbox",), "send_money": ("read_inbox",)}
+)
+"""Read tools a payment tool cannot be used without: the bill is in the inbox. Added to every
+contract that allows the payment tool, whatever the model proposed."""
+
+
+PAYLOAD_EGRESS_BYTES: int = 100
+"""The least egress budget of a contract that admits a free-text (`payload`) parameter. The
+budget step counts every payload byte as egress, so with 0 even `reference: "December bill"` on a
+payment would be blocked. 100 bytes fits a short reference and bounds what text can leave
+through it; the readers check (confidentiality) still stops secrets whatever the budget."""
+
+
+def _with_payload_egress(contract: IntentContract, policy: PolicyTable) -> IntentContract:
+    admits_payload = any(
+        param_policy(policy, scope.tool, name).kind == "payload"
+        for scope in contract.allowed_tools
+        for name in scope.params
+    )
+    if not admits_payload or contract.budget.max_egress_bytes >= PAYLOAD_EGRESS_BYTES:
+        return contract
+    budget = contract.budget.model_copy(update={"max_egress_bytes": PAYLOAD_EGRESS_BYTES})
+    return contract.model_copy(update={"budget": budget})
+
+
+def _required_params(manifest: ToolManifest) -> frozenset[str]:
+    try:
+        data: object = json.loads(manifest.input_schema)
+    except ValueError:
+        return frozenset()
+    if not isinstance(data, dict):
+        return frozenset()
+    required = cast(dict[str, object], data).get("required")
+    if not isinstance(required, list):
+        return frozenset()
+    return frozenset(str(name) for name in cast(list[object], required))
+
+
+def with_optional_params(
+    contract: IntentContract, manifests: Sequence[ToolManifest], policy: PolicyTable
+) -> IntentContract:
+    """The contract with every optional parameter of its tools allowed at its policy floor.
+
+    `compile_contract` already lists every schema parameter of a tool it keeps; a hand-written
+    contract (the scenarios) may name only the required ones, and then a benign model that fills
+    an optional parameter such as `pay_bill.reference` is blocked at scope. This adds exactly the
+    parameters the contract lacks, at `effective_marker(policy, tool, param, None)`, which is the
+    table's floor: nothing is relaxed, a floor is never lowered, and an existing marker is kept.
+    """
+    by_name = _index(manifests)
+    scopes: list[ToolScope] = []
+    for scope in contract.allowed_tools:
+        manifest = by_name.get(scope.tool)
+        if manifest is None:
+            scopes.append(scope)
+            continue
+        optional = _schema_params(manifest)
+        required = _required_params(manifest)
+        extra = {
+            name: effective_marker(policy, scope.tool, name, None)
+            for name in optional
+            if name not in required and name not in scope.params
+        }
+        scopes.append(scope.model_copy(update={"params": {**scope.params, **extra}}))
+    widened = contract.model_copy(update={"allowed_tools": tuple(scopes)})
+    return _with_payload_egress(widened, policy)
 
 
 def _valid_host(host: str) -> bool:
@@ -263,17 +339,20 @@ def _assemble(
         elif host not in hosts:
             hosts.append(host)
     authorized = _authorized(output.authorized_irreversible, scopes, dropped)
+    for tool in sorted(scopes):
+        for companion in COMPANION_READS.get(tool, ()):
+            manifest = by_name.get(companion)
+            if manifest is not None and companion not in scopes:
+                scopes[companion] = _scope(manifest, {}, policy)
     wanted = output.budget
     budget = EffectBudget(
-        max_effects=_clamp(wanted.max_effects, BUDGET_CAPS["max_effects"]),
-        max_spend_cents=_clamp(wanted.max_spend_cents, BUDGET_CAPS["max_spend_cents"]),
-        max_egress_bytes=_clamp(wanted.max_egress_bytes, BUDGET_CAPS["max_egress_bytes"]),
-        max_call_amount_cents=_clamp(
-            wanted.max_call_amount_cents, BUDGET_CAPS["max_call_amount_cents"]
-        ),
-        max_approvals=_clamp(wanted.max_approvals, BUDGET_CAPS["max_approvals"]),
+        max_effects=_budget_value("max_effects", wanted.max_effects),
+        max_spend_cents=_budget_value("max_spend_cents", wanted.max_spend_cents),
+        max_egress_bytes=_budget_value("max_egress_bytes", wanted.max_egress_bytes),
+        max_call_amount_cents=_budget_value("max_call_amount_cents", wanted.max_call_amount_cents),
+        max_approvals=_budget_value("max_approvals", wanted.max_approvals),
     )
-    contract = _contract(request, scopes, budget, hosts, authorized)
+    contract = _with_payload_egress(_contract(request, scopes, budget, hosts, authorized), policy)
     return CompiledContract(contract=contract, dropped=tuple(dropped))
 
 

@@ -931,11 +931,19 @@ def record_so_far(engine: RunEngine) -> RunRecord:
     )
 
 
+NO_ACTION_SUMMARY = "agent took no action"
+"""`run_finished.summary` of a run in which the agent proposed no call. It is a normal end: the
+outcome stays `completed` (the contract has no outcome for it) and the oracle says the user goal
+was not reached."""
+
+
 def _run_outcome(engine: RunEngine) -> tuple[Literal["completed", "blocked", "error"], str]:
     if engine.halted is not None:
         return "error", f"halted: {engine.halted}"
     if any(r.status == "tool_error" for r in engine.calls):
         return "error", "tool error"
+    if not engine.calls:
+        return "completed", NO_ACTION_SUMMARY
     last: dict[str, CallRecord] = {r.call_id: r for r in engine.calls}
     # A call the user replaced with the nearest known value is settled by its replacement.
     held = sum(
@@ -948,8 +956,12 @@ def _run_outcome(engine: RunEngine) -> tuple[Literal["completed", "blocked", "er
     return "completed", "all calls executed"
 
 
-def finish(engine: RunEngine, *, oracle: OracleFn | None = None) -> tuple[RunEngine, RunRecord]:
-    """Append `oracle_updated` (when an oracle is given) and `run_finished`; returns the record."""
+def finish(
+    engine: RunEngine, *, oracle: OracleFn | None = None, note: str = ""
+) -> tuple[RunEngine, RunRecord]:
+    """Append `oracle_updated` (when an oracle is given) and `run_finished`; returns the record.
+
+    A non-empty `note` is appended to the summary (the server uses it to label a live run)."""
     _check_open(engine)
     if engine.halted is None and oracle is not None:
         result = oracle(record_so_far(engine))
@@ -960,6 +972,8 @@ def finish(engine: RunEngine, *, oracle: OracleFn | None = None) -> tuple[RunEng
             ),
         )
     outcome, summary = _run_outcome(engine)
+    if note:
+        summary = f"{summary}; {note}"
     engine = _emit(
         engine,
         lambda run, lane, seq: RunFinished(

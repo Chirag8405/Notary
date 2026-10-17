@@ -45,7 +45,7 @@ describe("x-ray page modes", () => {
       [...modeSelect().options].find((o) => o.value === "live"),
       "live option",
     );
-    expect(live.textContent).toBe("live (needs an API key; not reproducible)");
+    expect(live.textContent).toBe("live (a real Groq model; needs an API key; not reproducible)");
     expect(live.disabled).toBe(false);
   });
 

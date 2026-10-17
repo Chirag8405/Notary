@@ -8,7 +8,7 @@ import notary_core
 FORBIDDEN_ROOTS = {
     "socket", "http", "urllib", "requests", "httpx", "aiohttp", "subprocess", "random",
     "time", "datetime", "secrets", "asyncio", "threading", "multiprocessing", "ssl",
-    "anthropic", "openai", "langchain", "litellm", "cohere", "mistralai", "google",
+    "anthropic", "groq", "openai", "langchain", "litellm", "cohere", "mistralai", "google",
 }  # fmt: skip
 ALLOWED_THIRD_PARTY = {"pydantic"}
 FORBIDDEN_ATTRIBUTES = {("os", "environ"), ("os", "getenv")}
