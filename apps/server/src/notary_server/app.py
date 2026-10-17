@@ -1,6 +1,7 @@
 """FastAPI application: REST for metadata, WebSocket for the typed event stream."""
 
 import json
+import os
 from collections.abc import Callable, Mapping
 from typing import Annotated, Literal
 
@@ -46,7 +47,14 @@ from notary_server.playground import (
     PoisonResponse,
 )
 from notary_server.runner import scenario_names
-from notary_server.sources import RunMode, RunRequest, RunSource, default_sources
+from notary_server.sources import (
+    RunMode,
+    RunRequest,
+    RunSource,
+    RunUnavailableError,
+    default_sources,
+)
+from notary_server.wiring import Settings, build_app
 from notary_world.golden import EVENT_ADAPTER
 from notary_world.loader import load_attacks
 
@@ -197,6 +205,10 @@ def create_app(
     def get_hijacked(session_id: str) -> HijackedState:
         return hijacked_sessions.state(session_id)
 
+    @app.exception_handler(RunUnavailableError)
+    def run_unavailable(_request: Request, error: RunUnavailableError) -> JSONResponse:
+        return JSONResponse({"detail": error.reason}, status_code=501)
+
     @app.exception_handler(ArenaError)
     def arena_error(_request: Request, error: ArenaError) -> JSONResponse:
         return JSONResponse({"detail": error.detail}, status_code=error.status)
@@ -251,6 +263,8 @@ def create_app(
             async def send() -> None:
                 try:
                     await _send_events(websocket, source, request, event_delay, progress)
+                except RunUnavailableError as unavailable:
+                    await websocket.close(code=unavailable.code, reason=unavailable.reason)
                 except KeyError:
                     await websocket.close(code=CLOSE_UNKNOWN_SCENARIO, reason="unknown scenario")
                 except (WebSocketDisconnect, WebSocketDisconnected):
@@ -272,4 +286,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = build_app(Settings.from_env(os.environ))

@@ -13,6 +13,18 @@ SCENARIO_ALIASES = {"poisoned_bill": "poisoned_bill.notary"}
 """Short scenario names served by the golden source (`poisoned_bill` is the NOTARY lane run)."""
 
 
+class RunUnavailableError(Exception):
+    """A source cannot serve this run (no key, no cassette, a cassette miss).
+
+    The socket closes with `code` and the fixed `reason`; it never falls back to another mode.
+    """
+
+    def __init__(self, code: int, reason: str) -> None:
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
+
+
 class RunRequest(NotaryModel):
     scenario: str
     lane: Lane

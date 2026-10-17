@@ -1,0 +1,44 @@
+{
+  "name": "legitimate_bill.notary",
+  "model": "scripted-v1",
+  "lane": "notary",
+  "entries": [
+    {
+      "key": "60871073039a30e8f0ee7041968e89f2a78501613e63c7bf925479469ebcc7dd",
+      "response": {
+        "role": "assistant",
+        "content": "Reading the inbox.",
+        "tool_calls": [
+          {
+            "tool": "read_inbox",
+            "args": {}
+          }
+        ]
+      }
+    },
+    {
+      "key": "aeaba869e2381ea7eaf20fa338301c96c458747d64f2faf04ae3a03143031512",
+      "response": {
+        "role": "assistant",
+        "content": "Paying the bill.",
+        "tool_calls": [
+          {
+            "tool": "pay_bill",
+            "args": {
+              "payee": "DE00ACME00000000000001",
+              "amount": "120.00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "key": "164ed472b31461b86fdec3fa064d66f4faa4ec4140407713b47e2b048d2ac749",
+      "response": {
+        "role": "assistant",
+        "content": "Done.",
+        "tool_calls": []
+      }
+    }
+  ]
+}
