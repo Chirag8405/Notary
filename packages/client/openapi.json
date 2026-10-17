@@ -2597,6 +2597,7 @@
     },
     "/runs/{run_id}/endorsements": {
       "get": {
+        "description": "The unresolved cards of the sockets that hold this read token. A missing, malformed or\nwrong token lists nothing and is still a 200: the answer never tells a guess from a run\nthat does not exist. The token reads only; answering needs the socket (#235).",
         "operationId": "listEndorsements",
         "parameters": [
           {
@@ -2606,6 +2607,22 @@
             "schema": {
               "title": "Run Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Notary-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Notary-Token"
             }
           }
         ],

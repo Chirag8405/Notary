@@ -67,12 +67,16 @@ export function socketFactory(options: { autoClose?: boolean; ignoreLane?: boole
 export interface RestState {
   modes: readonly string[] | "fail";
   pending: readonly unknown[];
+  /** The HTTP status of the pending list (default 200); anything else carries an empty body. */
+  pendingStatus?: number;
   anchor: { head: string; length: number } | "missing" | "fail";
 }
 
 /** Stubs `fetch` for the three REST calls the page makes; read `calls` to see what was asked. */
 export function stubRest(state: RestState) {
   const calls: string[] = [];
+  /** The `X-Notary-Token` header of every pending-list request, in order (null when absent). */
+  const tokens: (string | null)[] = [];
   const respond = (status: number, body: unknown): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -88,7 +92,13 @@ export function stubRest(state: RestState) {
       );
     }
     const endorsements = /^\/runs\/([^/]+)\/endorsements$/.exec(path);
-    if (endorsements !== null) return Promise.resolve(respond(200, { pending: state.pending }));
+    if (endorsements !== null) {
+      tokens.push(input instanceof Request ? input.headers.get("X-Notary-Token") : null);
+      const status = state.pendingStatus ?? 200;
+      return Promise.resolve(
+        status === 200 ? respond(200, { pending: state.pending }) : respond(status, {}),
+      );
+    }
     const anchor = /^\/runs\/([^/]+)\/anchor$/.exec(path);
     if (anchor !== null) {
       if (state.anchor === "fail") return Promise.reject(new Error("network down"));
@@ -100,5 +110,5 @@ export function stubRest(state: RestState) {
     return Promise.resolve(respond(404, {}));
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls, fetchMock, state };
+  return { calls, tokens, fetchMock, state };
 }

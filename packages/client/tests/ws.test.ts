@@ -96,6 +96,8 @@ describe("encodeCommand", () => {
   });
 });
 
+const TOKEN = "123e4567-e89b-12d3-a456-426614174000";
+
 describe("runStreamUrl options", () => {
   it("keeps the old form when no options are given [I6]", () => {
     expect(runStreamUrl("http://localhost:8000", "poisoned_bill")).toBe(
@@ -106,17 +108,54 @@ describe("runStreamUrl options", () => {
     );
   });
 
-  it("adds lane and mode, in that order, and maps https to wss [I6]", () => {
+  it("adds lane, mode and token, in that order, and maps https to wss [I6]", () => {
     expect(
-      runStreamUrl("http://h:8000", "poisoned_bill", { mode: "cassette", lane: "classifier" }),
-    ).toBe("ws://h:8000/ws/runs/poisoned_bill?lane=classifier&mode=cassette");
+      runStreamUrl("http://h:8000", "poisoned_bill", {
+        mode: "cassette",
+        lane: "classifier",
+        token: TOKEN,
+      }),
+    ).toBe(`ws://h:8000/ws/runs/poisoned_bill?lane=classifier&mode=cassette&token=${TOKEN}`);
     expect(runStreamUrl("https://h.example", "s", { lane: "notary", mode: "golden" })).toBe(
       "wss://h.example/ws/runs/s?lane=notary&mode=golden",
     );
-    expect(runStreamUrl("http://h", "s", { mode: "live" })).toBe("ws://h/ws/runs/s?mode=live");
+    expect(runStreamUrl("http://h", "s", { mode: "live", token: TOKEN })).toBe(
+      `ws://h/ws/runs/s?mode=live&token=${TOKEN}`,
+    );
     expect(runStreamUrl("http://h", "s", { lane: "undefended" })).toBe(
       "ws://h/ws/runs/s?lane=undefended",
     );
+  });
+
+  it("sends no token in golden mode, or when no mode is named [I4]", () => {
+    expect(runStreamUrl("http://h", "s", { mode: "golden", token: TOKEN })).toBe(
+      "ws://h/ws/runs/s?mode=golden",
+    );
+    expect(runStreamUrl("http://h", "s", { lane: "notary", token: TOKEN })).toBe(
+      "ws://h/ws/runs/s?lane=notary",
+    );
+  });
+
+  it("needs a well-formed token for cassette and live, and never repeats it [I4]", () => {
+    for (const mode of ["cassette", "live"] as const) {
+      expect(() => runStreamUrl("http://h", "s", { mode })).toThrow(RangeError);
+      for (const token of [
+        "",
+        "a".repeat(31),
+        "a".repeat(129),
+        `${"a".repeat(31)}.`,
+        "a b".repeat(20),
+      ]) {
+        expect(() => runStreamUrl("http://h", "s", { mode, token })).toThrow(RangeError);
+        try {
+          runStreamUrl("http://h", "s", { mode, token });
+        } catch (error) {
+          expect(String(error)).not.toContain(token.trim() === "" ? "\u0000" : token);
+        }
+      }
+      expect(runStreamUrl("http://h", "s", { mode, token: "a".repeat(32) })).toContain("token=");
+      expect(runStreamUrl("http://h", "s", { mode, token: "A_-".repeat(40) })).toContain("token=");
+    }
   });
 
   it("percent-encodes the scenario and tolerates a trailing slash [I6]", () => {

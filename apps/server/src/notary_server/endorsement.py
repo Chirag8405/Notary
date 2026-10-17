@@ -3,9 +3,10 @@
 The agent runner stops at an escalation and asks a decider. The decider published here registers
 the pending diff card, blocks the runner's worker thread, and returns whatever the user's
 `endorsement_decision` command said. It never approves anything by itself: the only path to
-"approve" is an accepted `approve` command for exactly that run and endorsement. A timeout, a
-cancelled run or a disconnect all reject (fail closed). The ledger write itself is the engine's
-(`resolve_escalation`, authority `user_endorsed`); this module only carries the decision.
+"approve" is an accepted `approve` command for exactly that run and endorsement, sent on the
+socket that owns the card. A timeout, a cancelled run or a disconnect all reject (fail closed).
+The ledger write itself is the engine's (`resolve_escalation`, authority `user_endorsed`); this
+module only carries the decision.
 """
 
 import threading
@@ -23,11 +24,16 @@ from notary_server.commands import (
     CommandHandler,
     CommandRejected,
 )
+from notary_server.read_token import same_key
 
 SubmitResult = Literal["accepted", "unknown_endorsement", "already_resolved"]
 DEFAULT_TIMEOUT_SECONDS: float = 300.0
 MAX_RUNS: int = 256
 """Runs whose slots are kept for idempotency; the oldest run without a waiter is dropped."""
+
+RunKey = tuple[str, str]
+"""`(owner, run_id)`. Run ids repeat across sockets (`run-<scenario>-<lane>`), so the owner (a
+server-side secret per socket, never sent to a client) is what tells two runs apart (#201)."""
 
 Decision = Literal["approve", "reject", "use_nearest"]
 
@@ -53,7 +59,10 @@ class _Slot:
 
 
 class _Run:
-    def __init__(self) -> None:
+    def __init__(self, read_key: bytes | None = None) -> None:
+        self.read_key = read_key
+        """`HMAC(server_key, run_id, token)` of the socket that owns the run: the right to READ its
+        cards (`pending_for_reader`), never to answer or cancel them."""
         self.slots: dict[str, _Slot] = {}
         self.approved = 0
         self.cancelled = False
@@ -79,47 +88,52 @@ class EndorsementBroker:
     def __init__(self, *, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._timeout = timeout_seconds
         self._cond = threading.Condition()
-        self._runs: OrderedDict[str, _Run] = OrderedDict()
+        self._runs: OrderedDict[RunKey, _Run] = OrderedDict()
 
-    def decider_for(self, run_id: str, *, max_approvals: int) -> EscalationDecider:
+    def decider_for(self, run_id: str, *, owner: str, max_approvals: int) -> EscalationDecider:
         """The decider of one run (see `start_run`)."""
-        return self.start_run(run_id, max_approvals=max_approvals).decide
+        return self.start_run(run_id, owner=owner, max_approvals=max_approvals).decide
 
-    def start_run(self, run_id: str, *, max_approvals: int) -> EndorsementRun:
-        """Start a run. State left by an earlier run with the same id is rejected and dropped, so
-        a stale decision can never answer a new run.
+    def start_run(
+        self, run_id: str, *, owner: str, max_approvals: int, read_key: bytes | None = None
+    ) -> EndorsementRun:
+        """Start a run owned by `owner`. State left by an earlier run of the same owner and id is
+        rejected and dropped, so a stale decision can never answer a new run. A run of another
+        owner with the same id is a different run and is left alone. `read_key` is the digest of
+        the owner's read token; it only lets `pending_for_reader` list the run's cards.
 
         `announce(endorsement)` registers the pending card without waiting; the runner calls it
         before it hands the `endorsement_requested` event to the client, so the card is already
         on `pending` and answerable when the client sees the event (#195). `decide(endorsement)`
         waits for the answer; it registers the card too when `announce` was not called."""
+        key = (owner, run_id)
         with self._cond:
-            previous = self._runs.pop(run_id, None)
+            previous = self._runs.pop(key, None)
             if previous is not None:
                 previous.reject_unresolved()
                 self._cond.notify_all()
-            self._runs[run_id] = _Run()
+            self._runs[key] = _Run(read_key)
             self._evict()
 
         def announce(endorsement: Endorsement) -> None:
             with self._cond:
-                self._slot(run_id, endorsement, max_approvals)
+                self._slot(key, endorsement, max_approvals)
 
         def decide(endorsement: Endorsement) -> Decision:
-            return self._wait(run_id, endorsement, max_approvals)
+            return self._wait(key, endorsement, max_approvals)
 
         return EndorsementRun(announce, decide)
 
     def _evict(self) -> None:
-        for old_id in list(self._runs):
+        for old_key in list(self._runs):
             if len(self._runs) <= MAX_RUNS:
                 return
-            if not self._runs[old_id].has_waiter():
-                del self._runs[old_id]
+            if not self._runs[old_key].has_waiter():
+                del self._runs[old_key]
 
-    def _slot(self, run_id: str, endorsement: Endorsement, max_approvals: int) -> _Slot:
+    def _slot(self, key: RunKey, endorsement: Endorsement, max_approvals: int) -> _Slot:
         """The slot of the card, created on first sight. Call with the lock held."""
-        run = self._runs.setdefault(run_id, _Run())
+        run = self._runs.setdefault(key, _Run())
         slot = run.slots.get(endorsement.endorsement_id)
         if slot is None:
             remaining = max(max_approvals - run.approved, 0)
@@ -129,9 +143,9 @@ class EndorsementBroker:
                 slot.decision = "reject"
         return slot
 
-    def _wait(self, run_id: str, endorsement: Endorsement, max_approvals: int) -> Decision:
+    def _wait(self, key: RunKey, endorsement: Endorsement, max_approvals: int) -> Decision:
         with self._cond:
-            slot = self._slot(run_id, endorsement, max_approvals)
+            slot = self._slot(key, endorsement, max_approvals)
             deadline = time.monotonic() + self._timeout
             while slot.decision is None:
                 left = deadline - time.monotonic()
@@ -141,9 +155,11 @@ class EndorsementBroker:
                 self._cond.wait(left)
             return slot.decision
 
-    def submit(self, command: EndorsementDecisionCommand) -> SubmitResult:
+    def submit(self, command: EndorsementDecisionCommand, *, owner: str) -> SubmitResult:
+        """Record the answer of `owner`. A card of another owner is "unknown_endorsement": the
+        command cannot tell a missing card from somebody else's, so it learns nothing."""
         with self._cond:
-            run = self._runs.get(command.run_id)
+            run = self._runs.get((owner, command.run_id))
             slot = None if run is None else run.slots.get(command.endorsement_id)
             if run is None or slot is None:
                 return "unknown_endorsement"
@@ -155,26 +171,57 @@ class EndorsementBroker:
             self._cond.notify_all()
             return "accepted"
 
-    def pending(self, run_id: str) -> tuple[PendingEndorsement, ...]:
+    def pending(self, run_id: str, *, owner: str) -> tuple[PendingEndorsement, ...]:
+        """The unresolved cards of one owner's run."""
         with self._cond:
-            run = self._runs.get(run_id)
-            if run is None:
-                return ()
+            run = self._runs.get((owner, run_id))
+            return () if run is None else self._unresolved(run_id, run)
+
+    def pending_for_reader(
+        self, run_id: str, read_key: bytes | None
+    ) -> tuple[PendingEndorsement, ...]:
+        """The unresolved cards of the runs with this id whose owner holds `read_key`: the list
+        behind `GET /runs/{run_id}/endorsements`. No key, or a key nobody holds, lists nothing.
+        It reads only; answering and cancelling need the owner."""
+        if read_key is None:
+            return ()
+        with self._cond:
             return tuple(
-                PendingEndorsement(
-                    run_id=run_id,
-                    endorsement=slot.endorsement,
-                    card_text=render_card(slot.endorsement.card),
-                    remaining_approvals=slot.remaining_approvals,
-                )
-                for slot in run.slots.values()
-                if slot.decision is None
+                entry
+                for (_owner, key_run_id), run in self._runs.items()
+                if key_run_id == run_id and same_key(run.read_key, read_key)
+                for entry in self._unresolved(run_id, run)
             )
 
-    def cancel_run(self, run_id: str) -> None:
-        """Reject every unresolved slot of the run; a later escalation of it is rejected at once."""
+    def pending_for_run(self, run_id: str) -> tuple[PendingEndorsement, ...]:
+        """The unresolved cards of every run with this id, whoever owns them. Unauthenticated:
+        for tests and diagnostics, never for a route (see `pending_for_reader`)."""
         with self._cond:
-            run = self._runs.get(run_id)
+            return tuple(
+                entry
+                for (_owner, key_run_id), run in self._runs.items()
+                if key_run_id == run_id
+                for entry in self._unresolved(run_id, run)
+            )
+
+    @staticmethod
+    def _unresolved(run_id: str, run: _Run) -> tuple[PendingEndorsement, ...]:
+        return tuple(
+            PendingEndorsement(
+                run_id=run_id,
+                endorsement=slot.endorsement,
+                card_text=render_card(slot.endorsement.card),
+                remaining_approvals=slot.remaining_approvals,
+            )
+            for slot in run.slots.values()
+            if slot.decision is None
+        )
+
+    def cancel_run(self, run_id: str, *, owner: str) -> None:
+        """Reject every unresolved slot of the owner's run; a later escalation of it is rejected
+        at once. A run of another owner with the same id is not touched."""
+        with self._cond:
+            run = self._runs.get((owner, run_id))
             if run is None:
                 return
             run.cancelled = True
@@ -189,7 +236,7 @@ class EndorsementBroker:
                 raise CommandRejected(
                     CLOSE_UNSUPPORTED_COMMAND, "command not supported on this socket"
                 )
-            result = self.submit(command)
+            result = self.submit(command, owner=context.owner)
             if result == "unknown_endorsement":
                 raise CommandRejected(CLOSE_COMMAND_CONFLICT, "unknown endorsement")
             if result == "already_resolved":

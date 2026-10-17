@@ -21,6 +21,9 @@ class CommandContext(NotaryModel):
     run_id: str | None
     """The run id of the latest event sent on this socket; None before the first event."""
     lane: Lane
+    owner: str
+    """The server-side identity of this socket. A secret the server made for the connection and
+    never sends: a handler that owns state per run keys it by this, not by the run id (#201)."""
 
 
 class CommandRejected(Exception):  # noqa: N818

@@ -780,6 +780,8 @@ def _approval_entries(
 
 
 EscalationChoice = Literal["approve", "reject", "use_nearest"]
+NEAREST_SUFFIX = ".nearest"
+"""Appended to a call id for the call proposed again with the nearest known value."""
 
 
 def _nearest_call(call: RawToolCall, card: DiffCard | None) -> RawToolCall | None:
@@ -792,7 +794,7 @@ def _nearest_call(call: RawToolCall, card: DiffCard | None) -> RawToolCall | Non
         if row.nearest_ledger_value is None or row.param not in args:
             return None
         args[row.param] = row.nearest_ledger_value
-    return RawToolCall(call_id=f"{call.call_id}.nearest", tool=call.tool, args=args)
+    return RawToolCall(call_id=f"{call.call_id}{NEAREST_SUFFIX}", tool=call.tool, args=args)
 
 
 def resolve_escalation(
@@ -943,7 +945,12 @@ def _run_outcome(engine: RunEngine) -> tuple[Literal["completed", "blocked", "er
     if not engine.calls:
         return "completed", NO_ACTION_SUMMARY
     last: dict[str, CallRecord] = {r.call_id: r for r in engine.calls}
-    held = sum(1 for r in last.values() if r.status in ("blocked", "escalated"))
+    # A call the user replaced with the nearest known value is settled by its replacement.
+    held = sum(
+        1
+        for r in last.values()
+        if r.status in ("blocked", "escalated") and f"{r.call_id}{NEAREST_SUFFIX}" not in last
+    )
     if held:
         return "blocked", f"{held} call(s) not executed"
     return "completed", "all calls executed"

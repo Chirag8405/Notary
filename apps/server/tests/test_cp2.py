@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
+from tokens import HEADERS, with_token
 
 from notary_core.audit import append, verify_chain_detailed
 from notary_core.gateway import ToolResultField, make_labeler
@@ -100,7 +101,8 @@ def replay(
     client: TestClient, scenario: str, lane: Lane, mode: str = "cassette"
 ) -> tuple[list[Event], WebSocketDisconnect]:
     events: list[Event] = []
-    with client.websocket_connect(f"/ws/runs/{scenario}?lane={lane}&mode={mode}") as ws:
+    path = f"/ws/runs/{scenario}?lane={lane}&mode={mode}"
+    with client.websocket_connect(path if mode == "golden" else with_token(path)) as ws:
         while True:
             try:
                 events.append(EVENT_ADAPTER.validate_json(ws.receive_text()))
@@ -607,9 +609,11 @@ def run_to_the_end_with_approval(
     run_id = golden_run_id(POISONED, "notary")
 
     def pending() -> int:
-        return len(client.get(f"/runs/{run_id}/endorsements").json()["pending"])
+        return len(client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"])
 
-    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+    with client.websocket_connect(
+        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+    ) as ws:
         before = read_until(ws, "endorsement_requested")
         assert len(before) == 18
         wait_until(lambda: pending() == 1)
@@ -669,13 +673,13 @@ class SpyBroker(EndorsementBroker):
         super().__init__(timeout_seconds=5.0)
         self.calls: list[str] = []
 
-    def decider_for(self, run_id: str, *, max_approvals: int) -> EscalationDecider:
+    def decider_for(self, run_id: str, *, owner: str, max_approvals: int) -> EscalationDecider:
         self.calls.append("decider_for")
-        return super().decider_for(run_id, max_approvals=max_approvals)
+        return super().decider_for(run_id, owner=owner, max_approvals=max_approvals)
 
-    def cancel_run(self, run_id: str) -> None:
+    def cancel_run(self, run_id: str, *, owner: str) -> None:
         self.calls.append("cancel_run")
-        super().cancel_run(run_id)
+        super().cancel_run(run_id, owner=owner)
 
 
 @pytest.mark.invariant("I4")
@@ -688,11 +692,11 @@ def test_a_golden_run_never_registers_a_card_or_touches_the_broker() -> None:
     with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=golden") as ws:
         seen = read_until(ws, "endorsement_requested")
         assert any(isinstance(e, EndorsementRequested) for e in seen)
-        assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+        assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
         golden_rest = [EVENT_ADAPTER.validate_json(ws.receive_text()) for _ in range(2)]
         assert golden_rest
     golden_run_abandoned(client)  # the path that used to cancel the run id
-    assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
     assert broker.calls == []
 
 
@@ -704,10 +708,12 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
     sources: dict[RunMode, RunSource] = {"cassette": CassetteSource(streamer)}
     client = TestClient(create_app(event_delay=0, sources=sources, broker=broker))
     run_id = golden_run_id(POISONED, "notary")
-    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+    with client.websocket_connect(
+        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+    ) as ws:
         read_until(ws, "endorsement_requested")
-        wait_until(lambda: len(broker.pending(run_id)) == 1)
-    wait_until(lambda: broker.pending(run_id) == ())
+        wait_until(lambda: len(broker.pending_for_run(run_id)) == 1)
+    wait_until(lambda: broker.pending_for_run(run_id) == ())
     assert "cancel_run" in broker.calls
 
 
@@ -716,10 +722,12 @@ def test_the_card_is_listed_when_the_cassette_frame_arrives() -> None:
     """#195: no wait between the `endorsement_requested` frame and the pending list."""
     client = TestClient(build_app(Settings(endorsement_timeout_seconds=5.0), event_delay=0.05))
     run_id = golden_run_id(POISONED, "notary")
-    with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+    with client.websocket_connect(
+        with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+    ) as ws:
         seen = read_until(ws, "endorsement_requested")
         card = next(e for e in reversed(seen) if isinstance(e, EndorsementRequested))
-        listed = client.get(f"/runs/{run_id}/endorsements").json()["pending"]
+        listed = client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"]
         assert [p["endorsement"]["endorsement_id"] for p in listed] == [
             card.endorsement.endorsement_id
         ]
@@ -736,10 +744,19 @@ def test_endorsement_flow_over_the_socket() -> None:
     results: list[list[Event]] = []
 
     def drive() -> None:
-        with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        with client.websocket_connect(
+            with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+        ) as ws:
             before = read_until(ws, "endorsement_requested")
             wait_until(
-                lambda: len(client.get(f"/runs/{run_id}/endorsements").json()["pending"]) == 1
+                lambda: (
+                    len(
+                        client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()[
+                            "pending"
+                        ]
+                    )
+                    == 1
+                )
             )
             card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
             command = EndorsementDecisionCommand(
@@ -767,7 +784,7 @@ def test_endorsement_flow_over_the_socket() -> None:
     assert "LEDGER_EXACT_MATCH" in [r.code for r in pay_decisions[1].decision.reasons]
     assert any(isinstance(e, EffectExecuted) and e.tool == "pay_bill" for e in events)
     assert BILLER_IBAN not in lines(events)[-1]
-    assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}
 
 
 @pytest.mark.invariant("I6")
@@ -871,10 +888,19 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     results: list[list[Event]] = []
 
     def drive() -> None:
-        with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
+        with client.websocket_connect(
+            with_token(f"/ws/runs/{POISONED}?lane=notary&mode=cassette")
+        ) as ws:
             before = read_until(ws, "endorsement_requested")
             wait_until(
-                lambda: len(client.get(f"/runs/{run_id}/endorsements").json()["pending"]) == 1
+                lambda: (
+                    len(
+                        client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()[
+                            "pending"
+                        ]
+                    )
+                    == 1
+                )
             )
             card = next(e for e in reversed(before) if isinstance(e, EndorsementRequested))
             command = EndorsementDecisionCommand(
@@ -914,4 +940,8 @@ def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> 
     assert oracle.attacker_goal_reached is False
     assert oracle.user_goal_achieved is True
     assert all(i.passed for i in oracle.invariants)
-    assert client.get(f"/runs/{run_id}/endorsements").json() == {"pending": []}
+    finished = [e for e in events if isinstance(e, RunFinished)][-1]
+    assert finished.outcome == "completed"
+    # The summary is the engine's, then who recorded the cassette (a scripted agent, #182).
+    assert finished.summary.startswith("all calls executed; cassette replay:")
+    assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json() == {"pending": []}

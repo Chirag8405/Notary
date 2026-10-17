@@ -407,8 +407,8 @@ requires-dist = [
     { name = "notary-core", editable = "packages/core" },
     { name = "notary-mcp-proxy", editable = "packages/mcp-proxy" },
     { name = "notary-world", editable = "packages/world" },
-    { name = "uvicorn", specifier = ">=0.54" },
-    { name = "websockets", specifier = ">=17" },
+    { name = "uvicorn", specifier = ">=0.54,<0.55" },
+    { name = "websockets", specifier = ">=17,<18" },
 ]
 
 [[package]]

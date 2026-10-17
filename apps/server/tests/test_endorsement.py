@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
+from tokens import HEADERS, TOKEN, with_token
 
 from notary_core.audit import append
 from notary_core.models import (
@@ -39,15 +40,17 @@ from notary_server.endorsement import (
     SubmitResult,
 )
 from notary_server.llm import ScriptedClient
-from notary_server.sources import RunMode, RunRequest, RunSource
+from notary_server.read_token import read_key
+from notary_server.sources import GoldenSource, RunMode, RunRequest, RunSource
 from notary_world.executor import RunRecord, default_monitor
 from notary_world.golden import COMMAND_ADAPTER
 from notary_world.models import CassetteToolCall, CassetteTurn
-from notary_world.scenarios import Scenario, legitimate_bill_scenario
+from notary_world.scenarios import Scenario, golden_run_id, legitimate_bill_scenario
 from notary_world.tools import default_manifest_hash
 
 Decision = Literal["approve", "reject", "use_nearest"]
 JOIN_SECONDS = 5.0
+OWNER = "owner-1"
 
 
 def endorsement(endorsement_id: str = "e1", preview: str = "Alpha Consulting") -> Endorsement:
@@ -108,8 +111,8 @@ def waiting(
     broker: EndorsementBroker, run_id: str = "r1", card: Endorsement | None = None
 ) -> Waiter:
     pending_card = card or endorsement()
-    waiter = Waiter(broker.decider_for(run_id, max_approvals=3), pending_card)
-    wait_until(lambda: len(broker.pending(run_id)) > 0)
+    waiter = Waiter(broker.decider_for(run_id, owner=OWNER, max_approvals=3), pending_card)
+    wait_until(lambda: len(broker.pending(run_id, owner=OWNER)) > 0)
     return waiter
 
 
@@ -117,7 +120,7 @@ def waiting(
 def test_approve_unblocks_the_decider() -> None:
     broker = EndorsementBroker()
     waiter = waiting(broker)
-    assert broker.submit(decision()) == "accepted"
+    assert broker.submit(decision(), owner=OWNER) == "accepted"
     assert waiter.join() == "approve"
 
 
@@ -125,49 +128,49 @@ def test_approve_unblocks_the_decider() -> None:
 def test_reject_unblocks_the_decider() -> None:
     broker = EndorsementBroker()
     waiter = waiting(broker)
-    assert broker.submit(decision(decision_="reject")) == "accepted"
+    assert broker.submit(decision(decision_="reject"), owner=OWNER) == "accepted"
     assert waiter.join() == "reject"
 
 
 @pytest.mark.attack("A11")
 def test_timeout_rejects_and_closes_the_slot() -> None:
     broker = EndorsementBroker(timeout_seconds=0.05)
-    decide = broker.decider_for("r1", max_approvals=3)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
     assert decide(endorsement()) == "reject"
-    assert broker.submit(decision()) == "already_resolved"
-    assert broker.pending("r1") == ()
+    assert broker.submit(decision(), owner=OWNER) == "already_resolved"
+    assert broker.pending("r1", owner=OWNER) == ()
 
 
 @pytest.mark.attack("A11")
 def test_cancel_run_rejects_waiters() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=3)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
     first, second = Waiter(decide, endorsement("e1")), Waiter(decide, endorsement("e2"))
-    wait_until(lambda: len(broker.pending("r1")) == 2)
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 2)
     other = waiting(broker, "r2", endorsement("e1"))
-    broker.cancel_run("r1")
+    broker.cancel_run("r1", owner=OWNER)
     assert (first.join(), second.join()) == ("reject", "reject")
-    assert broker.submit(decision("r1", "e1")) == "already_resolved"
-    assert broker.submit(decision("r2", "e1", "reject")) == "accepted"
+    assert broker.submit(decision("r1", "e1"), owner=OWNER) == "already_resolved"
+    assert broker.submit(decision("r2", "e1", "reject"), owner=OWNER) == "accepted"
     assert other.join() == "reject"
 
 
 @pytest.mark.attack("A11")
 def test_a_cancelled_run_rejects_later_escalations_at_once() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=3)
-    broker.cancel_run("r1")
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
+    broker.cancel_run("r1", owner=OWNER)
     assert decide(endorsement("e5")) == "reject"
-    assert broker.pending("r1") == ()
+    assert broker.pending("r1", owner=OWNER) == ()
 
 
 @pytest.mark.invariant("I4")
 def test_first_decision_wins() -> None:
     broker = EndorsementBroker()
     waiter = waiting(broker)
-    assert broker.submit(decision(decision_="approve")) == "accepted"
-    assert broker.submit(decision(decision_="reject")) == "already_resolved"
-    assert broker.submit(decision(decision_="approve")) == "already_resolved"
+    assert broker.submit(decision(decision_="approve"), owner=OWNER) == "accepted"
+    assert broker.submit(decision(decision_="reject"), owner=OWNER) == "already_resolved"
+    assert broker.submit(decision(decision_="approve"), owner=OWNER) == "already_resolved"
     assert waiter.join() == "approve"
 
 
@@ -175,11 +178,11 @@ def test_first_decision_wins() -> None:
 def test_unknown_endorsement_and_unknown_run() -> None:
     broker = EndorsementBroker()
     waiter = waiting(broker)
-    assert broker.submit(decision(endorsement_id="e99")) == "unknown_endorsement"
-    assert broker.submit(decision(run_id="nope")) == "unknown_endorsement"
-    assert broker.pending("nope") == ()
-    assert len(broker.pending("r1")) == 1
-    broker.cancel_run("r1")
+    assert broker.submit(decision(endorsement_id="e99"), owner=OWNER) == "unknown_endorsement"
+    assert broker.submit(decision(run_id="nope"), owner=OWNER) == "unknown_endorsement"
+    assert broker.pending("nope", owner=OWNER) == ()
+    assert len(broker.pending("r1", owner=OWNER)) == 1
+    broker.cancel_run("r1", owner=OWNER)
     waiter.join()
 
 
@@ -187,10 +190,10 @@ def test_unknown_endorsement_and_unknown_run() -> None:
 def test_runs_are_isolated() -> None:
     broker = EndorsementBroker()
     first, second = waiting(broker, "r1"), waiting(broker, "r2")
-    assert broker.submit(decision("r1")) == "accepted"
+    assert broker.submit(decision("r1"), owner=OWNER) == "accepted"
     assert first.join() == "approve"
-    assert len(broker.pending("r2")) == 1
-    assert broker.submit(decision("r2", decision_="reject")) == "accepted"
+    assert len(broker.pending("r2", owner=OWNER)) == 1
+    assert broker.submit(decision("r2", decision_="reject"), owner=OWNER) == "accepted"
     assert second.join() == "reject"
 
 
@@ -198,106 +201,114 @@ def test_runs_are_isolated() -> None:
 def test_a_new_run_with_the_same_id_never_reuses_an_old_decision() -> None:
     broker = EndorsementBroker()
     approved = waiting(broker, "r1")
-    assert broker.submit(decision()) == "accepted"
+    assert broker.submit(decision(), owner=OWNER) == "accepted"
     assert approved.join() == "approve"
     # The same run id starts again (golden run ids repeat): the old "approve" must not answer it.
     again = waiting(broker, "r1")
-    assert len(broker.pending("r1")) == 1
+    assert len(broker.pending("r1", owner=OWNER)) == 1
     assert again.result is None
-    broker.cancel_run("r1")
+    broker.cancel_run("r1", owner=OWNER)
     assert again.join() == "reject"
 
 
 @pytest.mark.attack("A11")
 def test_announce_registers_the_card_without_a_waiter() -> None:
     broker = EndorsementBroker()
-    run = broker.start_run("r1", max_approvals=2)
+    run = broker.start_run("r1", owner=OWNER, max_approvals=2)
     run.announce(endorsement())
-    (entry,) = broker.pending("r1")
+    (entry,) = broker.pending("r1", owner=OWNER)
     assert (entry.endorsement, entry.remaining_approvals) == (endorsement(), 2)
     run.announce(endorsement())  # idempotent
-    assert len(broker.pending("r1")) == 1
+    assert len(broker.pending("r1", owner=OWNER)) == 1
     waiter = Waiter(run.decide, endorsement())
-    assert broker.submit(decision()) == "accepted"
+    assert broker.submit(decision(), owner=OWNER) == "accepted"
     assert waiter.join() == "approve"
-    assert broker.pending("r1") == ()
+    assert broker.pending("r1", owner=OWNER) == ()
 
 
 @pytest.mark.attack("A11")
 def test_an_answer_before_the_decider_is_asked_is_kept() -> None:
     broker = EndorsementBroker()
-    run = broker.start_run("r1", max_approvals=1)
+    run = broker.start_run("r1", owner=OWNER, max_approvals=1)
     run.announce(endorsement())
-    assert broker.submit(decision(decision_="reject")) == "accepted"
-    assert broker.submit(decision()) == "already_resolved"
+    assert broker.submit(decision(decision_="reject"), owner=OWNER) == "accepted"
+    assert broker.submit(decision(), owner=OWNER) == "already_resolved"
     assert run.decide(endorsement()) == "reject"
 
 
 @pytest.mark.attack("A11")
 def test_an_announced_card_is_rejected_when_the_run_is_cancelled_or_restarted() -> None:
     broker = EndorsementBroker()
-    run = broker.start_run("r1", max_approvals=1)
+    run = broker.start_run("r1", owner=OWNER, max_approvals=1)
     run.announce(endorsement())
-    broker.cancel_run("r1")
-    assert broker.pending("r1") == ()
+    broker.cancel_run("r1", owner=OWNER)
+    assert broker.pending("r1", owner=OWNER) == ()
     assert run.decide(endorsement()) == "reject"
     run.announce(endorsement("e2"))  # a cancelled run registers nothing that can be approved
-    assert broker.pending("r1") == ()
-    assert broker.submit(decision(endorsement_id="e2")) == "already_resolved"
-    again = broker.start_run("r1", max_approvals=1)
+    assert broker.pending("r1", owner=OWNER) == ()
+    assert broker.submit(decision(endorsement_id="e2"), owner=OWNER) == "already_resolved"
+    again = broker.start_run("r1", owner=OWNER, max_approvals=1)
     again.announce(endorsement())
-    assert len(broker.pending("r1")) == 1
+    assert len(broker.pending("r1", owner=OWNER)) == 1
 
 
 @pytest.mark.attack("A11")
 def test_pending_view() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=2)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=2)
     waiter = Waiter(decide, endorsement())
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    (entry,) = broker.pending("r1")
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    (entry,) = broker.pending("r1", owner=OWNER)
     assert entry.run_id == "r1"
     assert entry.endorsement == endorsement()
     assert entry.card_text == "name: Alpha Consulting [llm, untrusted]"
     assert entry.remaining_approvals == 2
-    assert broker.submit(decision()) == "accepted"
+    assert broker.submit(decision(), owner=OWNER) == "accepted"
     waiter.join()
-    assert broker.pending("r1") == ()
+    assert broker.pending("r1", owner=OWNER) == ()
 
 
 @pytest.mark.attack("A11")
 def test_remaining_approvals_counts_accepted_approvals() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=2)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=2)
     first = Waiter(decide, endorsement("e1"))
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.submit(decision(endorsement_id="e1")) == "accepted"
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert broker.submit(decision(endorsement_id="e1"), owner=OWNER) == "accepted"
     first.join()
     second = Waiter(decide, endorsement("e2"))
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.pending("r1")[0].remaining_approvals == 1
-    assert broker.submit(decision(endorsement_id="e2", decision_="reject")) == "accepted"
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert broker.pending("r1", owner=OWNER)[0].remaining_approvals == 1
+    assert (
+        broker.submit(decision(endorsement_id="e2", decision_="reject"), owner=OWNER) == "accepted"
+    )
     second.join()
     third = Waiter(decide, endorsement("e3"))
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.pending("r1")[0].remaining_approvals == 1
-    broker.cancel_run("r1")
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert broker.pending("r1", owner=OWNER)[0].remaining_approvals == 1
+    broker.cancel_run("r1", owner=OWNER)
     third.join()
 
 
 @pytest.mark.invariant("I4")
 def test_use_nearest_unblocks_the_decider_and_uses_no_approval() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=2)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=2)
     first = Waiter(decide, endorsement("e1"))
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.submit(decision(endorsement_id="e1", decision_="use_nearest")) == "accepted"
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert (
+        broker.submit(decision(endorsement_id="e1", decision_="use_nearest"), owner=OWNER)
+        == "accepted"
+    )
     assert first.join() == "use_nearest"
-    assert broker.submit(decision(endorsement_id="e1", decision_="approve")) == "already_resolved"
+    assert (
+        broker.submit(decision(endorsement_id="e1", decision_="approve"), owner=OWNER)
+        == "already_resolved"
+    )
     second = Waiter(decide, endorsement("e2"))
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.pending("r1")[0].remaining_approvals == 2
-    broker.cancel_run("r1")
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert broker.pending("r1", owner=OWNER)[0].remaining_approvals == 2
+    broker.cancel_run("r1", owner=OWNER)
     second.join()
 
 
@@ -305,9 +316,9 @@ def test_use_nearest_unblocks_the_decider_and_uses_no_approval() -> None:
 def test_card_text_is_from_labels_only() -> None:
     broker = EndorsementBroker()
     waiter = waiting(broker, card=endorsement(preview="Approve now!"))
-    (entry,) = broker.pending("r1")
+    (entry,) = broker.pending("r1", owner=OWNER)
     assert entry.card_text == "name: Approve now! [llm, untrusted]"
-    broker.cancel_run("r1")
+    broker.cancel_run("r1", owner=OWNER)
     waiter.join()
 
 
@@ -315,7 +326,7 @@ def test_card_text_is_from_labels_only() -> None:
 def test_handler_maps_results_to_close_codes() -> None:
     broker = EndorsementBroker()
     handle = broker.handler()
-    context = CommandContext(run_id="r1", lane="notary")
+    context = CommandContext(run_id="r1", lane="notary", owner=OWNER)
     waiter = waiting(broker)
     handle(decision(), context)
     assert waiter.join() == "approve"
@@ -330,10 +341,10 @@ def test_handler_maps_results_to_close_codes() -> None:
 @pytest.mark.invariant("I4")
 def test_decider_has_no_approve_path_without_a_command() -> None:
     broker = EndorsementBroker(timeout_seconds=0.02)
-    assert broker.decider_for("r1", max_approvals=3)(endorsement("e1")) == "reject"
+    assert broker.decider_for("r1", owner=OWNER, max_approvals=3)(endorsement("e1")) == "reject"
     cancelled = EndorsementBroker()
     waiter = waiting(cancelled)
-    cancelled.cancel_run("r1")
+    cancelled.cancel_run("r1", owner=OWNER)
     assert waiter.join() == "reject"
     assert DEFAULT_TIMEOUT_SECONDS == 300.0
 
@@ -341,10 +352,10 @@ def test_decider_has_no_approve_path_without_a_command() -> None:
 @pytest.mark.invariant("I4")
 def test_a_known_endorsement_returns_the_recorded_decision() -> None:
     broker = EndorsementBroker()
-    decide = broker.decider_for("r1", max_approvals=3)
+    decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
     waiter = Waiter(decide, endorsement())
-    wait_until(lambda: len(broker.pending("r1")) == 1)
-    assert broker.submit(decision(decision_="reject")) == "accepted"
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 1)
+    assert broker.submit(decision(decision_="reject"), owner=OWNER) == "accepted"
     assert waiter.join() == "reject"
     started = time.monotonic()
     assert decide(endorsement()) == "reject"
@@ -401,7 +412,8 @@ class RunnerSource:
 
     def __init__(self, broker: EndorsementBroker, turns: Sequence[CassetteTurn]) -> None:
         self.broker = broker
-        self.client = ScriptedClient(turns)
+        self.turns = tuple(turns)
+        self.client = ScriptedClient(self.turns)
         self.records: list[RunRecord] = []
         self.chain_events: list[Event] = []
         self.deciders_asked = 0
@@ -416,7 +428,10 @@ class RunnerSource:
     def _run(self, request: RunRequest) -> Generator[Event, None, None]:
         run_id = f"run-{request.scenario}-{request.lane}"
         scenario = contacts_scenario(1)
-        endorsements = self.broker.start_run(run_id, max_approvals=1)
+        self.client = ScriptedClient(self.turns)  # one script per run, so two sockets can overlap
+        endorsements = self.broker.start_run(
+            run_id, owner=request.owner, max_approvals=1, read_key=request.read_key
+        )
         decide = endorsements.decide
 
         def counted(card: Endorsement) -> Decision:
@@ -476,7 +491,9 @@ def events_until_requested(
     source: RunnerSource,
 ) -> tuple[Generator[Event, None, None], EndorsementRequested]:
     """Drive the run on this thread to the moment the consumer is handed the card event."""
-    events = source.events(RunRequest(scenario="contacts", lane="notary", mode="cassette"))
+    events = source.events(
+        RunRequest(scenario="contacts", lane="notary", mode="cassette", owner=OWNER)
+    )
     for event in events:
         if isinstance(event, EndorsementRequested):
             return events, event
@@ -490,10 +507,10 @@ def test_the_card_is_pending_when_the_event_is_handed_over() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     events, card = events_until_requested(source)
     assert source.deciders_asked == 0  # the runner has not asked the decider yet
-    (entry,) = source.broker.pending(card.run_id)
+    (entry,) = source.broker.pending(card.run_id, owner=OWNER)
     assert entry.endorsement == card.endorsement
     assert entry.remaining_approvals == 1
-    source.broker.cancel_run(card.run_id)
+    source.broker.cancel_run(card.run_id, owner=OWNER)
     events.close()
 
 
@@ -502,7 +519,9 @@ def test_an_answer_inside_the_old_gap_is_accepted_and_used() -> None:
     """The answer arrives after the event is handed over and before the decider is asked."""
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     events, card = events_until_requested(source)
-    result = source.broker.submit(decision(card.run_id, card.endorsement.endorsement_id))
+    result = source.broker.submit(
+        decision(card.run_id, card.endorsement.endorsement_id), owner=OWNER
+    )
     assert result == "accepted"
     assert source.deciders_asked == 0
     rest = list(events)
@@ -510,24 +529,24 @@ def test_an_answer_inside_the_old_gap_is_accepted_and_used() -> None:
     (record,) = source.records
     assert [c.name for c in record.world_after.contacts][-1] == "Alpha Consulting"
     assert any(isinstance(e, EffectExecuted) for e in rest)
-    assert source.broker.pending(card.run_id) == ()
+    assert source.broker.pending(card.run_id, owner=OWNER) == ()
 
 
 @pytest.mark.invariant("I4")
 def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     client = socket_client(source)
-    with client.websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with client.websocket_connect(with_token("/ws/runs/contacts?mode=cassette")) as ws:
         seen = frames_until(ws, "endorsement_requested")
         card = requested(seen)
         run_id = card.run_id
-        wait_until(lambda: len(source.broker.pending(run_id)) == 1)
-        (entry,) = source.broker.pending(run_id)
+        wait_until(lambda: len(source.broker.pending_for_run(run_id)) == 1)
+        (entry,) = source.broker.pending_for_run(run_id)
         assert entry.remaining_approvals == 1
         assert entry.card_text == "name: alpha consulting [llm, untrusted]"
-        assert client.get(f"/runs/{run_id}/endorsements").json()["pending"][0]["card_text"] == (
-            entry.card_text
-        )
+        assert client.get(f"/runs/{run_id}/endorsements", headers=HEADERS).json()["pending"][0][
+            "card_text"
+        ] == (entry.card_text)
         decide_over_socket(ws, run_id, card.endorsement.endorsement_id, "approve")
         closed = finish(ws)
     assert closed.code == 1000
@@ -536,7 +555,7 @@ def test_end_to_end_approval_writes_a_user_endorsed_entry() -> None:
     (ledger_entry,) = record.ledger_snapshots[-1].ledger
     assert ledger_entry.source.kind == "user_endorsed"
     assert ledger_entry.source.endorsement_id == card.endorsement.endorsement_id
-    assert source.broker.pending(run_id) == ()
+    assert source.broker.pending_for_run(run_id) == ()
 
 
 @pytest.mark.invariant("I4")
@@ -544,10 +563,10 @@ def test_a_fast_answer_over_the_socket_needs_no_wait() -> None:
     """#195 over the real socket: list the card and answer it the moment the frame is received."""
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
     client = socket_client(source, event_delay=0.05)
-    with client.websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with client.websocket_connect(with_token("/ws/runs/contacts?mode=cassette")) as ws:
         seen = frames_until(ws, "endorsement_requested")
         card = requested(seen)
-        listed = client.get(f"/runs/{card.run_id}/endorsements").json()["pending"]
+        listed = client.get(f"/runs/{card.run_id}/endorsements", headers=HEADERS).json()["pending"]
         assert [p["endorsement"]["endorsement_id"] for p in listed] == [
             card.endorsement.endorsement_id
         ]
@@ -564,9 +583,11 @@ def test_end_to_end_budget_exhaustion() -> None:
     source = RunnerSource(
         EndorsementBroker(), [add_contact("Alpha Consulting"), add_contact("Bravo Holdings"), FINAL]
     )
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
-        wait_until(lambda: len(source.broker.pending(card.run_id)) == 1)
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "approve")
         finish(ws)
     (record,) = source.records
@@ -578,15 +599,17 @@ def test_end_to_end_budget_exhaustion() -> None:
     assert [d.reasons[-1].code for d in blocked] == ["BUDGET_APPROVALS_EXHAUSTED"]
     assert sum(e.type == "endorsement_requested" for e in record.events) == 1
     assert source.deciders_asked == 1
-    assert source.broker.pending(card.run_id) == ()
+    assert source.broker.pending_for_run(card.run_id) == ()
 
 
 @pytest.mark.attack("A9")
 def test_end_to_end_reject_leaves_the_world_unchanged() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
-        wait_until(lambda: len(source.broker.pending(card.run_id)) == 1)
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "reject")
         finish(ws)
     (record,) = source.records
@@ -600,7 +623,9 @@ def test_end_to_end_reject_leaves_the_world_unchanged() -> None:
 @pytest.mark.attack("A11")
 def test_end_to_end_no_answer_fails_closed() -> None:
     source = RunnerSource(EndorsementBroker(timeout_seconds=0.05), [add_contact("Alpha"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         frames_until(ws, "endorsement_requested")
         closed = finish(ws)
     assert closed.code == 1000
@@ -612,37 +637,57 @@ def test_end_to_end_no_answer_fails_closed() -> None:
 @pytest.mark.invariant("I4")
 def test_decision_for_a_wrong_endorsement_closes_the_socket() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
-        wait_until(lambda: len(source.broker.pending(card.run_id)) == 1)
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
         decide_over_socket(ws, card.run_id, "e99", "approve")
         closed = finish(ws)
     assert (closed.code, closed.reason) == (4409, "unknown endorsement")
     assert not any(isinstance(e, EffectExecuted) for e in source.chain_events)
-    assert source.broker.pending(card.run_id) == ()
+    assert source.broker.pending_for_run(card.run_id) == ()
 
 
 @pytest.mark.attack("A11")
 def test_a_disconnect_rejects_the_pending_card() -> None:
     source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
-    with socket_client(source).websocket_connect("/ws/runs/contacts?mode=cassette") as ws:
+    with socket_client(source).websocket_connect(
+        with_token("/ws/runs/contacts?mode=cassette")
+    ) as ws:
         card = requested(frames_until(ws, "endorsement_requested"))
-        wait_until(lambda: len(source.broker.pending(card.run_id)) == 1)
-    assert source.broker.pending(card.run_id) == ()
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
+    assert source.broker.pending_for_run(card.run_id) == ()
     assert not any(isinstance(e, EffectExecuted) for e in source.chain_events)
+
+
+SERVER_KEY = b"k" * 32
 
 
 @pytest.mark.invariant("I6")
 def test_rest_pending_route() -> None:
     broker = EndorsementBroker()
-    waiter = waiting(broker, "r1")
-    client = TestClient(create_app(event_delay=0, broker=broker))
-    body = PendingList.model_validate_json(client.get("/runs/r1/endorsements").content)
-    assert body.pending == broker.pending("r1")
-    assert client.get("/runs/nope/endorsements").json() == {"pending": []}
+    broker_run = broker.start_run(
+        "r1", owner=OWNER, max_approvals=3, read_key=read_key(SERVER_KEY, "r1", TOKEN)
+    )
+    waiter = Waiter(broker_run.decide, endorsement())
+    wait_until(lambda: len(broker.pending("r1", owner=OWNER)) > 0)
+    client = TestClient(create_app(event_delay=0, broker=broker, server_key=SERVER_KEY))
+    body = PendingList.model_validate_json(
+        client.get("/runs/r1/endorsements", headers=HEADERS).content
+    )
+    assert body.pending == broker.pending("r1", owner=OWNER)
+    assert len(body.pending) == 1
+    assert client.get("/runs/nope/endorsements", headers=HEADERS).json() == {"pending": []}
     operation = client.get("/openapi.json").json()["paths"]["/runs/{run_id}/endorsements"]["get"]
     assert operation["operationId"] == "listEndorsements"
-    broker.cancel_run("r1")
+    (parameter,) = [p for p in operation["parameters"] if p["in"] == "header"]
+    assert (parameter["name"], parameter["in"], parameter.get("required", False)) == (
+        "X-Notary-Token",
+        "header",
+        False,
+    )
+    broker.cancel_run("r1", owner=OWNER)
     waiter.join()
 
 
@@ -653,4 +698,133 @@ def test_without_a_broker_the_route_is_empty_and_decisions_are_rejected() -> Non
 
 
 def result_of(broker: EndorsementBroker, command: EndorsementDecisionCommand) -> SubmitResult:
-    return broker.submit(command)
+    return broker.submit(command, owner=OWNER)
+
+
+# ------------------------------------------------------------------ ownership of cards (#201)
+
+
+@pytest.mark.invariant("I4")
+def test_runs_with_the_same_id_and_other_owners_are_separate_runs() -> None:
+    broker = EndorsementBroker()
+    first = Waiter(broker.decider_for("r1", owner="a", max_approvals=1), endorsement())
+    wait_until(lambda: len(broker.pending("r1", owner="a")) == 1)
+    second = Waiter(broker.decider_for("r1", owner="b", max_approvals=1), endorsement())
+    wait_until(lambda: len(broker.pending("r1", owner="b")) == 1)
+    assert first.result is None  # starting b's run did not drop a's card
+    broker.cancel_run("r1", owner="b")
+    assert second.join() == "reject"
+    assert len(broker.pending("r1", owner="a")) == 1  # nor did cancelling b's run
+    assert first.result is None
+    assert broker.submit(decision(), owner="a") == "accepted"
+    assert first.join() == "approve"
+
+
+@pytest.mark.invariant("I4")
+def test_a_command_of_another_owner_answers_nothing() -> None:
+    broker = EndorsementBroker()
+    waiter = waiting(broker)
+    for result in (
+        broker.submit(decision(), owner="somebody-else"),
+        broker.submit(decision(decision_="reject"), owner=""),
+    ):
+        assert result == "unknown_endorsement"
+    assert waiter.result is None
+    assert len(broker.pending("r1", owner=OWNER)) == 1
+    assert broker.pending("r1", owner="somebody-else") == ()
+    assert broker.submit(decision(), owner=OWNER) == "accepted"
+    assert waiter.join() == "approve"
+
+
+@pytest.mark.invariant("I6")
+def test_the_rest_list_shows_the_cards_of_every_owner_but_answers_nothing() -> None:
+    broker = EndorsementBroker()
+    a = Waiter(broker.decider_for("r1", owner="a", max_approvals=1), endorsement("ea"))
+    b = Waiter(broker.decider_for("r1", owner="b", max_approvals=1), endorsement("eb"))
+    wait_until(lambda: len(broker.pending_for_run("r1")) == 2)
+    assert {p.endorsement.endorsement_id for p in broker.pending_for_run("r1")} == {"ea", "eb"}
+    assert broker.pending_for_run("r2") == ()
+    broker.cancel_run("r1", owner="a")
+    broker.cancel_run("r1", owner="b")
+    assert (a.join(), b.join()) == ("reject", "reject")
+
+
+def card_frames(ws: WebSocketTestSession) -> EndorsementRequested:
+    return requested(frames_until(ws, "endorsement_requested"))
+
+
+def contacts_added(record: RunRecord) -> bool:
+    return any(c.name == "Alpha Consulting" for c in record.world_after.contacts)
+
+
+@pytest.mark.invariant("I4")
+@pytest.mark.parametrize("mode", ["cassette", "live"])
+def test_closing_one_tab_leaves_the_card_of_another_tab_of_the_same_run_alone(
+    mode: RunMode,
+) -> None:
+    """#201: two sockets of one scenario, lane and broker mode share `run-<scenario>-<lane>`.
+    The one that closes rejects its own card and only that."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    sources: dict[RunMode, RunSource] = {mode: source}
+    client = TestClient(create_app(event_delay=0, sources=sources, broker=source.broker))
+    url = with_token(f"/ws/runs/contacts?mode={mode}")
+    with client.websocket_connect(url) as keeper:
+        keeper_card = card_frames(keeper)
+        run_id = keeper_card.run_id
+        with client.websocket_connect(url) as leaver:
+            assert card_frames(leaver).run_id == run_id
+            wait_until(lambda: len(source.broker.pending_for_run(run_id)) == 2)
+        # The leaver's card is rejected with its socket; the keeper's is still waiting.
+        wait_until(lambda: len(source.broker.pending_for_run(run_id)) == 1)
+        assert source.records == []
+        decide_over_socket(keeper, run_id, keeper_card.endorsement.endorsement_id, "approve")
+        closed = finish(keeper)
+    assert closed.code == 1000
+    (record,) = source.records
+    assert contacts_added(record)  # the keeper's approval was not lost to the leaver
+
+
+@pytest.mark.invariant("I4")
+def test_an_answer_on_one_tab_never_answers_the_card_of_another_tab() -> None:
+    """#201: both tabs hold a card with the same run id and endorsement id. Each answer lands on
+    the card of the socket that sent it."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    client = socket_client(source)
+    url = with_token("/ws/runs/contacts?mode=cassette")
+    with client.websocket_connect(url) as first, client.websocket_connect(url) as second:
+        card = card_frames(first)
+        assert card_frames(second).endorsement == card.endorsement
+        run_id = card.run_id
+        wait_until(lambda: len(source.broker.pending_for_run(run_id)) == 2)
+        decide_over_socket(second, run_id, card.endorsement.endorsement_id, "approve")
+        assert finish(second).code == 1000
+        assert len(source.broker.pending_for_run(run_id)) == 1  # the first tab's card waits
+        assert contacts_added(source.records[0])
+        decide_over_socket(first, run_id, card.endorsement.endorsement_id, "reject")
+        assert finish(first).code == 1000
+    assert [contacts_added(r) for r in source.records] == [True, False]
+
+
+@pytest.mark.invariant("I4")
+def test_a_socket_cannot_approve_a_card_it_does_not_own() -> None:
+    """#201: the right `run_id` and `endorsement_id` are not enough. A `golden` socket of the same
+    scenario and lane (same run id) owns no card: its decision is refused and the card stays."""
+    source = RunnerSource(EndorsementBroker(), [add_contact("Alpha Consulting"), FINAL])
+    sources: dict[RunMode, RunSource] = {"cassette": source, "golden": GoldenSource()}
+    client = TestClient(create_app(event_delay=0, sources=sources, broker=source.broker))
+    with client.websocket_connect(with_token("/ws/runs/poisoned_bill?mode=cassette")) as owner:
+        card = card_frames(owner)
+        assert card.run_id == golden_run_id("poisoned_bill", "notary")
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
+        with client.websocket_connect("/ws/runs/poisoned_bill?mode=golden") as intruder:
+            intruder.receive_text()  # the golden stream carries the same run id
+            decide_over_socket(intruder, card.run_id, card.endorsement.endorsement_id, "approve")
+            closed = finish(intruder)
+        assert (closed.code, closed.reason) == (4409, "unknown endorsement")
+        (still,) = source.broker.pending_for_run(card.run_id)
+        assert still.endorsement == card.endorsement
+        assert source.records == []
+        decide_over_socket(owner, card.run_id, card.endorsement.endorsement_id, "reject")
+        assert finish(owner).code == 1000
+    (record,) = source.records
+    assert not contacts_added(record)
