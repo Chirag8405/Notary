@@ -400,7 +400,7 @@ Per bucket (fully-specified / parameter-open / action-open): clean utility close
 
 ### Commands (client → server)
 
-`endorsement_decision` (approve/reject), `hijacked_tool_call`, `poison_world` (vector, payload, task, lanes), `arena_start` (attacker arena: rounds, lanes, seed).
+`endorsement_decision` (approve/reject/use_nearest), `hijacked_tool_call`, `poison_world` (vector, payload, task, lanes), `arena_start` (attacker arena: rounds, lanes, seed).
 
 ### Trust X-ray (`/x-ray`)
 

@@ -28,7 +28,7 @@ function show(
     error: string | null;
   }> = {},
 ) {
-  const onDecide = vi.fn<(decision: "approve" | "reject") => void>();
+  const onDecide = vi.fn<(decision: "approve" | "reject" | "use_nearest") => void>();
   const result = render(
     <EndorsementCard
       endorsement={props.endorsement ?? REAL}

@@ -65,27 +65,36 @@ def _assistant(content: str, *calls: tuple[str, dict[str, str]]) -> CassetteTurn
 
 
 class Variant(NamedTuple):
-    """One recorded run: a scenario, and whether the user approves an escalation (NOTARY only)."""
+    """One recorded run: a scenario, and how the user answers an escalation (NOTARY only)."""
 
     scenario: Scenario
-    approve: bool = False
+    answer: Literal["approve", "reject", "use_nearest"] = "reject"
 
 
-def approve_all(endorsement: Endorsement) -> Literal["approve", "reject"]:
+def approve_all(endorsement: Endorsement) -> Literal["approve", "reject", "use_nearest"]:
     return "approve"
+
+
+def use_nearest_all(endorsement: Endorsement) -> Literal["approve", "reject", "use_nearest"]:
+    return "use_nearest"
 
 
 def agent_variants() -> dict[str, tuple[Variant, ...]]:
     """Cassette name -> the runs recorded into it (keys of other worlds never collide).
 
-    NOTARY also records the run in which the user approves the escalated payment: replaying it
-    over the socket shows that a determined user can still say yes (A11).
+    NOTARY also records the run in which the user approves the escalated payment (replaying it
+    over the socket shows that a determined user can still say yes, A11) and the run in which the
+    user asks for the nearest known payee instead.
     """
     swapped, sample = get_scenario("poisoned_bill"), scenario_from_command(SAMPLE_POISON)
     variants: dict[str, tuple[Variant, ...]] = {
         f"poisoned_bill.{lane}": (Variant(swapped), Variant(sample)) for lane in LANES
     }
-    variants["poisoned_bill.notary"] = (*variants["poisoned_bill.notary"], Variant(swapped, True))
+    variants["poisoned_bill.notary"] = (
+        *variants["poisoned_bill.notary"],
+        Variant(swapped, "approve"),
+        Variant(swapped, "use_nearest"),
+    )
     variants["legitimate_bill.notary"] = (Variant(get_scenario("legitimate_bill")),)
     return variants
 
@@ -218,7 +227,11 @@ def record_all(
         for variant in scenarios:
             scenario = variant.scenario
             tap = recorder.wrap(name, lane, agent(scenario, lane))
-            decide = approve_all if variant.approve else reject_all
+            decide = {
+                "approve": approve_all,
+                "reject": reject_all,
+                "use_nearest": use_nearest_all,
+            }[variant.answer]
             run_id = golden_run_id(scenario.scenario_id, lane)
             for _ in _run(tap, scenario, lane, run_id, decide):
                 pass

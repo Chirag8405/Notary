@@ -46,7 +46,7 @@ from notary_world.models import CassetteToolCall, CassetteTurn
 from notary_world.scenarios import Scenario, legitimate_bill_scenario
 from notary_world.tools import default_manifest_hash
 
-Decision = Literal["approve", "reject"]
+Decision = Literal["approve", "reject", "use_nearest"]
 JOIN_SECONDS = 5.0
 
 
@@ -283,6 +283,22 @@ def test_remaining_approvals_counts_accepted_approvals() -> None:
     assert broker.pending("r1")[0].remaining_approvals == 1
     broker.cancel_run("r1")
     third.join()
+
+
+@pytest.mark.invariant("I4")
+def test_use_nearest_unblocks_the_decider_and_uses_no_approval() -> None:
+    broker = EndorsementBroker()
+    decide = broker.decider_for("r1", max_approvals=2)
+    first = Waiter(decide, endorsement("e1"))
+    wait_until(lambda: len(broker.pending("r1")) == 1)
+    assert broker.submit(decision(endorsement_id="e1", decision_="use_nearest")) == "accepted"
+    assert first.join() == "use_nearest"
+    assert broker.submit(decision(endorsement_id="e1", decision_="approve")) == "already_resolved"
+    second = Waiter(decide, endorsement("e2"))
+    wait_until(lambda: len(broker.pending("r1")) == 1)
+    assert broker.pending("r1")[0].remaining_approvals == 2
+    broker.cancel_run("r1")
+    second.join()
 
 
 @pytest.mark.attack("A11")

@@ -71,6 +71,14 @@
         "content": "Done.",
         "tool_calls": []
       }
+    },
+    {
+      "key": "f08c01aa852834537c873a48efd980027880b328fd9ff0924518986fbd487fe2",
+      "response": {
+        "role": "assistant",
+        "content": "Done.",
+        "tool_calls": []
+      }
     }
   ]
 }

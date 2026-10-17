@@ -13,7 +13,9 @@ class EndorsementDecisionCommand(NotaryModel):
     type: Literal["endorsement_decision"]
     run_id: str
     endorsement_id: str
-    decision: Literal["approve", "reject"]
+    decision: Literal["approve", "reject", "use_nearest"]
+    """`use_nearest` rejects the proposed value and proposes the call again with the nearest known
+    ledger value of every parameter on the card; nothing is written to the ledger."""
 
 
 class HijackedToolCallCommand(NotaryModel):

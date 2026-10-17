@@ -29,7 +29,7 @@ DEFAULT_TIMEOUT_SECONDS: float = 300.0
 MAX_RUNS: int = 256
 """Runs whose slots are kept for idempotency; the oldest run without a waiter is dropped."""
 
-Decision = Literal["approve", "reject"]
+Decision = Literal["approve", "reject", "use_nearest"]
 
 
 class PendingEndorsement(NotaryModel):

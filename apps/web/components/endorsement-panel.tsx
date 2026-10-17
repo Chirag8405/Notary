@@ -32,7 +32,7 @@ export interface EndorsementPanelProps {
   onRejectedChange?: (rejected: ReadonlySet<string>) => void;
 }
 
-type Decision = "approve" | "reject";
+type Decision = "approve" | "reject" | "use_nearest";
 
 interface CardInfo {
   state: CardState;
@@ -40,7 +40,11 @@ interface CardInfo {
   error: string | null;
 }
 
-const RESOLVED: Record<Decision, CardState> = { approve: "approved", reject: "rejected" };
+const RESOLVED: Record<Decision, CardState> = {
+  approve: "approved",
+  reject: "rejected",
+  use_nearest: "replaced",
+};
 
 /**
  * The cards of the run's pending endorsements and the answers the user gives.
@@ -96,7 +100,10 @@ export function EndorsementPanel({
   const lastResolved = useRef("");
   useEffect(() => {
     const ids = [...cards]
-      .filter(([, info]) => info.state === "approved" || info.state === "rejected")
+      .filter(
+        ([, info]) =>
+          info.state === "approved" || info.state === "rejected" || info.state === "replaced",
+      )
       .map(([id]) => id)
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const key = ids.join("\n");
