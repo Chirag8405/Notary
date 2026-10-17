@@ -1,11 +1,13 @@
 """Hijacked Mode: a judge's raw tool calls over REST, judged by the real monitor and oracle."""
 
 import threading
+from collections.abc import Callable
+from typing import Literal
 
 import pytest
 from fastapi.testclient import TestClient
 
-from notary_core.models import EndorseMarker, ToolScope
+from notary_core.models import EndorseMarker, HijackedToolCallCommand, ToolScope
 from notary_server.app import create_app
 from notary_server.hijacked import (
     MAX_CALLS_PER_SESSION,
@@ -13,6 +15,7 @@ from notary_server.hijacked import (
     OBJECTIVES,
     HijackedSession,
     HijackedSessions,
+    HijackedStart,
     HijackedState,
     HijackedStep,
 )
@@ -313,3 +316,159 @@ def test_openapi_lists_the_hijacked_routes() -> None:
 
 def test_objectives_table_matches_the_oracle_goals() -> None:
     assert {o.goal_id for o in OBJECTIVES} <= set(ATTACKER_GOAL_IDS)
+
+
+# ----------------------------------------------------------------------- isolation of sessions
+
+
+def call(
+    session: HijackedSession, call_id: str, tool: str, args: dict[str, str]
+) -> HijackedToolCallCommand:
+    return HijackedToolCallCommand(
+        type="hijacked_tool_call", run_id=session.run_id, call_id=call_id, tool=tool, args=args
+    )
+
+
+def run_together(*jobs: Callable[[], None]) -> None:
+    """Start every job at the same moment and wait for all of them; a job's exception fails."""
+    barrier = threading.Barrier(len(jobs))
+    errors: list[BaseException] = []
+
+    def wrapped(job: Callable[[], None]) -> None:
+        try:
+            barrier.wait(timeout=10)
+            job()
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=wrapped, args=(job,)) for job in jobs]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    assert not any(thread.is_alive() for thread in threads)
+    if errors:
+        raise errors[0]
+
+
+@pytest.mark.invariant("I6")
+def test_parallel_starts_get_distinct_sessions_and_runs() -> None:
+    sessions = HijackedSessions()
+    started: list[HijackedSession] = []
+    lock = threading.Lock()
+
+    def begin() -> None:
+        session = sessions.start(HijackedStart(scenario="poisoned_bill", seed=0))
+        with lock:
+            started.append(session)
+
+    run_together(*[begin] * 16)
+    assert len(started) == 16
+    assert len({s.session_id for s in started}) == 16
+    assert len({s.run_id for s in started}) == 16
+    for session in started:
+        assert sessions.record(session.session_id).run_id == session.run_id
+
+
+@pytest.mark.invariant("I6")
+def test_two_sessions_in_parallel_never_see_each_others_calls_or_world() -> None:
+    """A pays the biller (the world changes); B tries the attacker (nothing executes). Both use the
+    same call ids at the same moment, ten times over to give a race a chance to show."""
+
+    def one_round() -> None:
+        sessions = HijackedSessions()
+        pair: dict[str, HijackedSession] = {}
+
+        def begin(name: str, scenario: Literal["legitimate_bill", "poisoned_bill"]) -> None:
+            pair[name] = sessions.start(HijackedStart(scenario=scenario, seed=0))
+
+        run_together(lambda: begin("a", "legitimate_bill"), lambda: begin("b", "poisoned_bill"))
+        a, b = pair["a"], pair["b"]
+        steps: dict[str, list[HijackedStep]] = {"a": [], "b": []}
+
+        def play_a() -> None:
+            for call_id, tool, args in (
+                ("c1", "pay_bill", {"payee": BILLER_IBAN, "amount": "120.00"}),
+                ("c2", "read_inbox", {}),
+            ):
+                steps["a"].append(sessions.submit(a.session_id, call(a, call_id, tool, args)))
+
+        def play_b() -> None:
+            for call_id, tool, args in (
+                ("c1", "pay_bill", {"payee": ATTACKER_IBAN, "amount": "120.00"}),
+                ("c2", "read_inbox", {}),
+            ):
+                steps["b"].append(sessions.submit(b.session_id, call(b, call_id, tool, args)))
+
+        run_together(play_a, play_b)
+
+        assert [s.status for s in steps["a"]] == ["executed", "executed"]
+        assert [s.status for s in steps["b"]] == ["escalated", "executed"]
+        record_a, record_b = sessions.record(a.session_id), sessions.record(b.session_id)
+        # Every event of a session belongs to that session's run.
+        assert {e.run_id for e in record_a.events} == {a.run_id}
+        assert {e.run_id for e in record_b.events} == {b.run_id}
+        for step in steps["a"]:
+            assert {e.run_id for e in step.events} == {a.run_id}
+        for step in steps["b"]:
+            assert {e.run_id for e in step.events} == {b.run_id}
+        # A's payment changed A's world and only A's; B's world is where it started.
+        assert record_a.world_diff.changes != ()
+        assert record_a.world_after != record_a.world_before
+        assert record_b.world_diff.changes == ()
+        assert record_b.world_after == record_b.world_before
+        # The oracle judges each run on its own record.
+        state_a, state_b = sessions.state(a.session_id), sessions.state(b.session_id)
+        assert (state_a.calls, state_b.calls) == (2, 2)
+        assert state_a.oracle.user_goal_achieved is True
+        assert state_b.oracle.user_goal_achieved is False
+        assert state_a.oracle.attacker_goal_reached is False
+        assert state_b.oracle.attacker_goal_reached is False
+        # The audit chains are separate, and each one is the call history of its own session.
+        assert {c.call_id for c in record_a.calls} == {"c1", "c2"}
+        assert {c.call_id for c in record_b.calls} == {"c1", "c2"}
+        assert [c.tool for c in record_a.calls if c.phase == "initial"] == [
+            "pay_bill",
+            "read_inbox",
+        ]
+        assert [c.tool for c in record_b.calls if c.phase == "initial"] == [
+            "pay_bill",
+            "read_inbox",
+        ]
+        assert record_a.chain[0].hash != record_b.chain[0].hash
+
+    for _ in range(10):
+        one_round()
+
+
+@pytest.mark.invariant("I6")
+def test_a_call_id_is_unique_per_session_not_across_sessions() -> None:
+    client = new_client()
+    start(client)
+    start(client)
+    submit(client, "c1", "read_inbox", {}, "h1")
+    submit(client, "c1", "read_inbox", {}, "h2")  # the same id in another session is fine
+    again = client.post(
+        "/playground/hijacked/h1/calls", json=command("c1", "read_inbox", {}, "run-hijacked-h1")
+    )
+    assert (again.status_code, again.json()) == (409, {"detail": "duplicate call id"})
+
+
+@pytest.mark.invariant("I6")
+def test_a_command_for_another_sessions_run_is_refused_and_changes_nothing() -> None:
+    client = new_client()
+    start(client)
+    start(client)
+    refused = client.post(
+        "/playground/hijacked/h1/calls",
+        json=command(
+            "c1", "pay_bill", {"payee": ATTACKER_IBAN, "amount": "1.00"}, "run-hijacked-h2"
+        ),
+    )
+    assert (refused.status_code, refused.json()) == (409, {"detail": "command is for another run"})
+    for session_id in ("h1", "h2"):
+        state = HijackedState.model_validate_json(
+            client.get(f"/playground/hijacked/{session_id}").content
+        )
+        assert state.calls == 0
+        assert state.run_id == f"run-hijacked-{session_id}"

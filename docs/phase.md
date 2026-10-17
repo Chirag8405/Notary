@@ -165,7 +165,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 ## P5 Judge playground (lane D)
 
 - Packages: `apps/web`, `packages/ui`, `packages/client` (endpoints come from lane C, P3c)
-- [ ] Four modes: Poison the world, Be the hijacked LLM, Attack library, Attacker arena
+- [x] Four modes: Poison the world, Be the hijacked LLM, Attack library, Attacker arena (all four panels are registered in `apps/web/components/playground-panels.tsx`; #221 is the integration check against the seeded world)
 - [ ] Replay scrubber
 - Accept: each mode has a test driving it against the seeded world; oracle verdicts match expected
 - Demo-able: step 5 (Hijacked Mode with a judge).

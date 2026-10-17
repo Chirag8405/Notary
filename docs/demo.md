@@ -75,6 +75,8 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 
 The "Poison the world" panel (`apps/web/components/poison-panel.tsx`, `/playground?mode=poison`) posts the form to `POST /playground/poison` and shows the lanes side by side with a verdict table. The REST runner replays recorded runs, so only the sample input (email, `Pay to IBAN DE00ATTACKER0000000001`, `Pay my December bill`, all three lanes) has a run; any other payload answers `501 cassette miss`, which the panel explains. The `web` vector is never offered.
 
+The "Be the hijacked LLM" panel (`apps/web/components/hijacked-panel.tsx`, `/playground?mode=hijacked`) is stage step 5. The judge picks a scenario and a seed and starts a session (`POST /playground/hijacked`), then submits raw tool calls from a form that lists all 14 tools grouped by effect (`apps/web/lib/hijacked-tools.ts`, checked against the server's tool table by a fixture test). Four quick attempts (pay the attacker IBAN, pay a lookalike, email the attacker, delete an email) only fill the form. Each call (`POST /playground/hijacked/{session_id}/calls`) gets a log row with the verdict text and every reason code, and the four objective cards stay "Not reached" (green) unless the oracle reports one reached (red). The attacker-IBAN payment is ESCALATED and the server rejects it at once, so the panel has no approve action. Call ids (`c1`, `c2`, ...) come from a per-session counter that is spent when a call is sent, so a request that failed in transit cannot make the next call a duplicate. The oracle lights and the goal lights show what the latest step reported (the user light reads "User goal: not reached (you are the attacker)", in slate, because the judge is not paying the bill); the decision stream lists the events of all calls.
+
 The "Attack library" panel (`apps/web/components/attack-library-panel.tsx`, `/playground?mode=library`) lists A1-A14 from `GET /attacks` with each class's primary stop and expected outcome, plus the benign controls B1-B4. One click calls `POST /playground/attacks/{id}/run` and shows, per tool call, the taxonomy's expected outcome against what the real monitor decided; a mismatch and the deferred class (A13) are always shown, never hidden.
 
 The "Attacker arena" panel (`apps/web/components/arena-panel.tsx`, `/playground?mode=arena`) posts rounds, seed and lanes to `POST /playground/arena`, plots the attack success rate per round with `AsrChart` and lists every round (vector and payload length only; the response carries no payload text). The UI caps rounds at 10, the server's default `NOTARY_ARENA_MAX_ROUNDS`. The attacker is a recording (seed 0 on the poisoned bill); other seeds answer `501 cassette miss`, which the panel explains.
@@ -112,6 +114,12 @@ The endorsement cards, the owner secrets and the read-token key (#235) live in t
 - **Proxies must not log query strings.** The tab's read token travels in the WebSocket URL (`?token=`), so a reverse proxy, TLS terminator, CDN or load balancer in front of the server must log the path only (for nginx a `log_format` without `$args` and `$request`, or a redacting format) and must not forward the query in a `Referer`. The app redacts `token=` in its own loggers only.
 - **Serve over TLS** (`wss://`): the token is a read credential for one tab's card list.
 
+## End-to-end smoke test
+
+`pnpm e2e` (from the repo root; `pnpm --filter @notary/web e2e`) drives the real server and the real web app in a real browser with Playwright (`apps/web/playwright.config.ts`, `apps/web/e2e/*.e2e.ts`). It starts `uvicorn` on :8000 and `next dev` on :3000 (a server already running there is reused; the ports are fixed because the server only allows the origin `http://localhost:3000`), opens `/playground?mode=hijacked`, starts a session, plays the four quick attempts and a `read_inbox`, and asserts for each call the verdict text, the reason codes, the I1-I6 dots (all `pass`), the four objective cards (all `Not reached`), the goal lights and the decision stream: the attacker payment is escalated and rejected, the lookalike payment, the email to the attacker and the delete are blocked, the read is executed.
+
+It is not part of the default gate (`pnpm turbo run lint typecheck test build`), because it needs a browser and two servers. No browser is downloaded: the test uses one that is already installed. `E2E_BROWSER_PATH` names it; without it the first of `chromium`, `chromium-browser`, `google-chrome-stable`, `google-chrome`, `brave`, `brave-browser` on the PATH is used. Run it before a demo and after a change to the playground, the server's Hijacked Mode or the monitor's reason codes.
+
 ## Fallback plan
 
 - Offline `docker compose up` (see root `docker-compose.yml`): server `:8000`, web `:3000/x-ray`.
@@ -126,6 +134,7 @@ The endorsement cards, the owner secrets and the read-token key (#235) live in t
 - [ ] `notary fuzz` result for the commit saved
 - [ ] Offline `docker compose up` works with no network
 - [ ] Recorded-run video and screenshots present
+- [ ] `pnpm e2e` passes (see [end-to-end smoke test](#end-to-end-smoke-test))
 - [ ] Public deploy reachable, one worker, `--ws websockets`, TLS, and no query strings in any proxy log (see [deploy notes](#deploy-notes))
 - [ ] Each lane labeled in the UI (including any stand-in classifier)
 - [ ] Browser zoom, projector resolution and font sizes checked
