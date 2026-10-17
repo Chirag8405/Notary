@@ -16,7 +16,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | done        |
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | done        |
 | P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | done        |
-| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | CP3 pending |
+| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | done        |
 | P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | done        |
 | P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started |
 | P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started |
@@ -40,12 +40,12 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 
 ## Integration checkpoints
 
-| CP  | Lanes     | Demonstrates                                                                                                                                            | Proof                                                                                     |
-| --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| CP1 | A + B     | real monitor passes all A1-A14 fixtures; `notary fuzz` reports zero violations; no LLM, no UI. Plan one contract revision window here                   | `cd packages/world && uv run pytest`; `uv run notary fuzz`; `uv run notary attack`        |
-| CP2 | C + A     | runner replays the poisoned bill through the real monitor and Gateway, producing the event stream                                                       | `cd apps/server && uv run pytest tests/test_cp2.py` (cassette replay, no network): byte-identical streams, A3 not paid |
+| CP  | Lanes     | Demonstrates                                                                                                                                            | Proof                                                                                                                                                                                                                                    |
+| --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CP1 | A + B     | real monitor passes all A1-A14 fixtures; `notary fuzz` reports zero violations; no LLM, no UI. Plan one contract revision window here                   | `cd packages/world && uv run pytest`; `uv run notary fuzz`; `uv run notary attack`                                                                                                                                                       |
+| CP2 | C + A     | runner replays the poisoned bill through the real monitor and Gateway, producing the event stream                                                       | `cd apps/server && uv run pytest tests/test_cp2.py` (cassette replay, no network): byte-identical streams, A3 not paid                                                                                                                   |
 | CP3 | D + C + B | UI renders that live stream, including the endorsement flow (P3d) and the Classifier-only lane (P2); stage-script steps 1-4 work in the three-lane view | `pnpm dev`, open `/x-ray`; [stage script](demo.md#three-minute-stage-script) steps 1-4; golden proof automated (`apps/web/tests/cp3.test.tsx`); cassette proof: automated stream checks and the manual walk-through, recorded in PR #199 |
-| CP4 | all       | playground modes working and eval numbers in the deck                                                                                                   | each playground mode runs against the seeded world; eval export matches the slides        |
+| CP4 | all       | playground modes working and eval numbers in the deck                                                                                                   | each playground mode runs against the seeded world; eval export matches the slides                                                                                                                                                       |
 
 ## P0 Foundations (done)
 
@@ -70,7 +70,8 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] `FakeGateway` stub (test-support, lives in `packages/world`, never imported by `core`)
 - [x] Name the classifier used for the Classifier-only baseline; document it in `docs/demo.md` and here. If a stand-in, label it in the UI
 - [x] 3-4 golden event streams as JSON in `packages/world`: poisoned-bill run for A3, one legitimate-bill run, plus one or two more; all three lanes covered
-- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table (names needed)
+- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table (names needed; not planned: decided 2026-10-17 to leave it, the lanes are worked as free time allows)
+- [x] `contracts-v1` git tag: annotated tag on `4ada04a` ("freeze the P0b contracts"), pushed to `origin` (#249)
 - Process: one named owner (lane A) drafts the freeze; others review within a fixed window (TBD). Plan one revision window at CP1.
 - Accept: stubs pass typecheck; golden streams include all three lanes and validate against the generated Zod schema; command messages have Pydantic models and generated Zod; `pnpm schema:check` clean
 - Tag: `contracts-v1` (annotated git tag on the P0b commit). Frozen in `packages/core/src/notary_core/` (`models/`, `monitor.py`, `gateway.py`, `runner.py`) and `packages/world/src/notary_world/` (`models.py`, `cassette.py`, `fakes.py`, `golden.py`).
@@ -105,7 +106,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
 - Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.
 
-**P3 status (CP2, #142).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. Live mode runs on Groq (`GROQ_API_KEY`, `openai/gpt-oss-120b`). A first real recording was made and does not yet match the scripted behaviour (findings in #182), so the scripted cassettes stay committed. The I3 order gap in `check_i3` (#183) is fixed: a message is compared only with secrets stored before it was sent.
+**P3 status (CP2, #142; #182 closed by PR #231).** All P3 leaves are merged, including the optional Output Guard, Quarantined Extractor and attacker arena (none were cut). The committed cassettes are **scripted** (`"model": "scripted-v1"`): real prompt-hash keys, responses written by `notary_server.recording`. Live mode runs on Groq (`GROQ_API_KEY`, default `openai/gpt-oss-120b`, `NOTARY_LIVE_MODEL` to change it) and a live run is labeled non-reproducible. Real recordings of all nine cassettes were made and replay offline, but are **not committed**: 17 CP2 tests assume the scripted agent is hijacked, and `gpt-oss-120b` was not hijacked by the swapped IBAN in the probe (2026-10-17). Whether a live model follows the injection is model-dependent (`gpt-oss-20b` did in 1/10 and 2/10 runs); the NOTARY lane reached the attacker goal 0 times for every model. Measuring that properly is #240 (P6). The I3 order gap in `check_i3` (#183) is fixed: a message is compared only with secrets stored before it was sent.
 
 ## P3a Deterministic pipeline (lane A)
 
@@ -155,12 +156,12 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] Endorsement card; three-lane view (#170, #171)
 - [x] RunView, client lane/mode/send, content inspector (#162, #163, #169)
 - [x] `/x-ray` page: regions, run controls, effects list, audit anchor footer, mode handling (#172, #191)
-- [ ] CP3 manual walk-through of stage-script steps 1-4 on the cassette stack (maintainer; PR #199)
+- [x] CP3 manual walk-through of stage-script steps 1-4 on the cassette stack (done by the maintainer, 2026-10-17: everything works; the per-step table in PR #199 was not filled in; #247)
 - Built against golden streams until CP3. Endorsement card uses the P0b approve/reject commands.
 - Accept: `cd apps/web && pnpm test`; `pnpm turbo run build`
 - Demo-able: stage script steps 1-4 ([demo.md](demo.md#three-minute-stage-script)) at CP3.
-- CP3 status: the golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks plus the manual walk-through recorded in PR #199. CP2 is not touched here.
-- Open follow-ups: #193 golden mode ignores the lane (fixed), #194 a closing golden socket cancels a pending cassette card, #195 the pending list is empty right after `endorsement_requested`, #196 `legitimate_bill` has no golden stream, #197 the React Flow attribution is hidden, #198 confirming the card pays the attacker.
+- CP3 status: done. The golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks (PR #199) plus the manual browser walk-through of steps 1-4, which the maintainer reports as working (#247). CP2 is not touched here.
+- Follow-ups #193 to #198, #201, #206 and #239 are all closed.
 
 ## P5 Judge playground (lane D)
 
@@ -169,15 +170,17 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] Replay scrubber (`ReplayPlayer` on every result of `RunResult`; it opens on the whole run)
 - Accept: each mode has a test driving it against the seeded world; oracle verdicts match expected
 - Demo-able: step 5 (Hijacked Mode with a judge).
-- P5 status: all four modes are tested through `PlaygroundView` against the recorded answers (`apps/web/tests/cp4.test.tsx`), the replay works on every result, and the hand walk of steps 1-5 (poison, hijacked, library, arena, replay) was run on the real stack with no mismatch, recorded in the description of the PR that closed #221 (47 checks, no mismatch). Stage step 5 with a second person at the keyboard is a rehearsal for P7 and has not been done. Honest limits: poison and arena replay recordings (other inputs and seeds answer "no recorded run" until #182), the arena attacker is scripted, the classifier is a stand-in, and Hijacked Mode auto-rejects approvals.
+- P5 status: all four modes are tested through `PlaygroundView` against the recorded answers (`apps/web/tests/cp4.test.tsx`), the replay works on every result, and the hand walk of steps 1-5 (poison, hijacked, library, arena, replay) was run on the real stack with no mismatch, recorded in the description of the PR that closed #221 (47 checks, no mismatch). Stage step 5 with a second person at the keyboard is a rehearsal for P7 and has not been done. Honest limits: poison and arena replay recordings (other inputs and seeds answer "no recorded run" until more real recordings are committed; #182 is closed but its recordings were not committed, see P3), the arena attacker is scripted, the classifier is a stand-in, and Hijacked Mode auto-rejects approvals.
 - CP4 status: the playground half is done (this phase); the eval half ("eval numbers in the deck") is P6 and is not.
 
 ## P6 MCP proxy and evals (lanes A, B)
 
 - Packages: `packages/mcp-proxy` (lane A), `packages/eval` (lane B)
-- [ ] Eval harness plumbing (result shapes, export, charts) against stubs (lane B)
-- [ ] MCP proxy in front of a real MCP server (lane A)
+- [x] Eval result shapes and JSON export (`packages/eval/src/notary_eval/results.py`: `TaskResult`, `EvalResults`, `export_results`, with a round-trip test)
+- [ ] Eval harness: `run_agentdojo` and `notary bench` are still stubs (`NotImplementedError` / "not implemented yet"); charts from the export do not exist
+- [ ] MCP proxy in front of a real MCP server (lane A): the `Gateway` adapter and the `ToolBackend` seam exist (P3a) but there is no MCP transport yet
 - [ ] AgentDojo banking and Slack runs (if allowed); results export JSON -> charts (lane B)
+- [ ] #240 Model-dependence eval: attack success per model and lane, 20+ rounds per cell with confidence intervals (first measurement of 3 Groq models is in [demo.md](demo.md); the full run needs several days of the 200,000 tokens per model per day Groq limit; left for later)
 - [ ] Slide deck numbers updated from the export
 - Accept: `uv run` eval entry point writes results consumed by the charts; metrics per bucket as in [threat-model.md](threat-model.md#metrics)
 - Demo-able: step 6 numbers; optional proxy clip.
