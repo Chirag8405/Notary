@@ -16,7 +16,7 @@ Ordered by dependency, not calendar; built by 4 people in parallel behind frozen
 | P3b   | LLM side: compiler, runner, cassettes, Undefended baseline                                 | C              | P0b (`FakeMonitor`, `FakeGateway`, cassette format) | P1, P3a (CP2)                         | done        |
 | P3c   | Server event stream + playground endpoints                                                 | C              | P0b (Event union, command messages, golden streams) | P3b, P3a (CP2)                        | done        |
 | P3d   | Endorsement backend                                                                        | C              | P0b (command messages), P1 models                   | P1, P3c (CP3)                         | done        |
-| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | CP3 pending |
+| P4    | Trust X-ray UI                                                                             | D              | P0b (golden streams, generated Zod)                 | P3c, P3d (CP3)                        | done        |
 | P5    | Judge playground                                                                           | D              | P0b, P4 components                                  | P2 Hijacked Mode, P3c endpoints (CP4) | done        |
 | P6    | MCP proxy (A), evals (B)                                                                   | A, B           | P0b (eval harness plumbing)                         | P3a, P3b, P1 (CP4)                    | not started |
 | P7    | Hardening and demo prep                                                                    | all            | CP1-CP4                                             | everything                            | not started |
@@ -70,8 +70,8 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] `FakeGateway` stub (test-support, lives in `packages/world`, never imported by `core`)
 - [x] Name the classifier used for the Classifier-only baseline; document it in `docs/demo.md` and here. If a stand-in, label it in the UI
 - [x] 3-4 golden event streams as JSON in `packages/world`: poisoned-bill run for A3, one legitimate-bill run, plus one or two more; all three lanes covered
-- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table (names needed; #248)
-- [ ] `contracts-v1` git tag: not found locally or on `origin` (checked 2026-10-17; #249)
+- [ ] Ownership map: owners filled in the [Workstreams](#workstreams) table (names needed; not planned: decided 2026-10-17 to leave it, the lanes are worked as free time allows)
+- [x] `contracts-v1` git tag: annotated tag on `4ada04a` ("freeze the P0b contracts"), pushed to `origin` (#249)
 - Process: one named owner (lane A) drafts the freeze; others review within a fixed window (TBD). Plan one revision window at CP1.
 - Accept: stubs pass typecheck; golden streams include all three lanes and validate against the generated Zod schema; command messages have Pydantic models and generated Zod; `pnpm schema:check` clean
 - Tag: `contracts-v1` (annotated git tag on the P0b commit). Frozen in `packages/core/src/notary_core/` (`models/`, `monitor.py`, `gateway.py`, `runner.py`) and `packages/world/src/notary_world/` (`models.py`, `cassette.py`, `fakes.py`, `golden.py`).
@@ -156,12 +156,12 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] Endorsement card; three-lane view (#170, #171)
 - [x] RunView, client lane/mode/send, content inspector (#162, #163, #169)
 - [x] `/x-ray` page: regions, run controls, effects list, audit anchor footer, mode handling (#172, #191)
-- [ ] CP3 manual walk-through of stage-script steps 1-4 on the cassette stack (maintainer; PR #199)
+- [x] CP3 manual walk-through of stage-script steps 1-4 on the cassette stack (done by the maintainer, 2026-10-17: everything works; the per-step table in PR #199 was not filled in; #247)
 - Built against golden streams until CP3. Endorsement card uses the P0b approve/reject commands.
 - Accept: `cd apps/web && pnpm test`; `pnpm turbo run build`
 - Demo-able: stage script steps 1-4 ([demo.md](demo.md#three-minute-stage-script)) at CP3.
-- CP3 status: the golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks plus the manual walk-through recorded in PR #199. CP2 is not touched here.
-- Follow-ups #193 to #198, #201, #206 and #239 are all closed. Still open for P4 (#247): the CP3 manual browser walk-through (steps 1-4; the template in PR #199 is empty, "to fill in by the maintainer"). Until it is filled in, CP3 stays pending.
+- CP3 status: done. The golden proof is automated (`apps/web/tests/cp3.test.tsx`); the cassette proof is the automated stream checks (PR #199) plus the manual browser walk-through of steps 1-4, which the maintainer reports as working (#247). CP2 is not touched here.
+- Follow-ups #193 to #198, #201, #206 and #239 are all closed.
 
 ## P5 Judge playground (lane D)
 
