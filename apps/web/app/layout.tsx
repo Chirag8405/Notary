@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "NOTARY",
+  title: "NOTARY Trust X-ray",
   description: "Deterministic defence against indirect prompt injection",
 };
 

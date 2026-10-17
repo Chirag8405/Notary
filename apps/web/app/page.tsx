@@ -1,15 +1,8 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { xrayUrl } from "@/lib/x-ray-state";
 
-export default function Home() {
-  return (
-    <main className="mx-auto max-w-3xl space-y-4 p-8">
-      <h1 className="text-2xl font-bold">NOTARY</h1>
-      <p>A deterministic security layer against indirect prompt injection in AI agents.</p>
-      <Button asChild>
-        <Link href="/x-ray">Open Trust X-ray</Link>
-      </Button>
-    </main>
-  );
+/** There is no landing page: the root opens the first step of the demo (the three-lane view). */
+export default function Home(): never {
+  redirect(xrayUrl({ scenario: "poisoned_bill", mode: "cassette", viewMode: "three-lane" }));
 }
