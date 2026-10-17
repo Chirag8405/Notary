@@ -1,5 +1,6 @@
 export { ContractPanel, type ContractPanelProps } from "./ContractPanel";
 export { DecisionStream, type DecisionStreamProps } from "./DecisionStream";
+export { toDecisionRows, type ArgChip, type DecisionRow } from "./decision-rows";
 export { OracleLights, type OracleLightsProps } from "./OracleLights";
 export { OraclePanel, type OraclePanelProps } from "./OraclePanel";
 export { ProvenanceGraph, type ProvenanceGraphProps } from "./ProvenanceGraph";
