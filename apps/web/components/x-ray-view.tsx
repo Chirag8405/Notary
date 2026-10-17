@@ -1,62 +1,289 @@
 "use client";
 
+import { createRestClient, getPendingEndorsements } from "@notary/client";
+import type { RunMode, WebSocketFactory } from "@notary/client";
 import { useRunStream } from "@notary/client/react";
-import type { WebSocketFactory } from "@notary/client";
-import type { IntentContract, OracleResult } from "@notary/schema";
 import {
+  ContentInspector,
   ContractPanel,
   DecisionStream,
-  OracleLights,
+  OraclePanel,
   ProvenanceGraph,
+  ThreeLaneView,
+  emptyRunView,
   foldEvents,
+  laneLabel,
 } from "@notary/ui";
-import { useMemo } from "react";
+import type { LaneInput, LaneName } from "@notary/ui";
+import { useCallback, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
-import { Card, CardTitle } from "@/components/ui/card";
+import { AnchorFooter } from "@/components/anchor-footer";
+import { EffectsList } from "@/components/effects-list";
+import { EndorsementPanel } from "@/components/endorsement-panel";
+import { RunControls } from "@/components/run-controls";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  callIdForSelection,
+  describeStreamError,
+  scenarioLanes,
+  selectionFromChip,
+  toLaneStatus,
+  valueIdForSelection,
+  xrayUrl,
+} from "@/lib/x-ray-state";
+import type { ViewMode } from "@/lib/x-ray-state";
 
 export interface XRayViewProps {
   apiUrl: string;
   scenario: string;
+  mode?: RunMode;
+  initialViewMode?: ViewMode;
+  /** Test seam: the socket factory. */
   webSocket?: WebSocketFactory;
 }
 
-export function XRayView({ apiUrl, scenario, webSocket }: XRayViewProps) {
-  const stream = useRunStream(apiUrl, scenario, webSocket);
-  const view = useMemo(() => foldEvents(stream.events), [stream.events]);
+type Stream = ReturnType<typeof useRunStream>;
 
-  let contract: IntentContract | null = null;
-  let oracle: OracleResult | null = null;
-  for (const event of stream.events) {
-    if (event.type === "run_started") contract = event.contract;
-    if (event.type === "oracle_updated") oracle = event.result;
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card>
+      <h2 className="px-4 text-sm font-medium">{title}</h2>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+/** One lane's input for the three-lane view, from a stream hook and its folded view. */
+function laneInput(
+  lane: LaneName,
+  stream: Stream,
+  view: LaneInput["view"],
+  apiUrl: string,
+): LaneInput {
+  // A stream that says it belongs to another lane (the server's golden mode ignores the lane
+  // parameter) must not be shown under this lane's name.
+  if (view.lane !== null && view.lane !== lane) {
+    return {
+      lane,
+      view: emptyRunView,
+      status: "error",
+      error: `The server sent the ${view.lane} stream for the ${lane} lane. Try another mode.`,
+    };
   }
+  const base = { lane, view, status: toLaneStatus(stream.status) };
+  return stream.status === "error"
+    ? { ...base, error: describeStreamError(stream.closeCode, stream.error.message, apiUrl) }
+    : base;
+}
+
+/**
+ * The baseline lanes of the three-lane view. The NOTARY lane comes in as a prop, folded from the
+ * page's own stream, so toggling this view never opens a second NOTARY socket.
+ */
+function ThreeLaneContainer({
+  apiUrl,
+  scenario,
+  mode,
+  webSocket,
+  notary,
+}: {
+  apiUrl: string;
+  scenario: string;
+  mode: RunMode;
+  webSocket: WebSocketFactory | undefined;
+  notary: LaneInput;
+}) {
+  const socket = webSocket === undefined ? {} : { webSocket };
+  const undefended = useRunStream(apiUrl, scenario, { lane: "undefended", mode, ...socket });
+  const classifier = useRunStream(apiUrl, scenario, { lane: "classifier", mode, ...socket });
+  const undefendedView = useMemo(() => foldEvents(undefended.events), [undefended.events]);
+  const classifierView = useMemo(() => foldEvents(classifier.events), [classifier.events]);
+
+  const lanes = scenarioLanes(scenario).map((lane): LaneInput => {
+    if (lane === "undefended") return laneInput(lane, undefended, undefendedView, apiUrl);
+    if (lane === "classifier") return laneInput(lane, classifier, classifierView, apiUrl);
+    return notary;
+  });
+  return <ThreeLaneView lanes={lanes} />;
+}
+
+/** One run: a single NOTARY stream folded once, and every region drawn from that view. */
+function XRayRun({
+  apiUrl,
+  scenario,
+  mode,
+  viewMode,
+  webSocket,
+}: {
+  apiUrl: string;
+  scenario: string;
+  mode: RunMode;
+  viewMode: ViewMode;
+  webSocket: WebSocketFactory | undefined;
+}) {
+  const stream = useRunStream(apiUrl, scenario, {
+    lane: "notary",
+    mode,
+    ...(webSocket === undefined ? {} : { webSocket }),
+  });
+  const view = useMemo(() => foldEvents(stream.events), [stream.events]);
+  const client = useMemo(() => createRestClient(apiUrl), [apiUrl]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<ReadonlySet<string>>(() => new Set());
+
+  const runId = view.runId;
+  const fetchPending = useCallback(async () => {
+    if (runId === null) return [];
+    const list = await getPendingEndorsements(client, runId);
+    return list.pending.map((item) => ({
+      endorsement: item.endorsement,
+      remaining_approvals: item.remaining_approvals,
+    }));
+  }, [client, runId]);
+  const onResolvedChange = useCallback((next: ReadonlySet<string>) => {
+    setResolved((previous) =>
+      previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next,
+    );
+  }, []);
+  const toolByCallId = useMemo(
+    () => Object.fromEntries(view.calls.map((call) => [call.callId, call.tool])),
+    [view.calls],
+  );
+
+  const unresolved = view.endorsements.filter(
+    (item) => !resolved.has(item.endorsement.endorsement_id),
+  ).length;
+  const notary: LaneInput = laneInput("notary", stream, view, apiUrl);
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-4 p-6 md:grid-cols-2">
-      <h1 className="text-xl font-bold md:col-span-2">
-        Trust X-ray <span className="text-sm font-normal text-neutral-500">({stream.status})</span>
-      </h1>
+    <>
+      <header>
+        <h1 className="text-xl font-bold">
+          Trust X-ray{" "}
+          <span className="text-sm font-normal text-neutral-500">({stream.status})</span>{" "}
+          <span className="text-sm font-normal text-neutral-500">{laneLabel("notary", null)}</span>
+        </h1>
+      </header>
       {stream.status === "error" ? (
-        <p role="alert" className="text-red-600 md:col-span-2">
-          {stream.error.message}
-        </p>
+        <div role="alert" className="text-red-700">
+          {describeStreamError(stream.closeCode, stream.error.message, apiUrl)}
+        </div>
       ) : null}
-      <Card>
-        <CardTitle>Decision stream</CardTitle>
-        <DecisionStream events={stream.events} />
-      </Card>
-      <Card>
-        <CardTitle>Provenance graph</CardTitle>
-        <ProvenanceGraph view={view} />
-      </Card>
-      <Card>
-        <CardTitle>Intent contract</CardTitle>
-        <ContractPanel contract={contract} />
-      </Card>
-      <Card>
-        <CardTitle>Oracle</CardTitle>
-        <OracleLights result={oracle} />
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+        <Panel title="Contract">
+          <ContractPanel contract={view.contract} />
+        </Panel>
+        <div className="space-y-4">
+          <Panel title="Provenance graph">
+            <ProvenanceGraph view={view} selectedId={selectedId} onSelect={setSelectedId} />
+          </Panel>
+          {runId !== null && view.endorsements.length > 0 ? (
+            <EndorsementPanel
+              runId={runId}
+              endorsements={view.endorsements}
+              send={stream.send}
+              fetchPending={fetchPending}
+              eventCount={view.lastSeq + 1}
+              toolByCallId={toolByCallId}
+              onResolvedChange={onResolvedChange}
+              {...(stream.status === "error" && stream.closeCode !== undefined
+                ? { closeCode: stream.closeCode }
+                : {})}
+            />
+          ) : null}
+          <Panel title="Content inspector">
+            <ContentInspector view={view} valueId={valueIdForSelection(view, selectedId)} />
+          </Panel>
+        </div>
+        <Panel title="Decision stream">
+          <DecisionStream
+            view={view}
+            selectedCallId={callIdForSelection(view, selectedId)}
+            onSelect={(target) => {
+              setSelectedId(selectionFromChip(target).nodeId);
+            }}
+            resolvedEndorsements={resolved}
+          />
+        </Panel>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Panel title="Oracle">
+          <OraclePanel view={view} unresolvedEndorsements={unresolved} />
+        </Panel>
+        <Panel title="What changed">
+          <EffectsList view={view} />
+        </Panel>
+      </div>
+      {viewMode === "three-lane" ? (
+        <ThreeLaneContainer
+          apiUrl={apiUrl}
+          scenario={scenario}
+          mode={mode}
+          webSocket={webSocket}
+          notary={notary}
+        />
+      ) : null}
+      <AnchorFooter client={client} runId={runId} finished={view.finished !== null} />
+    </>
+  );
+}
+
+/** The Trust X-ray: controls on top, then the regions of one run. */
+export function XRayView({
+  apiUrl,
+  scenario: initialScenario,
+  mode: initialMode = "golden",
+  initialViewMode = "single",
+  webSocket,
+}: XRayViewProps) {
+  const [scenario, setScenario] = useState(initialScenario);
+  const [mode, setMode] = useState<RunMode>(initialMode);
+  const [requestedView, setRequestedView] = useState<ViewMode>(initialViewMode);
+  const [runKey, setRunKey] = useState(0);
+
+  // Only a scenario with all three recorded streams can show the three-lane view.
+  const viewMode: ViewMode = scenarioLanes(scenario).length < 3 ? "single" : requestedView;
+
+  const remember = (next: { scenario: string; mode: RunMode; viewMode: ViewMode }) => {
+    window.history.replaceState(null, "", xrayUrl(next));
+  };
+
+  return (
+    <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <RunControls
+        apiUrl={apiUrl}
+        scenario={scenario}
+        mode={mode}
+        viewMode={viewMode}
+        onScenarioChange={(next) => {
+          const nextView: ViewMode = scenarioLanes(next).length < 3 ? "single" : requestedView;
+          setScenario(next);
+          setRequestedView(nextView);
+          setRunKey((key) => key + 1);
+          remember({ scenario: next, mode, viewMode: nextView });
+        }}
+        onModeChange={(next) => {
+          setMode(next);
+          setRunKey((key) => key + 1);
+          remember({ scenario, mode: next, viewMode });
+        }}
+        onViewModeChange={(next) => {
+          setRequestedView(next);
+          remember({ scenario, mode, viewMode: next });
+        }}
+        onRunAgain={() => {
+          setRunKey((key) => key + 1);
+        }}
+      />
+      <XRayRun
+        key={runKey}
+        apiUrl={apiUrl}
+        scenario={scenario}
+        mode={mode}
+        viewMode={viewMode}
+        webSocket={webSocket}
+      />
     </main>
   );
 }

@@ -26,6 +26,8 @@ export interface EndorsementPanelProps {
   eventCount?: number;
   /** Call id to tool name, for the card title. */
   toolByCallId?: Readonly<Record<string, string>>;
+  /** Called, never during render, when the set of answered cards changes. */
+  onResolvedChange?: (resolved: ReadonlySet<string>) => void;
 }
 
 type Decision = "approve" | "reject";
@@ -54,6 +56,7 @@ export function EndorsementPanel({
   closeCode,
   eventCount,
   toolByCallId,
+  onResolvedChange,
 }: EndorsementPanelProps) {
   const [cards, setCards] = useState<ReadonlyMap<string, CardInfo>>(() => new Map());
   const [remaining, setRemaining] = useState<ReadonlyMap<string, number>>(() => new Map());
@@ -82,6 +85,22 @@ export function EndorsementPanel({
     cardsRef.current = next;
     setCards(next);
   }, []);
+
+  const onResolvedRef = useRef(onResolvedChange);
+  useEffect(() => {
+    onResolvedRef.current = onResolvedChange;
+  });
+  const lastResolved = useRef("");
+  useEffect(() => {
+    const ids = [...cards]
+      .filter(([, info]) => info.state === "approved" || info.state === "rejected")
+      .map(([id]) => id)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const key = ids.join("\n");
+    if (key === lastResolved.current) return;
+    lastResolved.current = key;
+    onResolvedRef.current?.(new Set(ids));
+  }, [cards]);
 
   const poll = useCallback(() => {
     requests.current += 1;
