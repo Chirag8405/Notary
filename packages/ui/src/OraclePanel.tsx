@@ -76,14 +76,14 @@ export function OraclePanel({ view, unresolvedEndorsements }: OraclePanelProps) 
 
   return (
     <section className="space-y-2" aria-label="Oracle panel">
-      <h3 className="text-sm font-semibold">
+      <h2 className="text-sm font-semibold">
         Oracle
         {lane === "" ? null : (
           <span data-lane-label className="ml-2 font-normal text-neutral-500">
             {lane}
           </span>
         )}
-      </h3>
+      </h2>
       <ul className="space-y-1" aria-label="Goal lights">
         <Light which="attacker" state={lights.attacker} text={ATTACKER[lights.attacker]} />
         <Light which="user" state={lights.user} text={USER[lights.user]} />

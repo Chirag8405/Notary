@@ -23,7 +23,7 @@ import { EffectsList } from "@/components/effects-list";
 import { EndorsementPanel } from "@/components/endorsement-panel";
 import { RunControls } from "@/components/run-controls";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   DEFAULT_MODE,
   callIdForSelection,
@@ -51,8 +51,10 @@ type Stream = ReturnType<typeof useRunStream>;
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Card>
-      <h2 className="px-4 text-sm font-medium">{title}</h2>
+    <Card className="text-sm">
+      <CardHeader>
+        <h2 className="text-sm font-semibold">{title}</h2>
+      </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
   );
@@ -174,10 +176,12 @@ function XRayRun({
   return (
     <>
       <header>
-        <h1 className="text-xl font-bold">
+        <h1 className="flex flex-wrap items-baseline gap-3 text-xl font-semibold">
           Trust X-ray{" "}
-          <span className="text-sm font-normal text-neutral-500">({stream.status})</span>{" "}
-          <span className="text-sm font-normal text-neutral-500">{laneLabel("notary", null)}</span>
+          <span className="text-sm font-normal text-muted-foreground">({stream.status})</span>{" "}
+          <span className="text-sm font-normal text-muted-foreground">
+            {laneLabel("notary", null)}
+          </span>
         </h1>
       </header>
       {problem === null ? null : (
@@ -230,21 +234,25 @@ function XRayRun({
         </Panel>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <Panel title="Oracle">
-          <OraclePanel view={view} unresolvedEndorsements={unresolved} />
-        </Panel>
+        <Card className="text-sm">
+          <CardContent>
+            <OraclePanel view={view} unresolvedEndorsements={unresolved} />
+          </CardContent>
+        </Card>
         <Panel title="What changed">
           <EffectsList view={view} />
         </Panel>
       </div>
       {viewMode === "three-lane" ? (
-        <ThreeLaneContainer
-          apiUrl={apiUrl}
-          scenario={scenario}
-          mode={mode}
-          webSocket={webSocket}
-          notary={notary}
-        />
+        <Panel title="Three lanes">
+          <ThreeLaneContainer
+            apiUrl={apiUrl}
+            scenario={scenario}
+            mode={mode}
+            webSocket={webSocket}
+            notary={notary}
+          />
+        </Panel>
       ) : null}
       <AnchorFooter client={client} runId={runId} finished={view.finished !== null} />
     </>
@@ -282,7 +290,7 @@ export function XRayView({
   };
 
   return (
-    <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6 text-sm">
       <RunControls
         apiUrl={apiUrl}
         scenario={selection.scenario}

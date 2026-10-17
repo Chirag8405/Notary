@@ -69,14 +69,14 @@ export function RunControls({
       aria-label="Run controls"
       className="flex flex-wrap items-center gap-3 text-sm"
     >
-      <label className="flex items-center gap-1">
+      <label className="flex items-center gap-2">
         Scenario
         <select
           value={scenario}
           onChange={(event) => {
             onScenarioChange(event.target.value);
           }}
-          className="border px-1"
+          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
         >
           {SCENARIOS.map((item) => (
             <option key={item} value={item}>
@@ -85,7 +85,7 @@ export function RunControls({
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-1">
+      <label className="flex items-center gap-2">
         Mode
         <select
           value={mode}
@@ -93,7 +93,7 @@ export function RunControls({
             const next = MODES.find((item) => item === event.target.value);
             if (next !== undefined) onModeChange(next);
           }}
-          className="border px-1"
+          className="h-8 rounded-none border border-input bg-background px-2.5 text-sm"
         >
           {shown.map((option) => (
             <option key={option.mode} value={option.mode} disabled={!option.enabled}>
@@ -103,21 +103,22 @@ export function RunControls({
         </select>
       </label>
       {disabledNotes.map((text) => (
-        <span key={text} data-mode-note className="text-xs text-neutral-600">
+        <span key={text} data-mode-note className="text-xs text-muted-foreground">
           {text}
         </span>
       ))}
       {mode === "live" ? (
-        <span className="text-xs text-amber-800">live runs are not reproducible</span>
+        <span className="text-xs text-muted-foreground">live runs are not reproducible</span>
       ) : null}
       {note === undefined || note === null ? null : (
-        <span data-switch-note role="status" className="text-xs text-neutral-600">
+        <span data-switch-note role="status" className="text-xs text-muted-foreground">
           {note}
         </span>
       )}
       <Button
         type="button"
         variant="outline"
+        className="text-sm"
         aria-pressed={viewMode === "three-lane"}
         onClick={() => {
           onViewModeChange(viewMode === "three-lane" ? "single" : "three-lane");
@@ -127,11 +128,11 @@ export function RunControls({
         Three-lane view
       </Button>
       {threeLaneAvailable ? null : (
-        <span className="text-xs text-neutral-600">
+        <span className="text-xs text-muted-foreground">
           only the NOTARY lane has a recorded stream for this scenario
         </span>
       )}
-      <Button type="button" onClick={onRunAgain}>
+      <Button type="button" className="text-sm" onClick={onRunAgain}>
         Run again
       </Button>
     </div>

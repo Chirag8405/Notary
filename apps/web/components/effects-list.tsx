@@ -8,7 +8,7 @@ export function EffectsList({ view }: { view: RunView }) {
   return (
     <section aria-label="What changed" className="space-y-1 text-sm">
       {effects.length === 0 ? (
-        <p className="text-neutral-500">nothing executed</p>
+        <p className="text-muted-foreground">nothing executed</p>
       ) : (
         <ol className="list-decimal space-y-1 pl-5">
           {effects.map((effect) => (
