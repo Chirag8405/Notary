@@ -26,6 +26,9 @@ class RunRequest(NotaryModel):
     scenario: str
     lane: Lane
     mode: RunMode
+    owner: str = ""
+    """The server-side identity of the socket (see `CommandContext.owner`). The socket sets it;
+    it is never read from the query. Empty outside a socket."""
 
 
 class RunSource(Protocol):

@@ -192,9 +192,11 @@ def test_source_receives_the_request() -> None:
     client = TestClient(create_app(event_delay=0, sources={"cassette": source}))
     with client.websocket_connect("/ws/runs/poisoned_bill?lane=classifier&mode=cassette") as ws:
         drain(ws)
-    assert source.requests == [
-        RunRequest(scenario="poisoned_bill", lane="classifier", mode="cassette")
-    ]
+    (request,) = source.requests
+    assert request.model_copy(update={"owner": ""}) == RunRequest(
+        scenario="poisoned_bill", lane="classifier", mode="cassette"
+    )
+    assert len(request.owner) >= 16  # the socket's own secret, never part of the query
 
 
 @pytest.mark.invariant("I4")
@@ -219,14 +221,12 @@ def test_command_is_dispatched_while_streaming() -> None:
             gate.set()
     assert frames == []
     assert closed.code == 1000
-    assert handled == [
-        (
-            EndorsementDecisionCommand(
-                type="endorsement_decision", run_id=RUN_ID, endorsement_id="e1", decision="approve"
-            ),
-            CommandContext(run_id=RUN_ID, lane="notary"),
-        )
-    ]
+    ((command, context),) = handled
+    assert command == EndorsementDecisionCommand(
+        type="endorsement_decision", run_id=RUN_ID, endorsement_id="e1", decision="approve"
+    )
+    assert (context.run_id, context.lane) == (RUN_ID, "notary")
+    assert len(context.owner) >= 16
 
 
 def close_after_command(

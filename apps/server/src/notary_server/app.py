@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 from collections.abc import Callable, Mapping
 from typing import Annotated, Literal
 
@@ -140,7 +141,8 @@ async def _receive_commands(
         try:
             if not isinstance(raw, str):
                 raise CommandRejected(CLOSE_BAD_REQUEST, "invalid command")
-            router.dispatch(raw, CommandContext(run_id=progress.run_id, lane=request.lane))
+            context = CommandContext(run_id=progress.run_id, lane=request.lane, owner=request.owner)
+            router.dispatch(raw, context)
         except CommandRejected as rejected:
             return rejected
 
@@ -230,7 +232,7 @@ def create_app(
 
     @app.get("/runs/{run_id}/endorsements", operation_id="listEndorsements")
     def run_endorsements(run_id: str) -> PendingList:
-        return PendingList(pending=() if broker is None else broker.pending(run_id))
+        return PendingList(pending=() if broker is None else broker.pending_for_run(run_id))
 
     @app.get("/runs/{run_id}/anchor", operation_id="getAnchor")
     def run_anchor(run_id: str) -> Anchor:
@@ -245,7 +247,14 @@ def create_app(
     ) -> None:
         await websocket.accept()
         try:
-            request = RunRequest.model_validate({"scenario": scenario, "lane": lane, "mode": mode})
+            request = RunRequest.model_validate(
+                {
+                    "scenario": scenario,
+                    "lane": lane,
+                    "mode": mode,
+                    "owner": secrets.token_urlsafe(16),
+                }
+            )
         except ValidationError:
             await websocket.close(code=CLOSE_BAD_REQUEST, reason="invalid run request")
             return
@@ -261,10 +270,12 @@ def create_app(
 
             Only the modes that escalate through the broker own cards. A golden run never
             registers one, and golden and cassette runs share the run id `run-<scenario>-<lane>`,
-            so a closing golden socket must not reject the card of a cassette run (#194).
+            so a closing golden socket must not reject the card of a cassette run (#194). The
+            cancel is scoped to this socket's own run: a tab of the same scenario and lane has
+            another owner and keeps its card (#201).
             """
             if request.mode in BROKER_MODES and broker is not None and progress.run_id is not None:
-                broker.cancel_run(progress.run_id)
+                broker.cancel_run(progress.run_id, owner=request.owner)
 
         async with anyio.create_task_group() as group:
 

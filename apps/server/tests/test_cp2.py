@@ -666,13 +666,13 @@ class SpyBroker(EndorsementBroker):
         super().__init__(timeout_seconds=5.0)
         self.calls: list[str] = []
 
-    def decider_for(self, run_id: str, *, max_approvals: int) -> EscalationDecider:
+    def decider_for(self, run_id: str, *, owner: str, max_approvals: int) -> EscalationDecider:
         self.calls.append("decider_for")
-        return super().decider_for(run_id, max_approvals=max_approvals)
+        return super().decider_for(run_id, owner=owner, max_approvals=max_approvals)
 
-    def cancel_run(self, run_id: str) -> None:
+    def cancel_run(self, run_id: str, *, owner: str) -> None:
         self.calls.append("cancel_run")
-        super().cancel_run(run_id)
+        super().cancel_run(run_id, owner=owner)
 
 
 @pytest.mark.invariant("I4")
@@ -703,8 +703,8 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
     run_id = golden_run_id(POISONED, "notary")
     with client.websocket_connect(f"/ws/runs/{POISONED}?lane=notary&mode=cassette") as ws:
         read_until(ws, "endorsement_requested")
-        wait_until(lambda: len(broker.pending(run_id)) == 1)
-    wait_until(lambda: broker.pending(run_id) == ())
+        wait_until(lambda: len(broker.pending_for_run(run_id)) == 1)
+    wait_until(lambda: broker.pending_for_run(run_id) == ())
     assert "cancel_run" in broker.calls
 
 
