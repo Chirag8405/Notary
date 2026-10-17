@@ -14,10 +14,13 @@ from starlette.websockets import WebSocketDisconnect
 from test_endorsement import (
     FINAL,
     RunnerSource,
+    Waiter,
     add_contact,
     card_frames,
     contacts_added,
     decide_over_socket,
+    decision,
+    endorsement,
     finish,
     socket_client,
     wait_until,
@@ -258,6 +261,42 @@ def test_the_token_is_not_a_parameter_of_submit_or_cancel() -> None:
     ):
         names = set(inspect.signature(method).parameters)
         assert not {"token", "read_key"} & names, method.__name__
+
+
+@pytest.mark.invariant("I4")
+def test_a_digest_or_token_is_not_an_owner() -> None:
+    """The stored digest and the raw token, in any spelling, answer and cancel nothing: only the
+    owner string the broker was started with does."""
+    broker = EndorsementBroker()
+    digest = read_key(b"k" * 32, "r1", TOKEN)
+    run = broker.start_run("r1", owner="the-owner", max_approvals=1, read_key=digest)
+    waiter = Waiter(run.decide, endorsement())
+    wait_until(lambda: len(broker.pending("r1", owner="the-owner")) == 1)
+    for impostor in (digest.hex(), digest.decode("latin-1"), TOKEN, TOKEN.upper(), ""):
+        assert broker.submit(decision(), owner=impostor) == "unknown_endorsement"
+        broker.cancel_run("r1", owner=impostor)
+        assert broker.pending("r1", owner=impostor) == ()
+    assert waiter.result is None
+    assert len(broker.pending("r1", owner="the-owner")) == 1
+    assert broker.submit(decision(), owner="the-owner") == "accepted"
+    assert waiter.join() == "approve"
+
+
+@pytest.mark.invariant("I4")
+def test_the_token_header_on_a_socket_handshake_is_ignored() -> None:
+    """Only `?token=` counts on a socket. A handshake header with another token neither changes
+    whose cards the socket's list shows nor is read anywhere."""
+    source = RunnerSource(EndorsementBroker(), script())
+    client = socket_client(source)
+    with client.websocket_connect(
+        with_token(URL, TOKEN), headers={TOKEN_HEADER: OTHER_TOKEN}
+    ) as ws:
+        card = card_frames(ws)
+        wait_until(lambda: len(source.broker.pending_for_run(card.run_id)) == 1)
+        assert len(listed(client, card.run_id, HEADERS)) == 1
+        assert listed(client, card.run_id, OTHER_HEADERS) == []
+        decide_over_socket(ws, card.run_id, card.endorsement.endorsement_id, "reject")
+        finish(ws)
 
 
 # ------------------------------------------------------------------- the socket and its token

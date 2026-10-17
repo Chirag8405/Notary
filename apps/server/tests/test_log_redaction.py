@@ -10,6 +10,7 @@ import logging
 import sys
 import threading
 import time
+import urllib.request
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 
@@ -100,6 +101,17 @@ def test_the_filter_redacts_tuple_arguments() -> None:
     assert made.getMessage() == "127.0.0.1 /ws/x?token=[redacted] 200"
 
 
+def test_the_filter_keeps_a_placeholder_whose_argument_holds_the_token() -> None:
+    """`"...?token=%s"` with the token as argument must not lose its placeholder, or logging
+    would fail with "not all arguments converted" and drop the record."""
+    made = record("GET /ws/x?token=%s HTTP/1.1", (TOKEN,))
+    FILTER.filter(made)
+    assert made.getMessage() == "GET /ws/x?token=[redacted] HTTP/1.1"
+    named = record("%(path)s?token=%(token)s", {"path": "/ws/x", "token": TOKEN})
+    FILTER.filter(named)
+    assert named.getMessage() == "/ws/x?token=[redacted]"
+
+
 def test_the_filter_redacts_a_mapping_argument() -> None:
     made = record("%(path)s", {"path": f"/ws/x?token={TOKEN}"})
     FILTER.filter(made)
@@ -111,10 +123,13 @@ def test_the_filter_redacts_an_argument_that_is_not_a_string() -> None:
         def __str__(self) -> str:
             return f"Request(path=/ws/x?token={TOKEN})"
 
-    made = record("%r", (Request(),))
+    made = record("%s", (Request(),))  # `%s` prints the str() of the object
     FILTER.filter(made)
     assert TOKEN not in made.getMessage()
     assert "token=[redacted]" in made.getMessage()
+    printed_by_repr = record("%r", (Request(),))  # `%r` prints its repr, which holds no token
+    FILTER.filter(printed_by_repr)
+    assert "[redacted]" not in printed_by_repr.getMessage()
 
 
 def test_the_filter_redacts_an_argument_whose_repr_holds_the_token() -> None:
@@ -208,6 +223,106 @@ def test_a_filter_class_instance_is_the_one_attached() -> None:
     assert isinstance(FILTER, RedactTokenFilter)
 
 
+# ------------------------------------------------------------- the record-factory fallback
+
+
+def test_a_record_without_a_token_is_left_exactly_as_it_was() -> None:
+    args = ("127.0.0.1", 200)
+    try:
+        raise ValueError("no secret here")
+    except ValueError:
+        made = record("%s answered %d", args, exc_info=True)
+    exc_info = made.exc_info
+    FILTER.filter(made)
+    assert made.msg == "%s answered %d"
+    assert made.args is args  # the same object, not a copy
+    assert made.exc_info is exc_info
+    assert made.exc_text is None  # the traceback is not rendered ahead of the formatter
+    assert made.stack_info is None
+
+
+class Spy:
+    """A record factory that is already installed when the app is made: it must be chained to."""
+
+    def __init__(self) -> None:
+        self.inner = logging.getLogRecordFactory()
+        self.made: list[str] = []
+
+    def __call__(self, *args: object, **kwargs: object) -> logging.LogRecord:
+        made = self.inner(*args, **kwargs)
+        made.__dict__["spied"] = True
+        self.made.append(made.name)
+        return made
+
+
+@contextmanager
+def previous_factory(spy: Spy) -> Generator[None]:
+    original = logging.getLogRecordFactory()
+    logging.setLogRecordFactory(spy)
+    try:
+        yield
+    finally:
+        logging.setLogRecordFactory(original)
+
+
+def test_the_factory_chains_to_the_previous_one(detached: None) -> None:
+    spy = Spy()
+    with previous_factory(spy):
+        create_app(event_delay=0)
+        factory = logging.getLogRecordFactory()
+        assert isinstance(factory, log_redaction.RedactingFactory)
+        assert factory.inner is spy
+        made = logging.getLogger("websockets.server").makeRecord(
+            "websockets.server", logging.INFO, __file__, 1, "x", (), None
+        )
+        assert getattr(made, "spied", False) is True  # the previous factory built the record
+        assert spy.made == ["websockets.server"]
+
+
+def test_the_factory_is_installed_once_however_many_apps_are_made(detached: None) -> None:
+    spy = Spy()
+    with previous_factory(spy):
+        for _ in range(4):
+            create_app(event_delay=0)
+            attach_redaction()
+        factory = logging.getLogRecordFactory()
+        assert isinstance(factory, log_redaction.RedactingFactory)
+        assert factory.inner is spy  # not wrapped in itself
+        logging.getLogger("websockets.server").makeRecord(
+            "websockets.server", logging.INFO, __file__, 1, "x", (), None
+        )
+        assert spy.made == ["websockets.server"]  # built once, not once per wrapper
+
+
+def test_the_factory_redacts_only_the_trees_and_only_a_token(detached: None) -> None:
+    create_app(event_delay=0)
+    factory = logging.getLogRecordFactory()
+    line = f"GET /ws/x?token={TOKEN}"
+    inside = factory("websockets.server", logging.INFO, __file__, 1, line, (), None)
+    child = factory("uvicorn.access", logging.INFO, __file__, 1, line, (), None)
+    outside = factory("notary_server.app", logging.INFO, __file__, 1, line, (), None)
+    clean_args = ("a", 1)
+    clean = factory("websockets.server", logging.INFO, __file__, 1, "%s %d", clean_args, None)
+    assert inside.getMessage() == "GET /ws/x?token=[redacted]"
+    assert child.getMessage() == "GET /ws/x?token=[redacted]"
+    assert outside.getMessage() == line  # not one of the covered loggers
+    assert clean.args is clean_args
+    assert clean.msg == "%s %d"
+
+
+def test_a_logger_made_later_is_covered_by_the_factory_alone(detached: None) -> None:
+    """No logger filter at all: the factory still redacts a child that did not exist yet."""
+    create_app(event_delay=0)
+    for logger in tree_loggers():
+        logger.removeFilter(FILTER)
+    late = logging.getLogger("websockets.a_child_nobody_attached_a_filter_to")
+    assert FILTER not in late.filters
+    with capturing((late.name,)) as capture:
+        late.info("GET /ws/x?token=%s", TOKEN)
+    assert TOKEN not in capture.text()
+    assert "token=[redacted]" in capture.text()
+
+
 # ------------------------------------------------------------------- one capture for all
 
 
@@ -217,9 +332,13 @@ class Capture(logging.Handler):
     def __init__(self) -> None:
         super().__init__(logging.DEBUG)
         self.lines: list[str] = []
+        self.names: set[str] = set()
+        self.by_name: dict[str, list[str]] = {}
         self._formatter = logging.Formatter("%(name)s %(levelname)s %(message)s")
 
     def emit(self, record: logging.LogRecord) -> None:
+        self.names.add(record.name)
+        self.by_name.setdefault(record.name, []).append(self._formatter.format(record))
         self.lines.append(self._formatter.format(record))
         self.lines.append(record.getMessage())
         if record.exc_text:
@@ -227,6 +346,10 @@ class Capture(logging.Handler):
 
     def text(self) -> str:
         return "\n".join(self.lines)
+
+    def text_of(self, name: str) -> str:
+        """Everything the logger `name` (and no other) printed."""
+        return "\n".join(self.by_name.get(name, []))
 
 
 @contextmanager
@@ -363,8 +486,21 @@ def serving(app: FastAPI) -> Generator[int]:
         assert not thread.is_alive()
 
 
+def get_list(port: int) -> None:
+    """The REST list twice: with the header (the real client) and with a stray `?token=` in the
+    query (a client that got it wrong), which uvicorn.access would print."""
+    run = "run-poisoned_bill-notary"
+    for query in ("", f"?token={TOKEN}"):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/runs/{run}/endorsements{query}",
+            headers={"X-Notary-Token": TOKEN},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert response.status == 200
+
+
 def talk(port: int) -> list[int]:
-    """One good socket and one with a bad token; the close code of each."""
+    """One good socket and one with a bad token (the close code of each), then the REST list."""
     codes: list[int] = []
     for query in (f"token={TOKEN}", f"token={BAD_TOKEN}", f"token={OTHER_TOKEN}"):
         url = f"ws://127.0.0.1:{port}/ws/runs/poisoned_bill?lane=notary&mode=cassette&{query}"
@@ -374,6 +510,7 @@ def talk(port: int) -> list[int]:
                     socket.recv(timeout=5)
         except ConnectionClosed as closed:
             codes.append(-1 if closed.rcvd is None else closed.rcvd.code)
+    get_list(port)
     return codes
 
 
@@ -384,6 +521,11 @@ def test_a_real_uvicorn_run_logs_no_token(detached: None) -> None:
     assert codes == [1000, 4400, 1000]
     text = capture.text()
     assert "/ws/runs/poisoned_bill" in text  # the servers did log the requests
+    # Every covered logger really printed something in this run: the capture saw them all.
+    assert {"uvicorn.access", "uvicorn.error"} <= capture.names
+    assert any(name.startswith("websockets.") for name in capture.names)
+    assert "token=[redacted]" in capture.text_of("uvicorn.access")  # the stray ?token= on HTTP
+    assert "token=[redacted]" in capture.text_of("uvicorn.error")  # the WebSocket [accepted] line
     assert TOKEN not in text
     assert OTHER_TOKEN not in text
     assert BAD_TOKEN not in text  # a refused token is redacted as well
@@ -399,3 +541,9 @@ def test_control_a_real_uvicorn_run_prints_the_token_without_the_filter() -> Non
     assert codes == [1000, 4400, 1000]
     assert TOKEN in capture.text()
     assert BAD_TOKEN in capture.text()
+    # ... and it leaks through each logger the filter covers, so each assertion above has teeth.
+    assert TOKEN in capture.text_of("uvicorn.access")
+    assert TOKEN in capture.text_of("uvicorn.error")
+    assert any(
+        TOKEN in capture.text_of(name) for name in capture.names if name.startswith("websockets.")
+    )

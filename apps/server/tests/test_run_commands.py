@@ -91,3 +91,26 @@ def test_the_compose_file_does_not_scale_the_server() -> None:
     assert "replicas" not in server
     assert "scale" not in server
     assert "WEB_CONCURRENCY" not in server
+
+
+def locked_version(name: str) -> tuple[int, ...]:
+    lock = (ROOT / "uv.lock").read_text()
+    match = re.search(rf'\[\[package\]\]\nname = "{name}"\nversion = "([0-9.]+)"', lock)
+    assert match is not None, name
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def test_uvicorn_and_websockets_are_pinned_to_a_range_the_lock_satisfies() -> None:
+    """`--ws websockets` is deprecated upstream (uvicorn 0.54 says it will point at the sansio
+    implementation), and the log filter covers the `websockets` loggers of this implementation. So
+    both are held to a minor range; moving them is a reviewed change (see the deploy notes)."""
+    pyproject = (ROOT / "apps/server/pyproject.toml").read_text()
+    uvicorn_pin = re.search(r'"uvicorn>=(\d+)\.(\d+),<(\d+)\.(\d+)"', pyproject)
+    websockets_pin = re.search(r'"websockets>=(\d+),<(\d+)"', pyproject)
+    assert uvicorn_pin is not None, "uvicorn needs a lower and an upper bound"
+    assert websockets_pin is not None, "websockets needs a lower and an upper bound"
+    low = (int(uvicorn_pin[1]), int(uvicorn_pin[2]))
+    high = (int(uvicorn_pin[3]), int(uvicorn_pin[4]))
+    assert low < high
+    assert low <= locked_version("uvicorn")[:2] < high
+    assert int(websockets_pin[1]) <= locked_version("websockets")[0] < int(websockets_pin[2])

@@ -2,8 +2,8 @@
 
 uvicorn prints the request line, query string included, and so do the WebSocket library's
 handshake lines, so a `?token=<value>` could reach an access log or an error log. One filter
-rewrites every `token=<value>` to `token=[redacted]` in the message, the arguments, the exception
-text and the stack text of a record.
+rewrites every `token=<value>` to `token=[redacted]` in the rendered message (arguments included),
+the exception text and the stack text of a record.
 
 `attach_redaction()` puts it on `uvicorn.access`, `uvicorn.error` and the `websockets` tree. A
 logger filter only sees the records of its own logger, and the library creates its child loggers
@@ -14,7 +14,7 @@ later. Calling it again changes nothing, so it holds under `--reload` and when m
 
 import logging
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 
 REDACTED_TREES = ("uvicorn.access", "uvicorn.error", "websockets")
 """The loggers that can print a request line, and their children."""
@@ -28,45 +28,37 @@ def redact(text: str) -> str:
     return _TOKEN_VALUE.sub(_REDACTED, text)
 
 
-def _redact_arg(value: object) -> object:
-    if isinstance(value, str):
-        return redact(value)
-    if isinstance(value, int | float | bool) or value is None:
-        return value
-    for text in (str(value), repr(value)):  # `%s` and `%r` print different things
-        if _TOKEN_VALUE.search(text):
-            return redact(text)
-    return value
+def has_token(text: str) -> bool:
+    return _TOKEN_VALUE.search(text) is not None
 
 
 class RedactTokenFilter(logging.Filter):
-    """Redacts in place and never drops a record."""
+    """Redacts a record in place only when it holds a token, and never drops a record.
+
+    The message is redacted AFTER it is rendered (`msg % args`): redacting the template would eat
+    the placeholder of `"...?token=%s"` and leave its argument without a place. A record that
+    holds a token gets the redacted text as its message and no arguments; a record without one is
+    left exactly as it was (same message, same argument objects, no traceback rendered early)."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if not isinstance(record.msg, str) and _TOKEN_VALUE.search(str(record.msg)):
-            record.msg = str(record.msg)
-        if isinstance(record.msg, str):
-            record.msg = redact(record.msg)
-        record.args = _redact_args(record.args)
+        try:
+            text = record.getMessage()
+        except (TypeError, ValueError, KeyError):
+            text = None  # a malformed call: leave it for logging to report as it always does
+        if text is not None and has_token(text):
+            record.msg = redact(text)
+            record.args = None
         if record.exc_text is None and record.exc_info is not None and record.exc_info[0]:
-            # The formatter would render the traceback later and cache it here; render it now so
-            # the redaction below applies to it.
-            record.exc_text = logging.Formatter().formatException(record.exc_info)
-        if record.exc_text:
+            # Render the traceback to look at it; keep the text only when it holds the token (the
+            # formatter would render the same text later and cache it here).
+            rendered = logging.Formatter().formatException(record.exc_info)
+            if has_token(rendered):
+                record.exc_text = redact(rendered)
+        elif record.exc_text and has_token(record.exc_text):
             record.exc_text = redact(record.exc_text)
-        if record.stack_info:
+        if record.stack_info and has_token(record.stack_info):
             record.stack_info = redact(record.stack_info)
         return True
-
-
-def _redact_args(
-    args: tuple[object, ...] | Mapping[str, object] | None,
-) -> tuple[object, ...] | Mapping[str, object] | None:
-    if args is None:
-        return None
-    if isinstance(args, Mapping):
-        return {key: _redact_arg(value) for key, value in args.items()}
-    return tuple(_redact_arg(value) for value in args)
 
 
 FILTER = RedactTokenFilter()
