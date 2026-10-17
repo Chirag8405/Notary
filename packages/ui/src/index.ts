@@ -1,10 +1,12 @@
 export { ContractPanel, type ContractPanelProps } from "./ContractPanel";
 export { DecisionStream, type DecisionStreamProps } from "./DecisionStream";
 export { OracleLights, type OracleLightsProps } from "./OracleLights";
+export { OraclePanel, type OraclePanelProps } from "./OraclePanel";
 export { ProvenanceGraph, type ProvenanceGraphProps } from "./ProvenanceGraph";
 export { ReplayScrubber, type ReplayScrubberProps } from "./ReplayScrubber";
 export { ThreeLaneView, type ThreeLaneViewProps } from "./ThreeLaneView";
 export { describeEvent } from "./describe-event";
+export { goalLights, laneLabel, type GoalLights, type LightState } from "./goal-lights";
 export { layout } from "./graph-layout";
 export {
   buildGraph,
