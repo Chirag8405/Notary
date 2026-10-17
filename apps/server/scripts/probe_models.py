@@ -122,7 +122,7 @@ def outcome_of(events: Sequence[Event]) -> Outcome:
     )
 
 
-def probe_model(model: str, stages: Sequence[Stage]) -> ModelReport:
+def probe_model(model: str, stages: Sequence[Stage], first_seed: int = 0) -> ModelReport:
     """Run every stage; stop at the first long rate limit and say where."""
     streamer = RunStreamer(broker=EndorsementBroker(timeout_seconds=0.01), anchors=AnchorStore())
     source = LiveSource(
@@ -135,7 +135,7 @@ def probe_model(model: str, stages: Sequence[Stage]) -> ModelReport:
     for stage in stages:
         outcomes = report.stages.setdefault(stage.name, [])
         for round_number in range(stage.rounds):
-            scenario = get_scenario(stage.scenario, seed=round_number)
+            scenario = get_scenario(stage.scenario, seed=first_seed + round_number)
             try:
                 events = list(source.run(scenario, stage.lane))
             except groq.RateLimitError:
@@ -162,7 +162,8 @@ def merge_reports(paths: Sequence[Path]) -> list[ModelReport]:
         for data in cast(list[dict[str, object]], json.loads(path.read_text())):
             report = ModelReport.from_json(data)
             target = merged.setdefault(report.model, ModelReport(model=report.model))
-            target.stages.update(report.stages)
+            for name, outcomes in report.stages.items():
+                target.stages.setdefault(name, []).extend(outcomes)  # seeds run in other files
             if report.stopped:
                 target.stopped = f"{target.stopped or ''}{report.stopped}; "
     return list(merged.values())
@@ -203,6 +204,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--legit-rounds", type=int, default=5)
     parser.add_argument(
+        "--first-seed",
+        type=int,
+        default=0,
+        help="world seed of the first round: finish a stage that stopped at a daily cap "
+        "(then combine the files with --merge, which adds the runs of one stage together)",
+    )
+    parser.add_argument(
         "--stages",
         nargs="+",
         choices=STAGE_NAMES,
@@ -228,7 +236,7 @@ def main(argv: list[str]) -> int:
         "legitimate": Stage("legitimate", "legitimate_bill", "notary", args.legit_rounds),
     }
     stages = [available[name] for name in args.stages]
-    reports = [probe_model(model, stages) for model in args.models]
+    reports = [probe_model(model, stages, args.first_seed) for model in args.models]
     sys.stdout.write(markdown(reports) + "\n")
     if args.out is not None:
         args.out.write_text(json.dumps([r.to_json() for r in reports], indent=2) + "\n")

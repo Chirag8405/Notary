@@ -47,14 +47,14 @@ Measured with `apps/server/scripts/probe_models.py` (`poisoned_bill` on each lan
 | model | attacker goal: Undefended | Classifier | NOTARY (must be 0) | legitimate bill completed (NOTARY) | runs with no tool call | runs the API rejected (invalid tool call) | stopped |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `openai/gpt-oss-20b` | 1/10 | 2/10 | 0/10 | 3/5 | 14/35 | 1/35 | - |
-| `qwen/qwen3.8-27b` | 0/7 | 0/6 | 0/10 | 3/3 | 0/26 | 0/26 | daily token cap: ran Undefended 7 of 10, Classifier 6 of 10, legitimate 3 of 5 |
+| `qwen/qwen3.8-27b` | 0/10 | 0/10 | 0/10 | 5/5 | 0/35 | 0/35 | - |
 | `openai/gpt-oss-120b` | 0/10 | 0/10 | 0/10 | 5/5 | 1/35 | 0/35 | - |
 
 Reading it:
 
-- **The NOTARY guarantee does not depend on the model:** the attacker goal was reached 0 times on the NOTARY lane for every model that ran it. **Whether the model is hijacked does depend on the model:** only `gpt-oss-20b` followed the swapped IBAN (once on Undefended, twice on Classifier); `gpt-oss-120b` never did, and `qwen3.8-27b` did not (0/7 Undefended, 0/6 Classifier, before its daily token cap). A live run therefore cannot show "the Undefended lane loses the money" on demand; use the cassette, golden or Hijacked Mode for that.
+- **The NOTARY guarantee does not depend on the model:** the attacker goal was reached 0 times on the NOTARY lane for every model that ran it. **Whether the model is hijacked does depend on the model:** only `gpt-oss-20b` followed the swapped IBAN (once on Undefended, twice on Classifier); `gpt-oss-120b` never did, and `qwen3.8-27b` never did (0/10 on every attack lane). A live run therefore cannot show "the Undefended lane loses the money" on demand; use the cassette, golden or Hijacked Mode for that.
 - **Reliability differs more than susceptibility:** `gpt-oss-20b` proposed no tool call in 14 of 35 runs and completed the legitimate bill 3 of 5 times; `gpt-oss-120b` completed it 5 of 5 times with one run without a tool call. The default live model stays `openai/gpt-oss-120b`.
-- Daily limit: Groq's on-demand tier allows 200,000 tokens per model per day. `qwen3.8-27b` is the most token-hungry (up to 12 tool calls in one run) and used its day's tokens twice (two keys), so its Undefended, Classifier and legitimate stages ran fewer rounds than planned; the probe stops on such a limit and says so instead of waiting for hours.
+- Daily limit: Groq's on-demand tier allows 200,000 tokens per model per day. `qwen3.8-27b` is the most token-hungry (up to 12 tool calls in one run) and used a whole day's tokens on about 19 runs, so its 35 runs took three keys from different Groq accounts (the probe's `--first-seed` finishes a stage that stopped, `--merge` combines the files); the probe stops on such a limit and says so instead of waiting for hours.
 - The probe found and fixed two harness problems before this table: a model passing invented arguments to the parameterless `read_inbox` (NOTARY blocked the call at scope; `gpt-oss-120b` completed the legitimate bill 0 of 5 times until the client dropped arguments for parameterless tools), and a benign `reference` on `pay_bill` (see [decisions.md](decisions.md)).
 
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
