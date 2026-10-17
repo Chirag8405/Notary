@@ -10,6 +10,9 @@ export default function Home() {
       <Button asChild>
         <Link href="/x-ray">Open Trust X-ray</Link>
       </Button>
+      <Button asChild variant="outline">
+        <Link href="/playground">Open judge playground</Link>
+      </Button>
     </main>
   );
 }

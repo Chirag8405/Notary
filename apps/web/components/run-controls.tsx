@@ -2,6 +2,7 @@
 
 import { createRestClient, listModes } from "@notary/client";
 import type { RunMode } from "@notary/client";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,9 @@ export function RunControls({
       <Button type="button" className="text-sm" onClick={onRunAgain}>
         Run again
       </Button>
+      <Link href="/playground" className="text-sm underline">
+        Judge playground
+      </Link>
     </div>
   );
 }
