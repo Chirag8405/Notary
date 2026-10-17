@@ -30,6 +30,14 @@ describe("package exports", () => {
       "parseEvent",
       "EventValidationError",
       "StreamClosedError",
+      "poisonWorld",
+      "listAttacks",
+      "runAttack",
+      "startHijacked",
+      "submitHijackedCall",
+      "getHijacked",
+      "startArena",
+      "PlaygroundHttpError",
     ] as const) {
       expect(typeof client[name], name).toBe("function");
     }

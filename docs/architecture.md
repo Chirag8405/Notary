@@ -160,6 +160,7 @@ Hijacked Mode endpoints (`notary_server.hijacked`, in-memory sessions, no LLM):
 - Generated JSON Schema: [`packages/schema/json/`](../packages/schema/json)
 - Generated TS types and Zod: [`packages/schema/src/generated/`](../packages/schema/src/generated)
 - Validated on receipt in `packages/client` (`streamRun`); invalid events throw `EventValidationError`. Commands are validated before sending (`encodeCommand`).
+- Playground REST helpers in `packages/client` (`poisonWorld`, `listAttacks`, `runAttack`, `startHijacked`, `submitHijackedCall`, `getHijacked`, `startArena`) validate the `events` of a response with `EventSchema` (an invalid event rejects with `playground response has invalid events`); every non-2xx becomes a `PlaygroundHttpError` carrying `status` and the server's `detail` (`invalid request` when `detail` is not a string).
 - Golden streams for every lane: [`packages/world/fixtures/streams/`](../packages/world/fixtures/streams); command examples: [`packages/world/fixtures/commands/`](../packages/world/fixtures/commands).
 
 Other frozen interfaces (stubs until their phase): `decide()` in [`monitor.py`](../packages/core/src/notary_core/monitor.py), the pure Gateway and Value Store in [`gateway.py`](../packages/core/src/notary_core/gateway.py), and the `AgentRunner` hooks in [`runner.py`](../packages/core/src/notary_core/runner.py). Tagged `contracts-v1`.
