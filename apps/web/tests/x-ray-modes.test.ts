@@ -64,19 +64,15 @@ describe("modeOptions", () => {
         const reason = goldenBlockedReason(scenario, viewMode);
         expect(golden?.enabled).toBe(reason === null);
         expect(golden?.note).toBe(reason);
-        const works = scenario === "poisoned_bill" && viewMode === "single";
+        const works = !(scenario === "legitimate_bill" && viewMode === "three-lane");
         expect(golden?.enabled).toBe(works);
       }
     }
-    expect(goldenBlockedReason("legitimate_bill", "single")).toBe(
-      "no recorded stream for this scenario; use cassette",
-    );
+    expect(goldenBlockedReason("legitimate_bill", "single")).toBeNull();
     expect(goldenBlockedReason("legitimate_bill", "three-lane")).toBe(
-      "no recorded stream for this scenario; use cassette",
+      "no recorded baseline streams for this scenario; use cassette",
     );
-    expect(goldenBlockedReason("poisoned_bill", "three-lane")).toBe(
-      "golden replays one stream for every lane; use cassette",
-    );
+    expect(goldenBlockedReason("poisoned_bill", "three-lane")).toBeNull();
     expect(goldenBlockedReason("poisoned_bill", "single")).toBeNull();
   });
 
@@ -143,19 +139,28 @@ describe("effectiveMode and settleSelection", () => {
       settleSelection({ scenario: "legitimate_bill", mode: "golden", viewMode: "single" }),
     ).toEqual({
       scenario: "legitimate_bill",
-      mode: "cassette",
+      mode: "golden",
       viewMode: "single",
-      note: "Switched to cassette: no recorded stream for this scenario; use cassette",
+      note: null,
     });
     expect(
       settleSelection({ scenario: "poisoned_bill", mode: "golden", viewMode: "three-lane" }),
     ).toEqual({
       scenario: "poisoned_bill",
-      mode: "cassette",
+      mode: "golden",
       viewMode: "three-lane",
-      note: "Switched to cassette: golden replays one stream for every lane; use cassette",
+      note: null,
     });
-    // The three-lane view needs three streams, so it falls back to the single view first.
+    // The three-lane view needs three streams, so it falls back to the single view first, and
+    // golden then works for the single view.
+    expect(
+      settleSelection({ scenario: "legitimate_bill", mode: "golden", viewMode: "three-lane" }),
+    ).toEqual({
+      scenario: "legitimate_bill",
+      mode: "golden",
+      viewMode: "single",
+      note: null,
+    });
     expect(
       settleSelection({ scenario: "legitimate_bill", mode: "cassette", viewMode: "three-lane" }),
     ).toEqual({

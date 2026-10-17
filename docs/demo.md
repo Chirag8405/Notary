@@ -16,7 +16,7 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 `WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Anthropic API.
 
-Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) and `legitimate_bill` on the NOTARY lane only (#196: the baseline lanes have no golden `legitimate_bill` stream and close `4404`). The x-ray page still moves `legitimate_bill` and the three-lane view to `cassette` by itself; that is a web change.
+Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) and `legitimate_bill` on the NOTARY lane only (#196: the baseline lanes have no golden `legitimate_bill` stream and close `4404`). The x-ray page uses `golden` for both scenarios and for the three-lane view of `poisoned_bill` (#206); the three-lane view of `legitimate_bill` does not exist (only the NOTARY lane has a stream), so the page shows its single view.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Supporting views: Content Inspector; three-lane split (Undefended / Classifier-o
 
 - Built: contract chips, provenance graph, decision rows, oracle lights, content inspector, endorsement card, three-lane view, effects list and audit anchor footer. The replay scrubber is built (`ReplayPlayer`, `viewAt`): a position is the number of events shown (0..length), stepped by the user with no timer or autoplay; the parent folds with `viewAt`. `AsrChart` (pure SVG, no chart library) plots the attack success rate per round for the attacker arena; its input type is its own, so `packages/ui` stays free of `@notary/client`.
 - A call decided twice (ESCALATE, then ALLOW after an approval) shows the latest verdict, with the earlier decision under "earlier decisions".
-- Modes: `golden` sends the stream of the requested lane (`<scenario>.<lane>`) and, for `legitimate_bill`, only the NOTARY stream (#196); `cassette` replays a recorded run through the real runner, per lane, and waits at the card until the user answers; `live` needs an LLM API key and is not reproducible. The page defaults to `golden`, never to `live`, and moves a golden choice that cannot work (the three-lane view, `legitimate_bill`) to `cassette` and says so.
+- Modes: `golden` sends the stream of the requested lane (`<scenario>.<lane>`) and, for `legitimate_bill`, only the NOTARY stream (#196); `cassette` replays a recorded run through the real runner, per lane, and waits at the card until the user answers; `live` needs an LLM API key and is not reproducible. The page defaults to `golden`, never to `live`, and moves a golden choice that cannot work to `cassette` and says so (today no reachable screen needs it: `legitimate_bill` falls back to the single view first).
 - Decisions: the hash link is a content hash, there is no classifier-flag outline, the effects list stands in for the world diff, and endorsement resolution is tracked on the client; see [decisions.md](decisions.md).
 - The Endorsement card approves or rejects the value it shows: Confirm approves that value (it is written to the ledger and the call runs), Reject keeps the call blocked. It cannot propose a different payee (#207).
 
@@ -83,7 +83,7 @@ The "Attack library" panel (`apps/web/components/attack-library-panel.tsx`, `/pl
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ~0:00 | 1. Undefended agent, poisoned bill. User says "pay the bill in december.txt". Swapped IBAN, money lost, red light (A3)                                     |
 | ~0:35 | 2. Classifier lane, same run: passes, red again                                                                                                            |
-| ~1:00 | 3. NOTARY lane: the swapped IBAN is a novel payee, so the call escalates and the card shows it against the nearest known payee with the differing characters marked. Press Reject: attacker light green, run blocked, nothing paid (the user light reads "User goal not achieved": the bill was deliberately not paid) |
+| ~1:00 | 3. NOTARY lane: the swapped IBAN is a novel payee, so the call escalates and the card shows it against the nearest known payee with the differing characters marked. Press Reject: attacker light green, run blocked, nothing paid (the user light is neutral and reads "Bill not paid: you rejected it, blocked safely", not red: the bill was deliberately not paid, #208) |
 | ~1:30 | 4. Legitimate bill pays silently via ledger match                                                                                                          |
 | ~1:50 | 5. Hijacked Mode, judge at the keyboard: every attempt blocked with a reason                                                                               |
 | ~2:30 | 6. Close on evaluation numbers and the fuzz result                                                                                                         |
@@ -95,8 +95,8 @@ Optional second beat for step 3 (the residual risk): press **Run again**, then *
 Steps on the page (cassette stack, [CP3](phase.md#integration-checkpoints)):
 
 - Steps 1 and 2: `/x-ray?scenario=poisoned_bill&mode=cassette&view=three`. The Undefended and Classifier-only (stand-in) columns show the payment to the attacker IBAN and a red attacker light.
-- Step 3: the NOTARY column and the single-lane regions of the same page: yellow ESCALATE gate, endorsement card (Confirm and Reject), green attacker light, user light pending until the card is answered. The presenter presses **Reject**: the card reads "You rejected this request", the run ends blocked ("1 call(s) not executed"), the attacker light stays green ("Attacker goal not reached") and the user light turns red ("User goal not achieved"): nothing was paid. The optional Confirm beat is described under the table.
-- Step 4: `/x-ray?scenario=legitimate_bill&mode=cassette` (`legitimate_bill` has no golden stream): no card, two ALLOW rows, green user light, payment to the ledger IBAN.
+- Step 3: the NOTARY column and the single-lane regions of the same page: yellow ESCALATE gate, endorsement card (Confirm and Reject), green attacker light, user light pending until the card is answered. The presenter presses **Reject**: the card reads "You rejected this request", the run ends blocked ("1 call(s) not executed"), the attacker light stays green ("Attacker goal not reached") and the user light turns neutral grey ("Bill not paid: you rejected it, blocked safely"; it is red only when no card was rejected): nothing was paid. The optional Confirm beat is described under the table.
+- Step 4: `/x-ray?scenario=legitimate_bill&mode=cassette` (`cassette` is the recorded run; `golden` also works for this scenario on the NOTARY lane): no card, two ALLOW rows, green user light, payment to the ledger IBAN.
 - Steps 5 and 6 are not on this page.
 
 ## Fallback plan

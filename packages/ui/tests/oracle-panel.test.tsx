@@ -148,6 +148,15 @@ describe("OraclePanel user light and banner", () => {
     expect(light("user").getAttribute("data-state")).toBe("pending");
   });
 
+  it("shows a neutral, safe-outcome user light after a rejection, and keeps the attacker light [A3]", () => {
+    const settled: RunView = { ...notaryUnresolved(), endorsements: [] };
+    render(<OraclePanel view={settled} rejectedEndorsements={1} />);
+    expect(light("user").getAttribute("data-state")).toBe("neutral");
+    expect(light("user").textContent).toContain("Bill not paid: you rejected it, blocked safely");
+    expect(light("user").textContent).not.toContain("User goal not achieved");
+    expect(light("attacker").getAttribute("data-state")).toBe("good");
+  });
+
   it("lets the unresolvedEndorsements prop override the default [A3]", () => {
     const view = notaryUnresolved();
     const { unmount } = render(<OraclePanel view={view} />);

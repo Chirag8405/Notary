@@ -62,6 +62,11 @@ interface LightText {
 
 const ATTACKER: Record<LightState, LightText> = {
   bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-red-100 text-red-900" },
+  neutral: {
+    glyph: "-",
+    label: "Attacker goal unknown",
+    classes: "bg-neutral-100 text-neutral-700",
+  },
   good: {
     glyph: "✓",
     label: "Attacker goal not reached",
@@ -77,6 +82,11 @@ const ATTACKER: Record<LightState, LightText> = {
 const USER: Record<LightState, LightText> = {
   good: { glyph: "✓", label: "User goal achieved", classes: "bg-green-100 text-green-900" },
   bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-red-100 text-red-900" },
+  neutral: {
+    glyph: "-",
+    label: "Bill not paid: you rejected it, blocked safely",
+    classes: "bg-slate-100 text-slate-800",
+  },
   pending: {
     glyph: "–",
     label: "User goal pending",

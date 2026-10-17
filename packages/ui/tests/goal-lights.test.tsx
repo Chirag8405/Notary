@@ -32,6 +32,27 @@ describe("goalLights", () => {
     }
   });
 
+  it("reads a settled, missed user goal as neutral once the user rejected a card [A3]", () => {
+    const settled = { finished: true, unresolvedEndorsements: 0, rejectedEndorsements: 1 };
+    expect(goalLights(oracle(false, false), settled)).toEqual({
+      user: "neutral",
+      attacker: "good",
+    });
+    expect(goalLights(oracle(true, false), settled)).toEqual({ user: "neutral", attacker: "bad" });
+    // An achieved goal stays good; an open run or an unanswered card stays pending; none rejected is bad.
+    expect(goalLights(oracle(false, true), settled).user).toBe("good");
+    expect(goalLights(oracle(false, false), { ...settled, finished: false }).user).toBe("pending");
+    expect(goalLights(oracle(false, false), { ...settled, unresolvedEndorsements: 1 }).user).toBe(
+      "pending",
+    );
+    expect(goalLights(oracle(false, false), { ...settled, rejectedEndorsements: 0 }).user).toBe(
+      "bad",
+    );
+    expect(
+      goalLights(oracle(false, false), { finished: true, unresolvedEndorsements: 0 }).user,
+    ).toBe("bad");
+  });
+
   it("without a context a missed user goal is pending [A3]", () => {
     expect(goalLights(oracle(true, false))).toEqual({ user: "pending", attacker: "bad" });
     expect(goalLights(oracle(false, true))).toEqual({ user: "good", attacker: "good" });

@@ -242,8 +242,7 @@ describe("stage step 3: NOTARY escalates and asks", () => {
 
 describe("stage step 4: the legitimate bill pays silently", () => {
   it("has no card, two ALLOW rows and both lights good [I1]", async () => {
-    const page = await opened({ scenario: "legitimate_bill" });
-    // legitimate_bill has no golden stream on the server: the page uses cassette.
+    const page = await opened({ scenario: "legitimate_bill", mode: "cassette" });
     expect(new Set(modesOf(page))).toEqual(new Set(["cassette"]));
     expect(screen.queryByRole("group", { name: "Endorsement request" })).toBeNull();
 
