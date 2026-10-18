@@ -228,6 +228,16 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 - Nothing a server writes reaches the agent unlabeled. The content of an `isError` result is labeled and logged (`value_labeled`) like any result, and the agent gets `<tool> failed: the tool reported an error` followed by those labeled texts. A transport failure or a JSON-RPC error is reported with a constant text only; the server's own words go to stderr (quoted, one line).
 - Limits of this version: stdio only, one request at a time, one timeout for every tool, an unknown effect after a timeout is not reconciled, and the server's tool definitions are shown to the agent as pinned at startup (they are the user's to review).
 
+#### Check a config before running it
+
+`notary-mcp-proxy check --config CONFIG [--json]` starts the server named in the config, lists its tools, stops it (the agent-facing server is not started and no audit file is written) and prints, per config tool, the effective effect, the manifest hash (the hash of the pinned envelope, the same value the proxy pins) and each parameter's effective marker, unit and kind, followed by the findings. `notary-mcp-proxy [serve] --config CONFIG` serves as before; no subcommand means `serve`, so `.mcp.json` is unchanged.
+
+- Errors: `TOOL_MISSING`, `PARAM_UNCLASSIFIED` (the table falls back to `UNKNOWN_PARAM`), `PARAM_NOT_IN_CONFIG` for a `required` parameter, `LEDGER_VALUE_INVALID` (a ledger value that is not a valid value of its unit).
+- Warnings: `PARAM_NOT_IN_CONFIG` (calls using it are blocked with `SCOPE_PARAM_NOT_IN_CONTRACT`), `PARAM_NOT_ON_SERVER`, `IRREVERSIBLE_NOT_AUTHORIZED` (every call is blocked at step 2), and `LEDGER_VALUE_INVALID` for an IBAN of the right shape that only fails the mod-97 checksum (the toy bank's `DE00ACME...` is one).
+- Info: `EFFECT_STRICTER_THAN_CONFIG` (the reviewed table wins), `SERVER_TOOL_NOT_EXPOSED`.
+- `--json` prints the `CheckReport` instead of text.
+- Exit codes: `0` no error finding, `1` at least one error finding, `2` usage error, unreadable or invalid config, or the server failed to start or list its tools (message on stderr).
+
 #### Guard hook: a normal session, not only `--tools ""`
 
 `notary-mcp-proxy hook pre-tool-use --policy PATH` is a Claude Code `PreToolUse` hook. Claude Code runs it before every tool call with a JSON event on stdin (`tool_name`, `tool_input`, `hook_event_name`, ...). The hook denies anything not on an explicit allow list by printing `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..."}}`; an allowed tool prints nothing and exits 0, so Claude Code's normal permission prompts still apply. The schema was written from the Claude Code hooks reference as known when this was implemented; re-check it against the current docs when upgrading Claude Code.

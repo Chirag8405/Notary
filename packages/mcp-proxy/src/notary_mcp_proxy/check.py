@@ -3,6 +3,7 @@
 `check_config` is pure over its inputs; the subprocess lives in `main.py`.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
@@ -31,6 +32,7 @@ FindingCode = Literal[
     "IRREVERSIBLE_NOT_AUTHORIZED",
     "SERVER_TOOL_NOT_EXPOSED",
 ]
+_IBAN_SHAPE = re.compile(r"[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}")
 SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
 
 
@@ -60,10 +62,9 @@ class CheckReport(NotaryModel):
 def _schema_params(schema: JsonObject | None) -> tuple[frozenset[str], frozenset[str]]:
     """(property names, required names) of a tool's input schema."""
     properties = as_object((schema or {}).get("properties")) or {}
-    required = {
-        name for name in (as_list((schema or {}).get("required")) or []) if as_str(name) is not None
-    }
-    return frozenset(properties), frozenset(str(name) for name in required)
+    names = [as_str(name) for name in as_list((schema or {}).get("required")) or []]
+    required = frozenset(name for name in names if name is not None)
+    return frozenset(properties), required
 
 
 def _tool_findings(
@@ -97,14 +98,17 @@ def _tool_findings(
         )
         for name in sorted(set(spec.params) - on_server)
     )
-    if policy_effect != spec.effect and stricter_effect(policy_effect, spec.effect) == policy_effect:
+    if (
+        policy_effect != spec.effect
+        and stricter_effect(policy_effect, spec.effect) == policy_effect
+    ):
         found.append(
             Finding(
                 severity="info",
                 code="EFFECT_STRICTER_THAN_CONFIG",
                 tool=tool,
                 param=None,
-                detail=f"the reviewed table makes it {policy_effect}; the config says {spec.effect}",
+                detail=f"the table makes it {policy_effect}; the config says {spec.effect}",
             )
         )
     if policy_effect == "irreversible" and tool not in config.authorized_irreversible:
@@ -115,6 +119,29 @@ def _tool_findings(
                 tool=tool,
                 param=None,
                 detail="irreversible and not in authorized_irreversible; every call is blocked",
+            )
+        )
+    return found
+
+
+def _ledger_findings(config: ProxyConfig) -> list[Finding]:
+    """An IBAN of the right shape that only fails the checksum is a warning (toy values)."""
+    found: list[Finding] = []
+    for entry in config.ledger:
+        canonical = canonicalize(entry.unit, entry.value)
+        if canonical.valid:
+            continue
+        shaped = entry.unit == "iban" and _IBAN_SHAPE.fullmatch(canonical.value) is not None
+        found.append(
+            Finding(
+                severity="warning" if shaped else "error",
+                code="LEDGER_VALUE_INVALID",
+                tool=None,
+                param=None,
+                detail=(
+                    f"ledger {entry.ledger}/{entry.key}: "
+                    f"{'fails the checksum of' if shaped else 'not a valid'} {entry.unit}"
+                ),
             )
         )
     return found
@@ -169,20 +196,13 @@ def check_config(
         )
         for tool, param in unclassified_params(
             policy,
-            [ManifestInfo(t, config.tools[t].effect, tuple(config.tools[t].params)) for t in present],
+            [
+                ManifestInfo(t, config.tools[t].effect, tuple(config.tools[t].params))
+                for t in present
+            ],
         )
     )
-    findings.extend(
-        Finding(
-            severity="error",
-            code="LEDGER_VALUE_INVALID",
-            tool=None,
-            param=None,
-            detail=f"ledger {entry.ledger}/{entry.key}: not a valid {entry.unit}",
-        )
-        for entry in config.ledger
-        if not canonicalize(entry.unit, entry.value).valid
-    )
+    findings.extend(_ledger_findings(config))
     findings.extend(
         Finding(
             severity="info",
@@ -196,7 +216,13 @@ def check_config(
     ordered = tuple(
         sorted(
             findings,
-            key=lambda f: (SEVERITY_ORDER.index(f.severity), f.code, f.tool or "", f.param or "", f.detail),
+            key=lambda f: (
+                SEVERITY_ORDER.index(f.severity),
+                f.code,
+                f.tool or "",
+                f.param or "",
+                f.detail,
+            ),
         )
     )
     return CheckReport(
@@ -219,6 +245,8 @@ def render_report(report: CheckReport) -> str:
             f"{finding.severity} {finding.code}{f' {where}' if where else ''}: {finding.detail}"
         )
     errors = sum(f.severity == "error" for f in report.findings)
-    lines.append(f"{'ok' if report.ok else 'FAILED'}: {errors} error(s), "
-                 f"{len(report.findings) - errors} other finding(s)")
+    lines.append(
+        f"{'ok' if report.ok else 'FAILED'}: {errors} error(s), "
+        f"{len(report.findings) - errors} other finding(s)"
+    )
     return "\n".join(lines) + "\n"
