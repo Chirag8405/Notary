@@ -15,7 +15,8 @@ from notary_core.gateway import make_labeler
 from notary_core.models import AuditEntry, RunStarted
 from notary_core.monitor import decide
 from notary_core.resolver import ArgumentResolver
-from notary_mcp_proxy.client import StdioClient
+from notary_mcp_proxy.check import check_config, render_report
+from notary_mcp_proxy.client import ServerError, StdioClient
 from notary_mcp_proxy.config import (
     ProxyConfig,
     build_contract,
@@ -130,14 +131,54 @@ def hook_main(argv: Sequence[str]) -> int:
         return _hook_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list[:2] == ["hook", "pre-tool-use"]:
-        return hook_main(args_list[2:])
-    parser = argparse.ArgumentParser(prog="notary-mcp-proxy", description=__doc__)
+def _load_config(path: Path) -> ProxyConfig | None:
+    try:
+        return ProxyConfig.model_validate_json(path.read_bytes())
+    except (OSError, ValueError) as failure:
+        _log(f"cannot load config {path.name}: {type(failure).__name__}: {failure}")
+        return None
+
+
+def check_main(argv: Sequence[str]) -> int:
+    """`check --config CONFIG [--json]`: exit 0 clean, 1 an error finding, 2 could not check."""
+    parser = argparse.ArgumentParser(prog="notary-mcp-proxy check")
+    parser.add_argument("--config", type=Path, required=True, help="proxy config (JSON)")
+    parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    args = parser.parse_args(argv)
+    config_path: Path = args.config
+    config = _load_config(config_path)
+    if config is None:
+        return 2
+    client: StdioClient | None = None
+    try:
+        client = StdioClient(
+            config.server.command,
+            cwd=config_path.resolve().parent,
+            timeout_seconds=config.server.timeout_seconds,
+        )
+        client.initialize()
+        backend = McpBackend(client, policy=build_policy(config), effects={}, readers={})
+        manifests = backend.list_tools()
+        schemas = {tool.name: tool.input_schema for tool in backend.pinned_definitions()}
+    except (ServerError, OSError) as failure:
+        detail = failure.detail if isinstance(failure, ServerError) else str(failure)
+        _log(f"the server failed to start or list its tools: {type(failure).__name__}: {detail}")
+        return 2
+    finally:
+        if client is not None:
+            client.close()
+    report = check_config(config, manifests, schemas)
+    print(report.model_dump_json(indent=2) if args.json else render_report(report), end="")
+    if args.json:
+        print()
+    return 0 if report.ok else 1
+
+
+def serve_main(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="notary-mcp-proxy [serve]", description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="proxy config (JSON)")
     parser.add_argument("--audit-log", type=Path, help="append the event log here (JSON lines)")
-    args = parser.parse_args(args_list)
+    args = parser.parse_args(argv)
     config_path: Path = args.config
     audit_path: Path | None = args.audit_log
     config = ProxyConfig.model_validate_json(config_path.read_bytes())
@@ -159,6 +200,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         client.close()
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Subcommands `serve` (the default when none is given), `check` and `hook pre-tool-use`."""
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:2] == ["hook", "pre-tool-use"]:
+        return hook_main(args_list[2:])
+    if args_list[:1] == ["check"]:
+        return check_main(args_list[1:])
+    if args_list[:1] == ["serve"]:
+        return serve_main(args_list[1:])
+    return serve_main(args_list)
 
 
 if __name__ == "__main__":
