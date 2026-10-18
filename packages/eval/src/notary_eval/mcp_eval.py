@@ -266,7 +266,7 @@ class ScriptedRun(NotaryModel):
     result: TaskResult
 
 
-def _schemas(tools: Sequence[JsonValue]) -> dict[str, dict[str, str | None]]:
+def tool_schemas(tools: Sequence[JsonValue]) -> dict[str, dict[str, str | None]]:
     """Tool name -> parameter name -> declared JSON type."""
     found: dict[str, dict[str, str | None]] = {}
     for entry in tools:
@@ -282,7 +282,7 @@ def _schemas(tools: Sequence[JsonValue]) -> dict[str, dict[str, str | None]]:
     return found
 
 
-def _arguments(call: RawCall, types: Mapping[str, str | None]) -> dict[str, JsonValue]:
+def call_arguments(call: RawCall, types: Mapping[str, str | None]) -> dict[str, JsonValue]:
     return {name: decode_argument(text, types.get(name)) for name, text in call.args.items()}
 
 
@@ -308,7 +308,7 @@ def _direct(
 ) -> list[CallStep]:
     steps: list[CallStep] = []
     for call in calls:
-        arguments = _arguments(call, schemas.get(call.tool, {}))
+        arguments = call_arguments(call, schemas.get(call.tool, {}))
         try:
             answer = client.call_tool(call.tool, arguments)
             failed, text = answer.get("isError") is True, _content_text(answer)
@@ -332,7 +332,7 @@ def _proxied(
 ) -> list[CallStep]:
     steps: list[CallStep] = []
     for index, call in enumerate(calls, start=1):
-        arguments = _arguments(call, schemas.get(call.tool, {}))
+        arguments = call_arguments(call, schemas.get(call.tool, {}))
         answer = proxy.handle(
             {
                 "jsonrpc": "2.0",
@@ -392,10 +392,10 @@ def run_scripted_detailed(
             )
             listed = proxy.handle({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})
             tools = as_list((as_object((listed or {}).get("result")) or {}).get("tools")) or []
-            steps = _proxied(proxy, calls, _schemas(tools))
+            steps = _proxied(proxy, calls, tool_schemas(tools))
         else:
             client.initialize()
-            steps = _direct(client, calls, _schemas(client.list_tools()))
+            steps = _direct(client, calls, tool_schemas(client.list_tools()))
     finally:
         client.close()
     if SERVERS[task.server].logs:
