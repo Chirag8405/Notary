@@ -114,6 +114,9 @@ describe("runStreamUrl options", () => {
       "wss://h.example/ws/runs/s?lane=notary&mode=golden",
     );
     expect(runStreamUrl("http://h", "s", { mode: "live" })).toBe("ws://h/ws/runs/s?mode=live");
+    expect(runStreamUrl("http://h", "mcp-0123456789ab", { lane: "notary", mode: "mcp" })).toBe(
+      "ws://h/ws/runs/mcp-0123456789ab?lane=notary&mode=mcp",
+    );
     expect(runStreamUrl("http://h", "s", { lane: "undefended" })).toBe(
       "ws://h/ws/runs/s?lane=undefended",
     );
@@ -146,6 +149,7 @@ describe("describeClose", () => {
     expect(describeClose(4409)).toBe("run_conflict");
     expect(describeClose(4422)).toBe("unsupported_command");
     expect(describeClose(4501)).toBe("mode_unavailable");
+    expect(describeClose(4503)).toBe("chain_broken");
     expect(describeClose(4999)).toBe("other");
     expect(describeClose(1006)).toBe("other");
   });
