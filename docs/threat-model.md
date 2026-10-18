@@ -117,9 +117,19 @@ Every A and I ID maps to a test or package. "planned" means the test does not ex
 | MCP toxic flow (I3, utility) | GitHub-style server: an injected public issue tells the agent to publish a private file; scripted replay with and without the proxy, benign tasks keep utility; a live Claude Code run (manual, dated) is pending | `packages/eval/tests/test_mcp_eval.py`, `packages/eval/fixtures/mcp/`, `packages/eval/scripts/run_mcp_live.py` (live, never in the gate) | scripted replay exists (the leak is BLOCK `CONF_READER_VIOLATION`, both benign tasks complete); live results pending |
 | CP2 (P3 end to end)       | cassette replay of the poisoned and legitimate bill on three lanes: byte-identical, A3 not paid, audit chain and anchor | `apps/server/tests/test_cp2.py` (I1: `test_adapter_agrees_with_the_engine`; I4: `test_endorsement_flow_over_the_socket`; A10: `test_compiled_contract_matches_the_engines_manifest_hashes`) | exists (scripted cassettes, #182) |
 
+## Approvals through the MCP proxy
+
+An escalated MCP call waits for the user (docs/demo.md, "Approve or reject an escalation"). The trust assumption is that the answer comes from the user and not from the agent or from anything it can influence.
+
+- The channel is a Unix socket (mode 0600, directory 0700 owned by the user, `SO_PEERCRED` on Linux), driven by the CLI. It is never exposed as an MCP tool, prompt or resource, and the agent's messages (`tools/call`, `notifications/cancelled`, the end of input) can only end a wait as a rejection, never approve. A timeout also rejects. Decisions arrive on the control thread, are only recorded on the approval desk, and are applied by the worker thread that owns the Gateway; every approve and reject goes through `Gateway.approve` / `Gateway.reject`, so the ledger write and the second decision are logged before any effect (I4, I1).
+- Residual risk, stated plainly: the socket protects against other users and other processes' mistakes, not against code that runs as the same user. An agent with a shell (Claude Code's `Bash` tool) can run `notary-mcp-proxy approve e1` (or talk to the socket) and approve its own escalation, which defeats the endorsement for that session. Mitigations: run the agent without a shell (`--tools ""`) or with the `PreToolUse` guard hook (`notary-mcp-proxy hook pre-tool-use`), which denies `Bash` and every non-NOTARY tool; answer cards where the agent has no process (elicitation in the client UI, the X-ray card). A one-time code printed only to the user's channel would also close it and is deferred to the X-ray card.
+- Terminal injection: the card quotes values an attacker may have written; control characters are shown escaped in the log and by the CLI, so a value cannot rewrite the terminal.
+- The user can still be fooled at the card (A3, A9, A11); the per-session approval budget bounds how many cards can be raised.
+
 ## Honest limitations
 
 - A human can still be fooled at endorsement (A3, A9, A11).
+- An MCP agent with a shell can approve its own escalation through the control CLI (see "Approvals through the MCP proxy"); deny the shell.
 - An attacker can steer among trusted values; effect budgets bound the damage.
 - Correct labels and the sensitive-parameter table are the trusted base, and are hand-authored.
 - Covert channels are mitigated, not closed (A5, A12).
