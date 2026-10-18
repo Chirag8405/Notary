@@ -44,6 +44,8 @@ PUBLIC: tuple[str, ...] = ("*",)
 class ServerSpec(NotaryModel):
     command: Annotated[tuple[str, ...], Field(min_length=1)]
     """Run in the config file's directory."""
+    timeout_seconds: Annotated[float, Field(gt=0)] = 30.0
+    """How long one request to the server may take before the call is answered with an error."""
 
 
 class ParamSpec(NotaryModel):
