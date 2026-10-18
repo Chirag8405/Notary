@@ -40,7 +40,7 @@ def config(tmp_path: Path) -> ProxyConfig:
 def proxy(config: ProxyConfig) -> Iterator[ProxyServer]:
     client = StdioClient(config.server.command)
     try:
-        yield build_server(config, client, run_id="run-test", audit=None)
+        yield build_server(config, client, run_id="run-test")
     finally:
         client.close()
 
@@ -142,8 +142,8 @@ def test_non_text_blocks_are_kept_as_json() -> None:
 
 def test_stdio_end_to_end(tmp_path: Path) -> None:
     """The proxy as Claude Code runs it: a child process speaking MCP on stdin/stdout."""
-    audit = tmp_path / "audit.jsonl"
-    session = StdioSession(proxy_command(_config(tmp_path), "--audit-log", str(audit)))
+    audit = tmp_path / "audit"
+    session = StdioSession(proxy_command(_config(tmp_path), "--audit-dir", str(audit)))
     session.send(request(1, "initialize", {"protocolVersion": "x"}))
     session.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
     session.send(tool_call(2, "pay_bill", {"payee": ATTACKER_IBAN, "amount": 120}))
@@ -151,6 +151,8 @@ def test_stdio_end_to_end(tmp_path: Path) -> None:
     session.finish()
     assert first["protocolVersion"] == "2025-06-18"
     assert second["isError"] is True
-    types = [json.loads(line)["type"] for line in audit.read_text().splitlines()]
+    (chain,) = audit.glob("*.chain.jsonl")
+    types = [json.loads(line)["event"]["type"] for line in chain.read_text().splitlines()]
     assert types[0] == "run_started"
+    assert types[-1] == "run_finished"
     assert "effect_executed" not in types

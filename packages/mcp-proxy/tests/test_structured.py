@@ -283,7 +283,7 @@ def start(tmp_path: Path) -> Iterator[Start]:
         config = ProxyConfig.model_validate_json(json.dumps(data))
         client = StdioClient(command)
         clients.append(client)
-        return build_server(config, client, run_id="run-test", audit=None)
+        return build_server(config, client, run_id="run-test")
 
     yield run
     for client in clients:

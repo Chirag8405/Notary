@@ -10,15 +10,15 @@ import queue
 import re
 import threading
 from collections.abc import Callable, Sequence
-from typing import IO
+from typing import IO, Literal
 
 from pydantic import JsonValue
 
 from notary_core.models import (
-    AuditEntry,
     Decision,
     DecisionMade,
     ResolvedValue,
+    RunFinished,
     ValueLabeled,
 )
 from notary_core.pinning import PinReport
@@ -59,8 +59,6 @@ INSTRUCTIONS = (
     "Every tool call is checked by NOTARY against the user's frozen intent contract. "
     "A blocked call did not run; do not retry it with other arguments to get around the check."
 )
-
-AuditSink = Callable[[Sequence[AuditEntry]], None]
 
 LIST_CHANGED = "notifications/tools/list_changed"
 
@@ -114,13 +112,9 @@ class _Labeled:
 
 
 class ProxyServer:
-    def __init__(
-        self, gateway: Gateway, tools: Sequence[PinnedTool], *, audit: AuditSink | None = None
-    ) -> None:
+    def __init__(self, gateway: Gateway, tools: Sequence[PinnedTool]) -> None:
         self._gateway = gateway
         self._tools: list[JsonObject] = [exposed_definition(tool) for tool in tools]
-        self._audit = audit
-        self._logged = 0
         self._calls = 0
         self._drift_requests: queue.Queue[None] = queue.Queue()
         self._drift_worker: threading.Thread | None = None
@@ -138,15 +132,13 @@ class ProxyServer:
         """
         if is_call(message):
             return self.handle_call(message)
-        answer = self.handle_fast(message)
-        self.flush_audit()
-        return answer
+        return self.handle_fast(message)
 
     def handle_fast(self, message: JsonObject) -> JsonObject | None:
         """`initialize`, `ping`, `tools/list`, unknown methods and invalid messages.
 
-        Safe on the reader thread while a call runs: it never touches the Gateway or the audit
-        sink. A `tools/call` is not answered here (`handle_call` does that).
+        Safe on the reader thread while a call runs: it never touches the Gateway.
+        A `tools/call` is not answered here (`handle_call` does that).
         """
         if is_call(message):
             return error(message.get("id"), INTERNAL_ERROR, "tools/call is not a fast method")
@@ -154,10 +146,32 @@ class ProxyServer:
 
     def handle_call(self, message: JsonObject) -> JsonObject | None:
         """A `tools/call`: label, decide, run. Only the thread that owns the Gateway calls this."""
-        try:
-            return self._respond(message)
-        finally:
-            self.flush_audit()
+        return self._respond(message)
+
+    def finish_run(self) -> None:
+        """Append `run_finished` once the agent has closed the connection.
+
+        Call it on the thread that owns the Gateway, or after that thread has finished (the
+        `Dispatcher` has joined its worker when `serve` returns). A halted gateway still tries (the
+        append fails again when the log is what broke) and says so in the summary.
+        """
+        halted = self._gateway.halted
+        outcome: Literal["completed", "error"] = "completed" if halted is None else "error"
+        summary = (
+            f"closed by the agent after {self._calls} tool calls"
+            if halted is None
+            else f"halted: {halted}; closed after {self._calls} tool calls"
+        )
+        self._gateway.emit(
+            lambda run, lane, seq: RunFinished(
+                type="run_finished",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                outcome=outcome,
+                summary=summary,
+            )
+        )
 
     def _respond(self, message: JsonObject) -> JsonObject | None:
         method = as_str(message.get("method"))
@@ -356,12 +370,6 @@ class ProxyServer:
                 if value is not None:
                     found.append(value)
         return found
-
-    def flush_audit(self) -> None:
-        chain = self._gateway.chain
-        if self._audit is not None and len(chain) > self._logged:
-            self._audit(chain[self._logged :])
-        self._logged = len(chain)
 
 
 def _records_object(call_id: str, values: Sequence[ResolvedValue]) -> JsonObject:

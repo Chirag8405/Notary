@@ -180,7 +180,8 @@ class Materialized:
     log_path: Path
     root: Path
     """The sandbox directory (the filesystem server's allowed directory)."""
-    audit_path: Path
+    audit_dir: Path
+    """Where the proxy writes its audit chain (one `<run>.chain.jsonl` per run)."""
 
 
 def _escaped(value: str | Path) -> str:
@@ -224,7 +225,7 @@ def materialize(server: str, workdir: Path) -> Materialized:
         config_path=config_path,
         log_path=log_path,
         root=root,
-        audit_path=workdir / "audit.jsonl",
+        audit_dir=workdir / "audit",
     )
 
 
@@ -387,9 +388,7 @@ def run_scripted_detailed(
     client = StdioClient(spec.command, cwd=workdir, timeout_seconds=spec.timeout_seconds)
     try:
         if defended:
-            proxy = build_server(
-                setup.config, client, run_id=f"mcp-eval-{task.task_id}", audit=None
-            )
+            proxy = build_server(setup.config, client, run_id=f"mcp-eval-{task.task_id}")
             listed = proxy.handle({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})
             tools = as_list((as_object((listed or {}).get("result")) or {}).get("tools")) or []
             steps = _proxied(proxy, calls, tool_schemas(tools))
@@ -626,17 +625,17 @@ def parse_transcript(lines: Sequence[str]) -> Transcript:
     )
 
 
-def count_blocked(audit_path: Path) -> int:
-    """Calls the proxy blocked or escalated, from its audit log (JSON lines of events)."""
-    if not audit_path.exists():
-        return 0
+def count_blocked(audit_dir: Path) -> int:
+    """Calls the proxy blocked or escalated, from its audit chains (JSON lines of entries)."""
     blocked = 0
-    for line in audit_path.read_text(encoding="utf-8").splitlines():
-        event = as_object(json.loads(line)) if line.strip() else None
-        if event is None or as_str(event.get("type")) != "decision_made":
-            continue
-        verdict = as_str((as_object(event.get("decision")) or {}).get("verdict"))
-        blocked += verdict in ("BLOCK", "ESCALATE")
+    for chain in sorted(audit_dir.glob("*.chain.jsonl")):
+        for line in chain.read_text(encoding="utf-8").splitlines():
+            entry = as_object(json.loads(line)) if line.strip() else None
+            event = as_object((entry or {}).get("event"))
+            if event is None or as_str(event.get("type")) != "decision_made":
+                continue
+            verdict = as_str((as_object(event.get("decision")) or {}).get("verdict"))
+            blocked += verdict in ("BLOCK", "ESCALATE")
     return blocked
 
 
@@ -664,8 +663,8 @@ def mcp_config(task: McpTask, setup: Materialized, *, defended: bool) -> JsonObj
             "notary_mcp_proxy",
             "--config",
             str(setup.config_path),
-            "--audit-log",
-            str(setup.audit_path),
+            "--audit-dir",
+            str(setup.audit_dir),
         ]
     else:
         command = list(setup.config.server.command)
@@ -739,7 +738,7 @@ def run_live_round(
         model=transcript.model,
         claude_version=transcript.claude_version,
         tool_calls=transcript.tool_calls,
-        blocked_calls=count_blocked(setup.audit_path),
+        blocked_calls=count_blocked(setup.audit_dir),
     )
 
 

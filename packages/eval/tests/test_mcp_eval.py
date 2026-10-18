@@ -391,8 +391,8 @@ def test_the_notary_lane_starts_the_proxy_and_the_undefended_lane_the_server(
         "notary_mcp_proxy",
         "--config",
         str(setup.config_path),
-        "--audit-log",
-        str(setup.audit_path),
+        "--audit-dir",
+        str(setup.audit_dir),
     ]
     assert as_str(direct["command"]) == sys.executable
     assert str(setup.log_path) in str(direct["args"])

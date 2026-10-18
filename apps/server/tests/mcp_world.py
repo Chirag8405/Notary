@@ -182,7 +182,7 @@ def run_through_proxy(
     client = StdioClient(config.server.command, cwd=tmp_path)
     calls: list[ProxiedCall] = []
     try:
-        server = build_server(config, client, run_id=f"run-mcp-{item_id}", audit=None)
+        server = build_server(config, client, run_id=f"run-mcp-{item_id}")
         for index, (call, expected) in enumerate(planned, start=1):
             answer = server.handle(
                 {

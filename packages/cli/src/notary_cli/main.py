@@ -7,12 +7,13 @@ unreadable or invalid input, or an unimplemented command. `--save-dir` is the on
 """
 
 import json
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, NamedTuple, NoReturn
 
 import typer
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, JsonValue, TypeAdapter, ValidationError
 
 from notary_cli.render import (
     render_attack_list,
@@ -22,8 +23,8 @@ from notary_cli.render import (
     render_replay,
 )
 from notary_cli.reports import AttackReport, MonitorChoice, build_report
-from notary_core.audit import verify_chain_detailed
-from notary_core.models import Event
+from notary_core.audit import GENESIS_HASH, VerifyResult, verify_chain_detailed
+from notary_core.models import AuditEntry, Event, NotaryModel, Sha256Hex
 from notary_eval import DEFENCES, export_results, run_library
 from notary_world.attacks import ALL_ATTACKS, ALL_CONTROLS, AttackNotFoundError
 from notary_world.executor import RunRecord
@@ -32,6 +33,8 @@ from notary_world.fuzz import FuzzProfile, run_fuzz
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="NOTARY command line.")
 _EVENT: TypeAdapter[Event] = TypeAdapter(Event)
 _EVENTS: TypeAdapter[list[Event]] = TypeAdapter(list[Event])
+_ENTRY: TypeAdapter[AuditEntry] = TypeAdapter(AuditEntry)
+_OBJECT: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(dict[str, JsonValue])
 
 EXIT_CODES = (
     "Exit codes: 0 success (all outcomes match, zero violations, chain verified); "
@@ -71,7 +74,47 @@ def _reason(error: Exception) -> str:
     return str(error).splitlines()[0] if str(error) else type(error).__name__
 
 
-def _load_run_or_events(path: Path) -> tuple[RunRecord | None, list[Event]]:
+class Loaded(NamedTuple):
+    """What `replay` read: the events, and the audit chain when the file has one."""
+
+    header: str | None
+    events: list[Event]
+    chain: list[AuditEntry] | None
+    unreadable: int | None = None
+    """Index of the first chain line that is not an `AuditEntry` (a partial or damaged line)."""
+
+
+def _is_chain_text(text: str) -> bool:
+    """Whether the first line is a JSON object shaped like an `AuditEntry` (one entry per line)."""
+    first = next((line for line in text.splitlines() if line.strip()), "")
+    try:
+        data = _OBJECT.validate_json(first)
+    except ValueError:
+        return False
+    return {"index", "prev_hash", "hash", "event"} <= data.keys()
+
+
+def _load_chain(text: str) -> Loaded:
+    chain: list[AuditEntry] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            chain.append(_ENTRY.validate_json(line))
+        except ValueError:
+            events = [entry.event for entry in chain]
+            return Loaded(_chain_header(chain), events, chain, unreadable=len(chain))
+    return Loaded(_chain_header(chain), [entry.event for entry in chain], chain)
+
+
+def _chain_header(chain: Sequence[AuditEntry]) -> str | None:
+    if not chain:
+        return None
+    first = chain[0].event
+    return f"run {first.run_id} lane={first.lane} events={len(chain)}"
+
+
+def _load_run_or_events(path: Path) -> Loaded:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
@@ -81,16 +124,43 @@ def _load_run_or_events(path: Path) -> tuple[RunRecord | None, list[Event]]:
     except ValidationError:
         pass
     else:
-        return record, list(record.events)
+        header = f"run {record.run_id} lane={record.lane} events={len(record.chain)}"
+        return Loaded(header, list(record.events), list(record.chain))
+    if _is_chain_text(text):
+        return _load_chain(text)
     try:
-        return None, read_events(path)
+        return Loaded(None, read_events(path), None)
     except ValueError as error:
         _usage_error(f"not a run record or event file: {_reason(error)}")
+
+
+class AnchorFile(NotaryModel):
+    """The shape the proxy writes beside its chain (`<run>.anchor.json`)."""
+
+    run_id: str
+    length: Annotated[int, Field(ge=0)]
+    head: Sha256Hex | None
+    """The hash of the last entry; null for an empty chain."""
+
+
+def _read_anchor(path: Path) -> tuple[int, str]:
+    """`(length, head)` from an anchor file (a null `head` is the empty chain)."""
+    try:
+        anchor = AnchorFile.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as error:
+        _usage_error(f"not an anchor file: {_reason(error)}")
+    return anchor.length, GENESIS_HASH if anchor.head is None else anchor.head
 
 
 @app.command()
 def replay(
     file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    anchor: Annotated[
+        Path | None,
+        typer.Option(
+            "--anchor", dir_okay=False, help="Anchor file (JSON with length and head) of the run."
+        ),
+    ] = None,
     expect_head: Annotated[
         str | None, typer.Option("--expect-head", help="Head hash recorded outside the log.")
     ] = None,
@@ -98,24 +168,36 @@ def replay(
         int | None, typer.Option("--expect-length", help="Chain length recorded outside the log.")
     ] = None,
 ) -> None:
-    """Print the events in FILE; for a saved run also verify its audit chain.
+    """Print the events in FILE; for a saved run or a proxy chain also verify its audit chain.
 
-    FILE is a run record written by `attack --save-dir`, or a plain event file (a JSON array, one
-    event, or JSON lines). The anchors detect tail truncation, which the chain alone cannot.
+    FILE is a run record written by `attack --save-dir`, a proxy chain (`<run>.chain.jsonl`, one
+    audit entry per line), or a plain event file (a JSON array, one event, or JSON lines). The
+    anchors (`--anchor FILE` or `--expect-head` and `--expect-length`) detect tail truncation,
+    which the chain alone cannot.
 
-    Exit codes: 0 chain verified (or plain event file); 1 chain broken or anchor mismatch;
-    2 invalid input or anchors given for a file without a chain.
+    Exit codes: 0 chain verified (or plain event file); 1 chain broken, unreadable line or anchor
+    mismatch; 2 invalid input or anchors given for a file without a chain.
     """
-    record, events = _load_run_or_events(file)
-    if record is None:
-        if expect_head is not None or expect_length is not None:
-            _usage_error("--expect-head/--expect-length need a run file with an audit chain")
-        typer.echo(render_replay(None, events, None), nl=False)
+    if anchor is not None and (expect_head is not None or expect_length is not None):
+        _usage_error("give --anchor or --expect-head/--expect-length, not both")
+    loaded = _load_run_or_events(file)
+    if anchor is not None:
+        expect_length, expect_head = _read_anchor(anchor)
+    if loaded.chain is None:
+        if anchor is not None or expect_head is not None or expect_length is not None:
+            flags = "--anchor" if anchor is not None else "--expect-head/--expect-length"
+            _usage_error(f"{flags} need a run file with an audit chain")
+        typer.echo(render_replay(None, loaded.events, None, None), nl=False)
         return
-    result = verify_chain_detailed(
-        record.chain, expected_length=expect_length, expected_head=expect_head
-    )
-    typer.echo(render_replay(record, events, result), nl=False)
+    if loaded.unreadable is not None:
+        result = VerifyResult(
+            ok=False, first_bad_index=loaded.unreadable, reason="unreadable entry"
+        )
+    else:
+        result = verify_chain_detailed(
+            loaded.chain, expected_length=expect_length, expected_head=expect_head
+        )
+    typer.echo(render_replay(loaded.header, loaded.events, loaded.chain, result), nl=False)
     if not result.ok:
         raise typer.Exit(code=1)
 

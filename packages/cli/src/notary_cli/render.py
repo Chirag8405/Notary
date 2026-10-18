@@ -4,9 +4,8 @@ from collections.abc import Sequence
 
 from notary_cli.reports import AttackReport, GoalState
 from notary_core.audit import GENESIS_HASH, VerifyResult
-from notary_core.models import Event, ExpectedOutcome
+from notary_core.models import AuditEntry, Event, ExpectedOutcome
 from notary_world.attacks import ALL_ATTACKS, ATTACK_NAMES, deciding_step
-from notary_world.executor import RunRecord
 from notary_world.fuzz import FuzzReport
 
 ATTACKER_WORDS: dict[GoalState, str] = {
@@ -94,17 +93,18 @@ def render_fuzz_report(report: FuzzReport) -> str:
 
 
 def render_replay(
-    record: RunRecord | None, events: Sequence[Event], result: VerifyResult | None
+    header: str | None,
+    events: Sequence[Event],
+    chain: Sequence[AuditEntry] | None,
+    result: VerifyResult | None,
 ) -> str:
-    lines: list[str] = []
-    if record is not None:
-        lines.append(f"run {record.run_id} lane={record.lane} events={len(record.chain)}")
+    lines: list[str] = [] if header is None else [header]
     lines.extend(f"[{e.seq:03d}] {e.type:<22} run={e.run_id}" for e in events)
-    if record is None or result is None:
+    if chain is None or result is None:
         lines.append("chain: not present (plain event stream)")
     elif result.ok:
-        head = record.chain[-1].hash if record.chain else GENESIS_HASH
-        lines.append(f"chain: OK head={head} length={len(record.chain)}")
+        head = chain[-1].hash if chain else GENESIS_HASH
+        lines.append(f"chain: OK head={head} length={len(chain)}")
     else:
         lines.append(f"chain: FAILED {result.reason} at index {result.first_bad_index}")
     return "\n".join(lines) + "\n"
