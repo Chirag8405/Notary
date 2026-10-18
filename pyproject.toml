@@ -85,9 +85,9 @@ root_packages = [
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layered architecture: core <- (mcp_proxy, world) <- (server, cli, eval)"
+name = "Layered architecture: core <- (mcp_proxy, world) <- eval <- (server, cli)"
 type = "layers"
-layers = ["notary_server | notary_cli | notary_eval", "notary_mcp_proxy | notary_world", "notary_core"]
+layers = ["notary_server | notary_cli", "notary_eval", "notary_mcp_proxy | notary_world", "notary_core"]
 
 [[tool.importlinter.contracts]]
 name = "notary_core is pure (no I/O, network, LLM SDK or clock modules)"

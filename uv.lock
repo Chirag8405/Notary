@@ -336,6 +336,7 @@ version = "0.0.0"
 source = { editable = "packages/cli" }
 dependencies = [
     { name = "notary-core" },
+    { name = "notary-eval" },
     { name = "notary-world" },
     { name = "typer" },
 ]
@@ -343,6 +344,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "notary-core", editable = "packages/core" },
+    { name = "notary-eval", editable = "packages/eval" },
     { name = "notary-world", editable = "packages/world" },
     { name = "typer", specifier = ">=0.27" },
 ]

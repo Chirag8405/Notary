@@ -17,3 +17,4 @@ __pycache__/
 next-env.d.ts
 playwright-report/
 test-results/
+.notary/
