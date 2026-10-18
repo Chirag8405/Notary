@@ -82,7 +82,9 @@ def build_server(
         )
     )
     exposed = [tool for tool in backend.pinned_definitions() if tool.name in config.tools]
-    return ProxyServer(gateway, exposed, audit=audit)
+    server = ProxyServer(gateway, exposed, audit=audit)
+    client.on_notification = server.on_server_notification
+    return server
 
 
 def hook_main(argv: Sequence[str]) -> int:
@@ -116,7 +118,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_path: Path = args.config
     audit_path: Path | None = args.audit_log
     config = ProxyConfig.model_validate_json(config_path.read_bytes())
-    client = StdioClient(config.server.command, cwd=config_path.resolve().parent)
+    client = StdioClient(
+        config.server.command,
+        cwd=config_path.resolve().parent,
+        timeout_seconds=config.server.timeout_seconds,
+    )
     run_id = f"mcp-{uuid.uuid4().hex[:12]}"
     try:
         server = build_server(

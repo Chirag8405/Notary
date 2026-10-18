@@ -11,7 +11,7 @@ immutable snapshot, and the backend is private (no attribute or method hands it 
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from notary_core.audit import append
 from notary_core.gateway import GatewayLabeler, ToolResult, ValueStore
@@ -44,7 +44,7 @@ from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable, par
 from notary_core.resolver import ArgResolver, canonical_args
 from notary_core.session import with_approval, with_effect
 from notary_core.store import InMemoryValueStore
-from notary_mcp_proxy.backend import ToolBackend
+from notary_mcp_proxy.backend import BackendResult, ToolBackend
 
 PREVIEW_LIMIT: int = 80
 """Characters kept in `ValueLabeled.preview`."""
@@ -55,6 +55,15 @@ ERR_RESULT_NOT_LOGGED = "the effect ran but a result value was not logged"
 AuditAppend = Callable[[Sequence[AuditEntry], Event], tuple[AuditEntry, ...]]
 EventFactory = Callable[[str, Lane, int], Event]
 """Builds an event from `(run_id, lane, seq)`."""
+
+
+@runtime_checkable
+class ReportsAvailability(Protocol):
+    """A backend that knows when its server is gone (a real transport; test doubles need not)."""
+
+    def unavailable(self) -> str | None:
+        """A constant error text when no call can reach the server, else None."""
+        ...
 
 
 class ToolPin(NotaryModel):
@@ -186,6 +195,17 @@ class Gateway:
         """Label the arguments, propose, decide (write-ahead) and run the tool only on ALLOW."""
         if self._halted is not None:
             return self._halted_outcome(call.call_id)
+        if isinstance(self._backend, ReportsAvailability):
+            gone = self._backend.unavailable()
+            if gone is not None:
+                # Answered before anything is resolved or proposed: the chain does not change.
+                return MediationOutcome(
+                    call_id=call.call_id,
+                    status="tool_error",
+                    decision=None,
+                    endorsement_id=None,
+                    error=gone,
+                )
         if call.call_id in self._seen_calls:
             raise ValueError("duplicate call id")
         self._seen_calls.add(call.call_id)
@@ -324,6 +344,10 @@ class Gateway:
         }
         result = self._backend.call_tool(call.tool, canonical_args(resolved, units))
         if result.error is not None:
+            # No effect and no spend, but whatever the server said is still labeled and logged
+            # before the caller can show it.
+            if not self._label_records(call, result):
+                return self._halted_outcome(call.call_id, ERR_RESULT_NOT_LOGGED)
             return self._outcome(call.call_id, "tool_error", decision, error=result.error)
         effect = result.effect
         # The session update is committed before the effect is logged: if that append fails the
@@ -347,6 +371,12 @@ class Gateway:
             )
             if not logged:
                 return self._halted_outcome(call.call_id, ERR_EFFECT_NOT_LOGGED)
+        if not self._label_records(call, result):
+            return self._halted_outcome(call.call_id, ERR_RESULT_NOT_LOGGED)
+        return self._outcome(call.call_id, "executed", decision)
+
+    def _label_records(self, call: RawCall, result: BackendResult) -> bool:
+        """Label and log every result field; False when an append failed (the gateway halted)."""
         for record in result.records:
             labeled = self._labeler(
                 ToolResult(
@@ -358,8 +388,8 @@ class Gateway:
             )
             for value in labeled:
                 if not self._add_value(value):
-                    return self._halted_outcome(call.call_id, ERR_RESULT_NOT_LOGGED)
-        return self._outcome(call.call_id, "executed", decision)
+                    return False
+        return True
 
     def approve(
         self, endorsement_id: str, entries: Sequence[LedgerEntry]

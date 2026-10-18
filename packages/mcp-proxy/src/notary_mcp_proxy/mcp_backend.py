@@ -16,7 +16,15 @@ from notary_mcp_proxy.backend import (
     BackendResult,
     schema_text,
 )
-from notary_mcp_proxy.client import ServerError, StdioClient
+from notary_mcp_proxy.client import (
+    ServerError,
+    ServerExitedError,
+    ServerRejectedError,
+    ServerTimeoutError,
+    StdioClient,
+    diagnostic,
+    quoted,
+)
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object, as_str
 
 RESULT_RECORD = "result"
@@ -25,7 +33,36 @@ NON_STRING_TYPES = frozenset({"integer", "number", "boolean", "object", "array",
 FAIL_CLOSED_READERS: tuple[str, ...] = ("user",)
 """Readers of a tool the config does not name (it cannot pass the scope check anyway)."""
 
+ERR_TIMEOUT = "the tool did not answer in time; it may still have run"
+ERR_EXITED = "the tool server is not running"
+ERR_PROTOCOL = "the tool server broke the protocol"
+ERR_TOOL = "the tool reported an error"
+ERR_UNCHECKED = "the tool server could not be checked; the call did not run"
+"""The only error texts the agent may see for a failure below the proxy. What the server wrote
+goes to stderr (`ServerError.detail`) or, for a tool's own error content, through the labeler."""
+
 _JSON: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+
+
+def error_text(failure: ServerError) -> str:
+    """The constant text for a failure of a call that was sent to the server."""
+    if isinstance(failure, ServerTimeoutError):
+        return ERR_TIMEOUT
+    if isinstance(failure, ServerExitedError):
+        return ERR_EXITED
+    if isinstance(failure, ServerRejectedError):
+        return ERR_TOOL
+    return ERR_PROTOCOL
+
+
+def unchecked_text(failure: ServerError) -> str:
+    """The constant text for a call that failed before it was sent (the pre-flight listing)."""
+    return ERR_EXITED if isinstance(failure, ServerExitedError) else ERR_UNCHECKED
+
+
+def report(context: str, failure: ServerError) -> None:
+    """The server's own words about a failure, on stderr only."""
+    diagnostic(f"{context}: {type(failure).__name__}: {quoted(failure.detail)}")
 
 
 def encode_argument(value: JsonValue) -> str:
@@ -91,13 +128,15 @@ def pinned_text(tool: PinnedTool) -> str:
 def parse_tool(raw: JsonObject) -> PinnedTool:
     name = as_str(raw.get("name"))
     if name is None:
-        raise ServerError("a tool has no name")
+        raise ServerError(ERR_PROTOCOL, detail="a tool has no name")
     schema = raw.get("inputSchema")
     if schema is not None and as_object(schema) is None:
-        raise ServerError(f"tool {name}: inputSchema is not an object")
+        raise ServerError(ERR_PROTOCOL, detail=f"tool {quoted(name)}: inputSchema is not an object")
     output = raw.get("outputSchema")
     if output is not None and as_object(output) is None:
-        raise ServerError(f"tool {name}: outputSchema is not an object")
+        raise ServerError(
+            ERR_PROTOCOL, detail=f"tool {quoted(name)}: outputSchema is not an object"
+        )
     return PinnedTool(
         name=name,
         title=as_str(raw.get("title")),
@@ -150,6 +189,10 @@ class McpBackend:
             )
         return tuple(manifests)
 
+    def unavailable(self) -> str | None:
+        """The constant error text when the server is gone, else None."""
+        return None if self._client.alive else ERR_EXITED
+
     def pinned_definitions(self) -> tuple[PinnedTool, ...]:
         """The definitions from the first listing of each tool (what the agent is shown)."""
         return tuple(self._pinned.values())
@@ -164,17 +207,18 @@ class McpBackend:
         try:
             answer = self._client.call_tool(tool, arguments)
         except ServerError as failure:
-            return BackendResult(records=(), effect=None, error=str(failure))
+            report(f"call {tool}", failure)
+            return BackendResult(records=(), effect=None, error=error_text(failure))
         fields = content_fields(answer)
-        if answer.get("isError") is True:
-            message = "\n".join(field.text for field in fields) or "tool error"
-            return BackendResult(records=(), effect=None, error=message)
         readers = self._readers.get(tool, FAIL_CLOSED_READERS)
         records = (
             (BackendRecord(record_id=RESULT_RECORD, readers=readers, fields=fields),)
             if fields
             else ()
         )
+        if answer.get("isError") is True:
+            # The server's error content is labeled like any result; only ERR_TOOL is ours.
+            return BackendResult(records=records, effect=None, error=ERR_TOOL)
         return BackendResult(records=records, effect=self._effect(tool, args, fields), error=None)
 
     def _effect(
