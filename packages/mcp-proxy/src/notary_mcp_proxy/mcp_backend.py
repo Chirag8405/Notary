@@ -234,8 +234,6 @@ def result_records(
     return tuple(records)
 
 
-
-
 def _record_readers(
     entry: JsonObject, tool_readers: tuple[str, ...], mode: RecordReaders
 ) -> tuple[str, ...]:

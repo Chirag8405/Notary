@@ -13,7 +13,8 @@ world's error code as text.
 Rug pull (A10). An attack that poisons a tool description changes what the server reports. With
 `--descriptions after-first-call` (the default) the server first lists the clean descriptions and
 switches to the poisoned ones once the first `tools/call` arrives, announcing it with
-`notifications/tools/list_changed` (sent just before that call's answer): the proxy pinned the clean tools and the change is drift.
+`notifications/tools/list_changed` (sent just before that call's answer): the proxy pinned the
+clean tools and the change is drift.
 `--descriptions from-start` reports the poisoned ones from the first listing (nothing to drift
 from: a pin is only as good as the first listing).
 

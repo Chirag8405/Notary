@@ -8,7 +8,7 @@ final world back from the server's `--dump-state` file after the server is close
 """
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from notary_core.models import (
@@ -42,7 +42,7 @@ class ProxiedCall:
     """The fixture's expected outcome; None for a plain scenario call."""
     response: JsonObject
     """The `tools/call` result the agent got for the first proposal."""
-    decisions: list[Decision] = field(default_factory=list)
+    decisions: list[Decision]
     """Every decision of the call in order: the first, then one per approval."""
 
     @property
