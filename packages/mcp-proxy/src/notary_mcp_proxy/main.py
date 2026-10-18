@@ -24,6 +24,7 @@ from notary_mcp_proxy.config import (
     tool_readers,
 )
 from notary_mcp_proxy.gateway import Gateway
+from notary_mcp_proxy.guard import run_hook
 from notary_mcp_proxy.mcp_backend import McpBackend
 from notary_mcp_proxy.server import AuditSink, ProxyServer, serve
 
@@ -84,11 +85,34 @@ def build_server(
     return ProxyServer(gateway, exposed, audit=audit)
 
 
+def hook_main(argv: Sequence[str]) -> int:
+    """`hook pre-tool-use --policy PATH`: the Claude Code guard (stdin event, stdout answer)."""
+    parser = argparse.ArgumentParser(prog="notary-mcp-proxy hook pre-tool-use")
+    parser.add_argument("--policy", type=Path, required=True, help="guard policy (JSON)")
+    args = parser.parse_args(argv)
+    policy_path: Path = args.policy
+    try:
+        policy_text: str | None = policy_path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        policy_text = None
+    try:
+        stdin_text = sys.stdin.buffer.read().decode("utf-8")
+    except (OSError, ValueError):
+        stdin_text = ""
+    output = run_hook(stdin_text, policy_text)
+    if output:
+        print(output)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:2] == ["hook", "pre-tool-use"]:
+        return hook_main(args_list[2:])
     parser = argparse.ArgumentParser(prog="notary-mcp-proxy", description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="proxy config (JSON)")
     parser.add_argument("--audit-log", type=Path, help="append the event log here (JSON lines)")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(args_list)
     config_path: Path = args.config
     audit_path: Path | None = args.audit_log
     config = ProxyConfig.model_validate_json(config_path.read_bytes())

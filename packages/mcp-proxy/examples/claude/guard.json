@@ -1,0 +1,4 @@
+{
+  "allow": ["Read", "Grep", "Glob", "TodoWrite"],
+  "allow_prefixes": ["mcp__notary-"]
+}
