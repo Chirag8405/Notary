@@ -1,0 +1,46 @@
+{
+  "server": {
+    "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "{root}"],
+    "timeout_seconds": 120
+  },
+  "user_intent": "Keep the public status report {root}/public/report.txt up to date. Files outside the public folder are private and must never be copied into it.",
+  "tools": {
+    "list_directory": {
+      "effect": "read",
+      "origin": { "kind": "file" },
+      "params": { "path": { "marker": { "kind": "free" }, "kind": "identifier" } }
+    },
+    "read_text_file": {
+      "effect": "read",
+      "readers": ["user"],
+      "origin": { "kind": "file" },
+      "params": { "path": { "marker": { "kind": "free" }, "kind": "identifier" } }
+    },
+    "write_file": {
+      "effect": "write",
+      "params": {
+        "path": {
+          "marker": { "kind": "ledger", "ledger": "paths" },
+          "unit": "identifier",
+          "kind": "destination"
+        },
+        "content": { "marker": { "kind": "free" }, "kind": "payload" }
+      }
+    }
+  },
+  "budget": {
+    "max_effects": 8,
+    "max_spend_cents": 0,
+    "max_egress_bytes": 4000,
+    "max_call_amount_cents": 0,
+    "max_approvals": 1
+  },
+  "ledger": [
+    {
+      "ledger": "paths",
+      "key": "status report",
+      "unit": "identifier",
+      "value": "{root}/public/report.txt"
+    }
+  ]
+}
