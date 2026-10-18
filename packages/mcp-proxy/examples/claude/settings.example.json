@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-sync notary-mcp-proxy hook pre-tool-use --policy packages/mcp-proxy/examples/claude/guard.json"
+          }
+        ]
+      }
+    ]
+  }
+}
