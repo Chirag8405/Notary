@@ -2,7 +2,7 @@ import createClient from "openapi-fetch";
 import { describe, expect, it } from "vitest";
 
 import type { paths } from "../src/generated/api";
-import { getAnchor, listModes } from "../src/rest";
+import { getAnchor, listMcpRuns, listModes } from "../src/rest";
 
 const ANCHOR = { run_id: "run-poisoned_bill-notary", head: "a".repeat(64), length: 11 };
 
@@ -29,6 +29,14 @@ describe("REST wrappers", () => {
     const { client, urls } = stub(200, { modes: ["golden", "cassette"] });
     expect(await listModes(client)).toEqual(["golden", "cassette"]);
     expect(urls).toEqual(["/runs/modes"]);
+  });
+
+  it("listMcpRuns unwraps the run list and fails on 404 (directory not set) [I4]", async () => {
+    const run = { run_id: "mcp-0123456789ab", length: 3, head: "a".repeat(64), finished: false };
+    const { client, urls } = stub(200, { runs: [run] });
+    expect(await listMcpRuns(client)).toEqual([run]);
+    expect(urls).toEqual(["/mcp/runs"]);
+    await expect(listMcpRuns(stub(404, { detail: "off" }).client)).rejects.toThrow(/status 404/);
   });
 
   it("getAnchor returns the anchor [I4]", async () => {

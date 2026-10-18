@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Annotated, Literal
 
 import anyio
@@ -43,6 +44,7 @@ from notary_server.hijacked import (
 )
 from notary_server.limits import PlaygroundLimits, RateLimitedError, RateLimiter
 from notary_server.log_redaction import attach_redaction
+from notary_server.mcp_runs import McpRunList, list_mcp_runs
 from notary_server.playground import (
     AttackRunResponse,
     LaneRunner,
@@ -99,6 +101,13 @@ class ModeList(NotaryModel):
     modes: tuple[RunMode, ...]
 
 
+class _End:
+    """What `next` returns when a source has no more events (a source may also yield `None`)."""
+
+
+_END = _End()
+
+
 class _Progress:
     """What the receiver needs to know about the sender."""
 
@@ -117,11 +126,14 @@ async def _send_events(
 
     The source is iterated in worker threads. A worker step cannot be cancelled, so a cancelled
     stream waits for the step in flight and then closes the iterator (running its `finally`).
+    A `None` from the source means "nothing new yet" and sends nothing.
     """
     events = await run_in_threadpool(source.events, request)
     try:
-        while (event := await run_in_threadpool(next, events, None)) is not None:
+        while not isinstance(event := await run_in_threadpool(next, events, _END), _End):
             await anyio.lowlevel.checkpoint()  # a cancel that arrived during the step lands here
+            if event is None:
+                continue
             progress.run_id = event.run_id
             await websocket.send_text(EVENT_ADAPTER.dump_json(event).decode("utf-8"))
             await anyio.sleep(event_delay)
@@ -161,10 +173,12 @@ def create_app(
     arena_max_rounds: int = 10,
     broker: EndorsementBroker | None = None,
     limits: PlaygroundLimits | None = None,
+    mcp_runs_dir: Path | None = None,
 ) -> FastAPI:
     """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
-    want."""
+    want. `mcp_runs_dir` is the directory of the MCP proxy's audit chains
+    (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404."""
     attach_redaction()  # a session id in a request path must never reach a log
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
@@ -197,6 +211,14 @@ def create_app(
     @app.get("/runs/modes", operation_id="listRunModes")
     def run_modes() -> ModeList:
         return ModeList(modes=tuple(sorted(run_sources)))
+
+    @app.get("/mcp/runs", operation_id="listMcpRuns")
+    def mcp_runs() -> McpRunList:
+        # Registered either way, so the OpenAPI document (and the generated client) does not
+        # depend on the environment of the process that exports it.
+        if mcp_runs_dir is None:
+            raise HTTPException(status_code=404, detail="mcp runs are not enabled")
+        return McpRunList(runs=list_mcp_runs(mcp_runs_dir))
 
     @app.exception_handler(PlaygroundError)
     def playground_error(_request: Request, error: PlaygroundError) -> JSONResponse:
@@ -308,11 +330,17 @@ def create_app(
             if request.mode in BROKER_MODES and broker is not None and progress.run_id is not None:
                 broker.cancel_run(progress.run_id, owner=request.owner)
 
+        # Nothing is paced for a chain that is read from disk; and no command is accepted on it
+        # yet: the router of an `mcp` socket has no handler, so every command is refused.
+        reading_chain = request.mode == "mcp"
+        delay = 0.0 if reading_chain else event_delay
+        socket_router = CommandRouter() if reading_chain else command_router
+
         async with anyio.create_task_group() as group:
 
             async def send() -> None:
                 try:
-                    await _send_events(websocket, source, request, event_delay, progress)
+                    await _send_events(websocket, source, request, delay, progress)
                 except RunUnavailableError as unavailable:
                     await websocket.close(code=unavailable.code, reason=unavailable.reason)
                 except KeyError:
@@ -324,7 +352,7 @@ def create_app(
                 group.cancel_scope.cancel()
 
             async def receive() -> None:
-                rejected = await _receive_commands(websocket, command_router, request, progress)
+                rejected = await _receive_commands(websocket, socket_router, request, progress)
                 release_run()
                 if rejected is not None:
                     await websocket.close(code=rejected.code, reason=rejected.reason)
