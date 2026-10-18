@@ -45,6 +45,8 @@ from notary_mcp_proxy.structured import (
 RESULT_RECORD = "result"
 """Record id of the part of a call's result that has the tool's readers; its values are
 `<call_id>.result.<field>`. Fields with other readers are in `result-1`, `result-2`, ..."""
+ARG_RECORD = "arg"
+"""Argument values are `<call_id>.arg.<param>`; a result record may not use that id."""
 NON_STRING_TYPES = frozenset({"integer", "number", "boolean", "object", "array", "null"})
 FAIL_CLOSED_READERS: tuple[str, ...] = ("user",)
 """Readers of a tool the config does not name (it cannot pass the scope check anyway)."""
@@ -290,8 +292,8 @@ def records_result(
     def add(record_id: str, who: tuple[str, ...], fields: tuple[ToolResultField, ...]) -> None:
         nonlocal count
         count += len(fields)
-        if record_id in seen or count > MAX_LEAVES:
-            raise StructureError("duplicate record id or too many fields")
+        if record_id in seen or record_id == ARG_RECORD or count > MAX_LEAVES:
+            raise StructureError("duplicate or reserved record id, or too many fields")
         seen.add(record_id)
         for field in fields:
             value_id = f"{record_id}.{field.name}"
