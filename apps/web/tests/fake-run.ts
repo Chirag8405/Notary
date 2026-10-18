@@ -81,6 +81,15 @@ export function socketFactory(
 export interface RestState {
   modes: readonly string[] | "fail";
   anchor: { head: string; length: number } | "missing" | "fail";
+  /** The answer of `GET /mcp/runs`: runs, or "off" (404, no directory) or "fail" (500). */
+  mcpRuns?: readonly McpRunBody[] | "off" | "fail";
+}
+
+export interface McpRunBody {
+  run_id: string;
+  length: number;
+  head: string | null;
+  finished: boolean;
 }
 
 /** Stubs `fetch` for the two REST calls the page makes; read `calls` to see what was asked. */
@@ -99,6 +108,12 @@ export function stubRest(state: RestState) {
       return Promise.resolve(
         state.modes === "fail" ? respond(500, {}) : respond(200, { modes: state.modes }),
       );
+    }
+    if (path === "/mcp/runs") {
+      const runs = state.mcpRuns ?? "off";
+      if (runs === "off") return Promise.resolve(respond(404, { detail: "off" }));
+      if (runs === "fail") return Promise.resolve(respond(500, {}));
+      return Promise.resolve(respond(200, { runs }));
     }
     const anchor = /^\/runs\/([^/]+)\/anchor$/.exec(path);
     if (anchor !== null) {

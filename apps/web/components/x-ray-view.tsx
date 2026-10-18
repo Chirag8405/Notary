@@ -32,8 +32,10 @@ import { DEMO_STEPS, activeStep } from "@/lib/demo-steps";
 import {
   DEFAULT_MODE,
   callIdForSelection,
+  MCP_NO_RUN,
   describeStreamError,
   scenarioLanes,
+  selectMode,
   selectionFromChip,
   settleSelection,
   streamProblem,
@@ -173,6 +175,11 @@ function XRayRun({
     [view.calls],
   );
 
+  // A run of the MCP proxy is followed while it is written: "live" until its `run_finished`.
+  const following = mode === "mcp";
+  const live =
+    view.finished === null && (stream.status === "connecting" || stream.status === "open");
+
   const unresolved = view.endorsements.filter(
     (item) => !resolved.has(item.endorsement.endorsement_id),
   ).length;
@@ -199,7 +206,17 @@ function XRayRun({
             {stream.status}
           </Badge>
           <Badge variant="outline">{laneLabel("notary", null)}</Badge>
+          {following && live ? (
+            <Badge variant="secondary" data-live>
+              live
+            </Badge>
+          ) : null}
         </h1>
+        {following ? (
+          <p className="text-xs text-muted-foreground" data-mcp-run>
+            MCP proxy run {scenario}, read from its audit chain and verified as it arrives.
+          </p>
+        ) : null}
       </header>
       <Separator />
       {controls}
@@ -223,7 +240,18 @@ function XRayRun({
           <Panel title="Provenance graph">
             <ProvenanceGraph view={view} selectedId={selectedId} onSelect={setSelectedId} />
           </Panel>
-          {runId !== null && view.endorsements.length > 0 ? (
+          {following && view.endorsements.length > 0 ? (
+            <Panel title="Awaiting the user">
+              <p data-mcp-escalation>
+                {view.endorsements.length === 1
+                  ? "A call escalated and is not allowed to run."
+                  : `${view.endorsements.length} calls escalated and are not allowed to run.`}{" "}
+                The agent&apos;s own client answers for the user; approving from the X-ray is not
+                supported yet.
+              </p>
+            </Panel>
+          ) : null}
+          {!following && runId !== null && view.endorsements.length > 0 ? (
             <EndorsementPanel
               runId={runId}
               endorsements={view.endorsements}
@@ -267,7 +295,7 @@ function XRayRun({
           <EffectsList view={view} />
         </Panel>
       </div>
-      {viewMode === "three-lane" ? (
+      {viewMode === "three-lane" && !following ? (
         <Panel title="Three lanes">
           <ThreeLaneContainer
             apiUrl={apiUrl}
@@ -279,6 +307,31 @@ function XRayRun({
         </Panel>
       ) : null}
       <AnchorFooter client={client} runId={runId} finished={view.finished !== null} />
+    </>
+  );
+}
+
+/** Mode `mcp` before a run is chosen: the controls and what to do next. */
+function McpIdle({ controls }: { controls: ReactNode }) {
+  return (
+    <>
+      <header className="space-y-1">
+        <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+          NOTARY
+        </p>
+        <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+          Trust X-ray
+          <Badge variant="muted" data-status="idle">
+            idle
+          </Badge>
+          <Badge variant="outline">{laneLabel("notary", null)}</Badge>
+        </h1>
+      </header>
+      <Separator />
+      {controls}
+      <p data-mcp-idle className="text-muted-foreground">
+        {MCP_NO_RUN}
+      </p>
     </>
   );
 }
@@ -353,7 +406,7 @@ export function XRayView({
         apply({ ...selection, scenario: next });
       }}
       onModeChange={(next) => {
-        apply({ ...selection, mode: next });
+        apply(selectMode(selection, next));
       }}
       onViewModeChange={(next) => {
         apply({ ...selection, viewMode: next });
@@ -366,18 +419,22 @@ export function XRayView({
 
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 text-sm sm:px-6">
-      <XRayRun
-        key={runKey}
-        apiUrl={apiUrl}
-        scenario={selection.scenario}
-        mode={selection.mode}
-        viewMode={selection.viewMode}
-        webSocket={webSocket}
-        onUseCassette={() => {
-          apply({ ...selection, mode: "cassette" });
-        }}
-        controls={controls}
-      />
+      {selection.mode === "mcp" && selection.scenario === "" ? (
+        <McpIdle controls={controls} />
+      ) : (
+        <XRayRun
+          key={runKey}
+          apiUrl={apiUrl}
+          scenario={selection.scenario}
+          mode={selection.mode}
+          viewMode={selection.viewMode}
+          webSocket={webSocket}
+          onUseCassette={() => {
+            apply({ ...selection, mode: "cassette" });
+          }}
+          controls={controls}
+        />
+      )}
     </main>
   );
 }

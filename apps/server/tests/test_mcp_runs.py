@@ -457,3 +457,25 @@ def test_settings_read_the_runs_directory_from_the_environment(tmp_path: Path) -
     assert Settings.from_env({"NOTARY_MCP_RUNS_DIR": ""}).mcp_runs_dir is None
     settings = Settings.from_env({"NOTARY_MCP_RUNS_DIR": str(tmp_path)})
     assert settings.mcp_runs_dir == tmp_path
+
+
+class StutteringSource:
+    """Yields `None` ticks between its events, the way a source that waits for a live run does."""
+
+    def __init__(self, events: Sequence[Event]) -> None:
+        self._events = events
+
+    def events(self, request: RunRequest) -> Iterator[Event | None]:
+        for event in self._events:
+            yield None
+            yield event
+            yield None
+        yield None
+
+
+def test_a_none_tick_sends_no_frame() -> None:
+    events = run_events(RUN, 2)
+    app = create_app(event_delay=0, sources={"mcp": StutteringSource(events)})
+    streamed, closed = socket_events(TestClient(app), RUN)
+    assert closed.code == 1000
+    assert streamed == events

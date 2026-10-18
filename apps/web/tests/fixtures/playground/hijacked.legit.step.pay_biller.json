@@ -24,9 +24,7 @@
               "kind": "llm"
             },
             "integrity": "untrusted",
-            "readers": [
-              "*"
-            ],
+            "readers": ["*"],
             "span_pointer": null
           },
           "content_hash": "5e0de86a2a25df2c147714d064da7b24926eeff47c9142fe1cae1a71c7eb0cab"
@@ -46,9 +44,7 @@
               "kind": "llm"
             },
             "integrity": "untrusted",
-            "readers": [
-              "*"
-            ],
+            "readers": ["*"],
             "span_pointer": null
           },
           "content_hash": "12e72830575ebf5de1e26ff759df970d12be4da2cd497c4cf52175ceb0595bde"
@@ -73,9 +69,7 @@
                   "kind": "llm"
                 },
                 "integrity": "untrusted",
-                "readers": [
-                  "*"
-                ],
+                "readers": ["*"],
                 "span_pointer": null
               },
               "content_hash": "5e0de86a2a25df2c147714d064da7b24926eeff47c9142fe1cae1a71c7eb0cab"
@@ -87,9 +81,7 @@
                   "kind": "llm"
                 },
                 "integrity": "untrusted",
-                "readers": [
-                  "*"
-                ],
+                "readers": ["*"],
                 "span_pointer": null
               },
               "content_hash": "12e72830575ebf5de1e26ff759df970d12be4da2cd497c4cf52175ceb0595bde"
