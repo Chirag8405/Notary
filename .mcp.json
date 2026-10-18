@@ -9,8 +9,8 @@
         "notary-mcp-proxy",
         "--config",
         "packages/mcp-proxy/examples/bank/notary.json",
-        "--audit-log",
-        ".notary/mcp-audit.jsonl"
+        "--audit-dir",
+        ".notary/mcp-runs"
       ]
     }
   }

@@ -97,6 +97,102 @@ def test_replay_rejects_garbage(tmp_path: Path) -> None:
         assert "not a run record or event file" in result.output
 
 
+def write_chain_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A proxy-style chain (one AuditEntry per line) and its anchor, from the A3 run's chain."""
+    run_file = save_a3(tmp_path, monkeypatch)
+    chain = json.loads(run_file.read_text())["chain"]
+    chain_file = tmp_path / "run.chain.jsonl"
+    chain_file.write_text("".join(json.dumps(entry) + "\n" for entry in chain))
+    anchor = tmp_path / "run.anchor.json"
+    anchor.write_text(json.dumps({"run_id": "r", "length": len(chain), "head": chain[-1]["hash"]}))
+    return chain_file, anchor
+
+
+@pytest.mark.invariant("I1")
+def test_replay_verifies_a_chain_file_and_its_anchor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chain_file, anchor = write_chain_file(tmp_path, monkeypatch)
+    plain = runner.invoke(app, ["replay", str(chain_file)])
+    assert plain.exit_code == 0
+    lines = plain.output.splitlines()
+    assert lines[0].startswith("run run-A3-notary lane=notary events=")
+    assert "run_started" in lines[1]
+    assert lines[-1].startswith("chain: OK head=")
+    anchored = runner.invoke(app, ["replay", str(chain_file), "--anchor", str(anchor)])
+    assert anchored.exit_code == 0
+    assert anchored.output == plain.output
+
+
+@pytest.mark.invariant("I1")
+def test_replay_detects_an_edited_line_in_a_chain_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chain_file, _ = write_chain_file(tmp_path, monkeypatch)
+    lines = chain_file.read_text().splitlines()
+    entry = json.loads(lines[1])
+    entry["event"]["run_id"] = "tampered"
+    lines[1] = json.dumps(entry)
+    chain_file.write_text("\n".join(lines) + "\n")
+    result = runner.invoke(app, ["replay", str(chain_file)])
+    assert result.exit_code == 1
+    assert "chain: FAILED hash mismatch at index 1" in result.output
+
+
+@pytest.mark.invariant("I1")
+def test_replay_detects_a_deleted_line_in_the_middle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chain_file, _ = write_chain_file(tmp_path, monkeypatch)
+    lines = chain_file.read_text().splitlines()
+    del lines[1]
+    chain_file.write_text("\n".join(lines) + "\n")
+    result = runner.invoke(app, ["replay", str(chain_file)])
+    assert result.exit_code == 1
+    assert "chain: FAILED index mismatch at index 1" in result.output
+
+
+@pytest.mark.invariant("I1")
+def test_replay_anchor_detects_a_truncated_chain_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chain_file, anchor = write_chain_file(tmp_path, monkeypatch)
+    lines = chain_file.read_text().splitlines()
+    chain_file.write_text("\n".join(lines[:-1]) + "\n")
+    assert runner.invoke(app, ["replay", str(chain_file)]).exit_code == 0  # the chain alone cannot
+    result = runner.invoke(app, ["replay", str(chain_file), "--anchor", str(anchor)])
+    assert result.exit_code == 1
+    assert "chain: FAILED length mismatch" in result.output
+
+
+@pytest.mark.invariant("I1")
+def test_replay_reports_a_partial_last_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chain_file, _ = write_chain_file(tmp_path, monkeypatch)
+    text = chain_file.read_text()
+    count = len(text.splitlines())
+    chain_file.write_text(text + '{"index": 99, "prev_ha')
+    result = runner.invoke(app, ["replay", str(chain_file)])
+    assert result.exit_code == 1
+    assert f"chain: FAILED unreadable entry at index {count}" in result.output
+
+
+def test_replay_anchor_input_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    chain_file, anchor = write_chain_file(tmp_path, monkeypatch)
+    both = runner.invoke(
+        app, ["replay", str(chain_file), "--anchor", str(anchor), "--expect-length", "1"]
+    )
+    assert both.exit_code == 2
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"length": "x", "head": null}')
+    assert runner.invoke(app, ["replay", str(chain_file), "--anchor", str(bad)]).exit_code == 2
+    plain = str(EVENTS / "poisoned_bill.notary.json")
+    on_plain = runner.invoke(app, ["replay", plain, "--anchor", str(anchor)])
+    assert on_plain.exit_code == 2
+    assert "--anchor need a run file with an audit chain" in on_plain.output
+
+
 def test_bench_out_writes_one_results_file_per_lane(tmp_path: Path) -> None:
     result = runner.invoke(app, ["bench", "--out", str(tmp_path)])
     assert result.exit_code == 0

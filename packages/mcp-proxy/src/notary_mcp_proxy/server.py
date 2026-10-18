@@ -131,7 +131,8 @@ class ProxyServer:
     def handle_fast(self, message: JsonObject) -> JsonObject | None:
         """`initialize`, `ping`, `tools/list`, unknown methods and invalid messages.
 
-        Safe on the reader thread while a call runs: it never touches the Gateway. A `tools/call` is not answered here (`handle_call` does that).
+        Safe on the reader thread while a call runs: it never touches the Gateway.
+        A `tools/call` is not answered here (`handle_call` does that).
         """
         if is_call(message):
             return error(message.get("id"), INTERNAL_ERROR, "tools/call is not a fast method")

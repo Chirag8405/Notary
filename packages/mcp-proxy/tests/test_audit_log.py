@@ -95,9 +95,7 @@ def test_the_chain_file_verifies_and_matches_its_anchor(tmp_path: Path) -> None:
     assert anchor == log.anchor
     assert (anchor.run_id, anchor.length, anchor.head) == ("run-demo", len(chain), chain[-1].hash)
     assert verify_chain_detailed(chain, expected_length=anchor.length, expected_head=anchor.head).ok
-    blocked = [
-        e.event.decision.verdict for e in chain if isinstance(e.event, DecisionMade)
-    ]
+    blocked = [e.event.decision.verdict for e in chain if isinstance(e.event, DecisionMade)]
     assert blocked == ["ALLOW", "BLOCK", "ALLOW"]
 
 
