@@ -178,7 +178,7 @@ def create_app(
     """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
     want. `mcp_runs_dir` is the directory of the MCP proxy's audit chains
-    (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` does not exist (404)."""
+    (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404."""
     attach_redaction()  # a session id in a request path must never reach a log
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
@@ -212,12 +212,13 @@ def create_app(
     def run_modes() -> ModeList:
         return ModeList(modes=tuple(sorted(run_sources)))
 
-    if mcp_runs_dir is not None:
-        runs_directory = mcp_runs_dir
-
-        @app.get("/mcp/runs", operation_id="listMcpRuns")
-        def mcp_runs() -> McpRunList:
-            return McpRunList(runs=list_mcp_runs(runs_directory))
+    @app.get("/mcp/runs", operation_id="listMcpRuns")
+    def mcp_runs() -> McpRunList:
+        # Registered either way, so the OpenAPI document (and the generated client) does not
+        # depend on the environment of the process that exports it.
+        if mcp_runs_dir is None:
+            raise HTTPException(status_code=404, detail="mcp runs are not enabled")
+        return McpRunList(runs=list_mcp_runs(mcp_runs_dir))
 
     @app.exception_handler(PlaygroundError)
     def playground_error(_request: Request, error: PlaygroundError) -> JSONResponse:

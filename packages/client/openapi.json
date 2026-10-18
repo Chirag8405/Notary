@@ -1480,6 +1480,61 @@
         "title": "LlmOrigin",
         "type": "object"
       },
+      "McpRunInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "finished": {
+            "title": "Finished",
+            "type": "boolean"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "length": {
+            "minimum": 0.0,
+            "title": "Length",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "length",
+          "head",
+          "finished"
+        ],
+        "title": "McpRunInfo",
+        "type": "object"
+      },
+      "McpRunList": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/McpRunInfo"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "McpRunList",
+        "type": "object"
+      },
       "ModeList": {
         "additionalProperties": false,
         "properties": {
@@ -1488,7 +1543,8 @@
               "enum": [
                 "golden",
                 "cassette",
-                "live"
+                "live",
+                "mcp"
               ],
               "type": "string"
             },
@@ -2250,6 +2306,24 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/mcp/runs": {
+      "get": {
+        "operationId": "listMcpRuns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpRunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mcp Runs"
       }
     },
     "/playground/arena": {
