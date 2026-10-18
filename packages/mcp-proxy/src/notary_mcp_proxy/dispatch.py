@@ -63,6 +63,10 @@ class Target(Protocol):
 
     def route_drift_checks(self, schedule: Callable[[], None]) -> None: ...
 
+    def route_cancellation(
+        self, cancelled: Callable[[JsonValue], bool], input_closed: Callable[[], bool]
+    ) -> None: ...
+
 
 class ClientRequestError(Exception):
     """A request the proxy sent to the client got no usable answer. The message is constant."""
@@ -146,6 +150,7 @@ class Dispatcher:
         self.input_ended = threading.Event()
         """Set once the reader saw the end of input and dropped the queue."""
         server.route_drift_checks(self._queue_drift_check)
+        server.route_cancellation(self.cancelled, self.input_ended.is_set)
 
     # -- public ----------------------------------------------------------------------------------
 

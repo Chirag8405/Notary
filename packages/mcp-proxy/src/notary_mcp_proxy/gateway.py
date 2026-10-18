@@ -11,9 +11,12 @@ immutable snapshot, and the backend is private (no attribute or method hands it 
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal, Protocol, runtime_checkable
+from typing import Annotated, Literal, Protocol, runtime_checkable
+
+from pydantic import Field
 
 from notary_core.audit import append
+from notary_core.endorsement import remaining_approvals
 from notary_core.gateway import GatewayLabeler, ToolResult, ValueStore
 from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
 from notary_core.models import (
@@ -101,11 +104,22 @@ class MediationOutcome(NotaryModel):
     error: str | None
 
 
+class PendingCard(NotaryModel):
+    """A read-only snapshot of an escalated call that still waits for the user."""
+
+    endorsement: Endorsement
+    proposal: ToolCallProposal
+    decision: Decision
+    remaining_approvals: Annotated[int, Field(ge=0)]
+    """Approvals left in the session budget now (`remaining_approvals` of the core)."""
+
+
 @dataclass(frozen=True, slots=True)
 class _Pending:
     """An escalated call waiting for the user. Replaced, never mutated, when it is resolved."""
 
     call: RawCall
+    endorsement: Endorsement
     proposal: ToolCallProposal
     decision: Decision
     resolved: bool
@@ -167,6 +181,20 @@ class Gateway:
     @property
     def halted(self) -> str | None:
         return self._halted
+
+    def pending_endorsements(self) -> tuple[PendingCard, ...]:
+        """The escalations still waiting for the user, oldest first (a snapshot; nothing leaks)."""
+        left = remaining_approvals(self._contract, self._session)
+        return tuple(
+            PendingCard(
+                endorsement=item.endorsement,
+                proposal=item.proposal,
+                decision=item.decision,
+                remaining_approvals=left,
+            )
+            for item in self._escalations.values()
+            if not item.resolved
+        )
 
     def emit(self, make: EventFactory) -> bool:
         """Append one event; a failing append halts the gateway and leaves the chain unchanged.
@@ -329,7 +357,7 @@ class Gateway:
             sequence=k - 1,
         )
         self._escalations[endorsement_id] = _Pending(
-            call=call, proposal=proposal, decision=decision, resolved=False
+            call=call, endorsement=endorsement, proposal=proposal, decision=decision, resolved=False
         )
         requested = self.emit(
             lambda run, lane, seq: EndorsementRequested(
