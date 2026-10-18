@@ -123,6 +123,15 @@ def _tool_findings(
     return found
 
 
+def _is_placeholder_iban(value: str) -> bool:
+    """Check digits 00 never occur in a real IBAN; a placeholder if that is its only defect."""
+    if len(value) < 5 or value[2:4] != "00" or not value.isascii() or not value.isalnum():
+        return False
+    digits = "".join(str(int(ch, 36)) for ch in value[4:] + value[:2] + "00")
+    fixed = value[:2] + f"{98 - int(digits) % 97:02d}" + value[4:]
+    return canonicalize("iban", fixed).valid
+
+
 def _ledger_findings(config: ProxyConfig) -> list[Finding]:
     """An invalid ledger value is an error; an IBAN with check digits 00 is a placeholder."""
     found: list[Finding] = []
@@ -131,7 +140,7 @@ def _ledger_findings(config: ProxyConfig) -> list[Finding]:
         if canonical.valid:
             continue
         where = f"ledger {entry.ledger}/{entry.key}"
-        if entry.unit == "iban" and canonical.value[2:4] == "00":
+        if entry.unit == "iban" and _is_placeholder_iban(canonical.value):
             found.append(
                 Finding(
                     severity="warning",

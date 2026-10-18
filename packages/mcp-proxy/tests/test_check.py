@@ -121,6 +121,17 @@ def test_ledger_placeholder_iban_is_a_warning() -> None:
     assert report.ok
 
 
+@pytest.mark.parametrize("value", ["DE00ACME", "DE00", "XX00!!"])
+def test_ledger_00_check_digits_with_another_defect_is_an_error(value: str) -> None:
+    config = _config(
+        {"read_file": {"effect": "read"}},
+        ledger=[{"ledger": "payees", "key": "Acme", "unit": "iban", "value": value}],
+    )
+    report = _run(config, {"read_file": []})
+    assert _codes(report) == {("error", "LEDGER_VALUE_INVALID")}
+    assert not report.ok
+
+
 def test_ledger_iban_with_a_typo_is_an_error() -> None:
     config = _config(
         {"read_file": {"effect": "read"}},
