@@ -3,7 +3,6 @@
 `check_config` is pure over its inputs; the subprocess lives in `main.py`.
 """
 
-import re
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
@@ -29,10 +28,10 @@ FindingCode = Literal[
     "PARAM_UNCLASSIFIED",
     "EFFECT_STRICTER_THAN_CONFIG",
     "LEDGER_VALUE_INVALID",
+    "LEDGER_VALUE_PLACEHOLDER",
     "IRREVERSIBLE_NOT_AUTHORIZED",
     "SERVER_TOOL_NOT_EXPOSED",
 ]
-_IBAN_SHAPE = re.compile(r"[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}")
 SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
 
 
@@ -125,23 +124,34 @@ def _tool_findings(
 
 
 def _ledger_findings(config: ProxyConfig) -> list[Finding]:
-    """An IBAN of the right shape that only fails the checksum is a warning (toy values)."""
+    """An invalid ledger value is an error; an IBAN with check digits 00 is a placeholder."""
     found: list[Finding] = []
     for entry in config.ledger:
         canonical = canonicalize(entry.unit, entry.value)
         if canonical.valid:
             continue
-        shaped = entry.unit == "iban" and _IBAN_SHAPE.fullmatch(canonical.value) is not None
+        where = f"ledger {entry.ledger}/{entry.key}"
+        if entry.unit == "iban" and canonical.value[2:4] == "00":
+            found.append(
+                Finding(
+                    severity="warning",
+                    code="LEDGER_VALUE_PLACEHOLDER",
+                    tool=None,
+                    param=None,
+                    detail=(
+                        f"{where}: check digits 00 never occur in a real IBAN; "
+                        "a placeholder or test IBAN"
+                    ),
+                )
+            )
+            continue
         found.append(
             Finding(
-                severity="warning" if shaped else "error",
+                severity="error",
                 code="LEDGER_VALUE_INVALID",
                 tool=None,
                 param=None,
-                detail=(
-                    f"ledger {entry.ledger}/{entry.key}: "
-                    f"{'fails the checksum of' if shaped else 'not a valid'} {entry.unit}"
-                ),
+                detail=f"{where}: not a valid {entry.unit}",
             )
         )
     return found

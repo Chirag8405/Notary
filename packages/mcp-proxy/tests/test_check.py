@@ -109,7 +109,7 @@ def test_ledger_value_invalid() -> None:
     assert _codes(_run(config, {"read_file": []})) == {("error", "LEDGER_VALUE_INVALID")}
 
 
-def test_ledger_iban_failing_only_the_checksum_is_a_warning() -> None:
+def test_ledger_placeholder_iban_is_a_warning() -> None:
     config = _config(
         {"read_file": {"effect": "read"}},
         ledger=[
@@ -117,8 +117,20 @@ def test_ledger_iban_failing_only_the_checksum_is_a_warning() -> None:
         ],
     )
     report = _run(config, {"read_file": []})
-    assert _codes(report) == {("warning", "LEDGER_VALUE_INVALID")}
+    assert _codes(report) == {("warning", "LEDGER_VALUE_PLACEHOLDER")}
     assert report.ok
+
+
+def test_ledger_iban_with_a_typo_is_an_error() -> None:
+    config = _config(
+        {"read_file": {"effect": "read"}},
+        ledger=[
+            {"ledger": "payees", "key": "Acme", "unit": "iban", "value": "DE89370400440532013001"}
+        ],
+    )
+    report = _run(config, {"read_file": []})
+    assert _codes(report) == {("error", "LEDGER_VALUE_INVALID")}
+    assert not report.ok
 
 
 def test_irreversible_not_authorized() -> None:

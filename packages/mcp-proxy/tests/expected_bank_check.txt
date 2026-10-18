@@ -3,5 +3,5 @@ tool pay_bill  effect=irreversible  hash=832e7c5ec7c8b24b6c43f9e3ba5729dd9900622
   param payee  marker=ledger  unit=iban  kind=destination
 tool read_inbox  effect=read  hash=18c1aea4cd017739cdc42be83ecfa3165e1e9630c0d3f3d2a9f634220b9b81be
 
-warning LEDGER_VALUE_INVALID: ledger payees/Acme Utilities: fails the checksum of iban
+warning LEDGER_VALUE_PLACEHOLDER: ledger payees/Acme Utilities: check digits 00 never occur in a real IBAN; a placeholder or test IBAN
 ok: 0 error(s), 1 other finding(s)

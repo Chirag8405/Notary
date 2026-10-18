@@ -232,8 +232,8 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 
 `notary-mcp-proxy check --config CONFIG [--json]` starts the server named in the config, lists its tools, stops it (the agent-facing server is not started and no audit file is written) and prints, per config tool, the effective effect, the manifest hash (the hash of the pinned envelope, the same value the proxy pins) and each parameter's effective marker, unit and kind, followed by the findings. `notary-mcp-proxy [serve] --config CONFIG` serves as before; no subcommand means `serve`, so `.mcp.json` is unchanged.
 
-- Errors: `TOOL_MISSING`, `PARAM_UNCLASSIFIED` (the table falls back to `UNKNOWN_PARAM`), `PARAM_NOT_IN_CONFIG` for a `required` parameter, `LEDGER_VALUE_INVALID` (a ledger value that is not a valid value of its unit).
-- Warnings: `PARAM_NOT_IN_CONFIG` (calls using it are blocked with `SCOPE_PARAM_NOT_IN_CONTRACT`), `PARAM_NOT_ON_SERVER`, `IRREVERSIBLE_NOT_AUTHORIZED` (every call is blocked at step 2), and `LEDGER_VALUE_INVALID` for an IBAN of the right shape that only fails the mod-97 checksum (the toy bank's `DE00ACME...` is one).
+- Errors: `TOOL_MISSING`, `PARAM_UNCLASSIFIED` (the table falls back to `UNKNOWN_PARAM`), `PARAM_NOT_IN_CONFIG` for a `required` parameter, `LEDGER_VALUE_INVALID` (a ledger value that is not a valid value of its unit: wrong shape, or a real-looking IBAN that fails the mod-97 checksum, which is how a typo shows).
+- Warnings: `PARAM_NOT_IN_CONFIG` (calls using it are blocked with `SCOPE_PARAM_NOT_IN_CONTRACT`), `PARAM_NOT_ON_SERVER`, `IRREVERSIBLE_NOT_AUTHORIZED` (every call is blocked at step 2), and `LEDGER_VALUE_PLACEHOLDER` for an invalid IBAN whose check digits are `00`: real IBANs use 02-98, so it is a placeholder or test value (the toy bank's `DE00ACME...` is one) and not a typo.
 - Info: `EFFECT_STRICTER_THAN_CONFIG` (the reviewed table wins), `SERVER_TOOL_NOT_EXPOSED`.
 - `--json` prints the `CheckReport` instead of text.
 - Exit codes: `0` no error finding, `1` at least one error finding, `2` usage error, unreadable or invalid config, or the server failed to start or list its tools (message on stderr).
