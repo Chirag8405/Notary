@@ -66,6 +66,18 @@ class ReportsAvailability(Protocol):
         ...
 
 
+@runtime_checkable
+class ReportsToolAvailability(Protocol):
+    """A backend over several servers: it knows which tool's server is gone."""
+
+    def unavailable_for(self, tool: str) -> str | None:
+        """A constant error text when `tool` cannot reach its server, else None.
+
+        None for a tool no server owns: the scope check blocks it as usual.
+        """
+        ...
+
+
 class ToolPin(NotaryModel):
     """A tool pinned to the hash of its manifest (description and schema)."""
 
@@ -195,17 +207,20 @@ class Gateway:
         """Label the arguments, propose, decide (write-ahead) and run the tool only on ALLOW."""
         if self._halted is not None:
             return self._halted_outcome(call.call_id)
-        if isinstance(self._backend, ReportsAvailability):
+        gone: str | None = None
+        if isinstance(self._backend, ReportsToolAvailability):
+            gone = self._backend.unavailable_for(call.tool)
+        if gone is None and isinstance(self._backend, ReportsAvailability):
             gone = self._backend.unavailable()
-            if gone is not None:
-                # Answered before anything is resolved or proposed: the chain does not change.
-                return MediationOutcome(
-                    call_id=call.call_id,
-                    status="tool_error",
-                    decision=None,
-                    endorsement_id=None,
-                    error=gone,
-                )
+        if gone is not None:
+            # Answered before anything is resolved or proposed: the chain does not change.
+            return MediationOutcome(
+                call_id=call.call_id,
+                status="tool_error",
+                decision=None,
+                endorsement_id=None,
+                error=gone,
+            )
         if call.call_id in self._seen_calls:
             raise ValueError("duplicate call id")
         self._seen_calls.add(call.call_id)

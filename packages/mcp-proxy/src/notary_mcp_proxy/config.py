@@ -1,4 +1,8 @@
-"""The proxy's config file: which server to front and the user's contract for this session.
+"""The proxy's config file: which server(s) to front and the user's contract for this session.
+
+One contract covers every server: `server` (one server, named `default`) or `servers` (name ->
+spec, each tool names its `server`). Tool names stay the servers' own names; a clash is resolved
+with `remote_name`, never by an automatic prefix, so reviewed policy rows keep applying.
 
 The config stands in for the Intent Compiler: the user writes the contract by hand. Manifest
 hashes are not written; they are pinned from what the server reports at startup.
@@ -6,9 +10,9 @@ hashes are not written; they are pinned from what the server reports at startup.
 
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import LabelingPolicy, ToolOriginRule
@@ -40,6 +44,8 @@ from notary_core.units import canonicalize
 from notary_mcp_proxy.structured import StructureError, validate_pattern
 
 PUBLIC: tuple[str, ...] = ("*",)
+DEFAULT_SERVER = "default"
+"""Name of the one server of the single `server` form."""
 
 
 class ServerSpec(NotaryModel):
@@ -67,6 +73,11 @@ class FieldSpec(NotaryModel):
 
 class ToolSpec(NotaryModel):
     effect: ToolEffect
+    server: str | None = None
+    """Which server runs the tool; required with several servers, else the only one."""
+    remote_name: str | None = None
+    """The server's name for the tool when the contract name differs. Reviewed policy rows and
+    the pinned manifest use the contract name; the parameters must be classified under it."""
     params: dict[str, ParamSpec] = {}
     readers: tuple[str, ...] = PUBLIC
     """Who may read this tool's results; `["user"]` marks them secret."""
@@ -101,13 +112,63 @@ class LedgerSpec(NotaryModel):
 
 
 class ProxyConfig(NotaryModel):
-    server: ServerSpec
+    single_server: ServerSpec | None = Field(default=None, alias="server")
+    """The single form, `"server": {...}`: one server, named `default`."""
+    named_servers: dict[str, ServerSpec] = Field(default_factory=dict, alias="servers")
+    """The several-servers form, `"servers": {name: {...}}`. Give exactly one of the two."""
     user_intent: str
     tools: dict[str, ToolSpec]
     budget: EffectBudget
     egress_hosts: tuple[str, ...] = ()
     authorized_irreversible: tuple[str, ...] = ()
     ledger: tuple[LedgerSpec, ...] = ()
+
+    @model_validator(mode="after")
+    def _routes_are_valid(self) -> Self:
+        if (self.single_server is None) == (not self.named_servers):
+            raise ValueError("give exactly one of `server` and `servers`")
+        seen: dict[tuple[str, str], str] = {}
+        for tool, spec in sorted(self.tools.items()):
+            name = spec.server
+            if name is None:
+                if len(self.servers) != 1:
+                    raise ValueError(f"tool {tool!r}: `server` is required with several servers")
+                name = next(iter(self.servers))
+            if name not in self.servers:
+                raise ValueError(f"tool {tool!r}: unknown server {name!r}")
+            route = (name, spec.remote_name or tool)
+            if route in seen:
+                raise ValueError(
+                    f"tools {seen[route]!r} and {tool!r} are both {route[1]!r} on server {name!r}"
+                )
+            seen[route] = tool
+        return self
+
+    @property
+    def servers(self) -> dict[str, ServerSpec]:
+        """Name -> spec for either form."""
+        if self.single_server is not None:
+            return {DEFAULT_SERVER: self.single_server}
+        return dict(self.named_servers)
+
+    @property
+    def server(self) -> ServerSpec:
+        """The only server (the single form); an error when there are several."""
+        if len(self.servers) != 1:
+            raise ValueError("the config has several servers; use `servers`")
+        return next(iter(self.servers.values()))
+
+    @property
+    def multi(self) -> bool:
+        return len(self.servers) > 1
+
+
+def routes(config: ProxyConfig) -> Mapping[str, tuple[str, str]]:
+    """Contract tool name -> (server name, the server's name for the tool)."""
+    only = next(iter(config.servers))
+    return {
+        tool: (spec.server or only, spec.remote_name or tool) for tool, spec in config.tools.items()
+    }
 
 
 def build_policy(config: ProxyConfig) -> PolicyTable:

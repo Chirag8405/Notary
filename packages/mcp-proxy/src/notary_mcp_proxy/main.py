@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from notary_mcp_proxy.config import (
 )
 from notary_mcp_proxy.gateway import Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
-from notary_mcp_proxy.mcp_backend import McpBackend
+from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import AuditSink, ProxyServer, serve
 
 
@@ -51,17 +51,33 @@ def _audit_file(path: Path) -> AuditSink:
 def build_server(
     config: ProxyConfig, client: StdioClient, *, run_id: str, audit: AuditSink | None
 ) -> ProxyServer:
-    """Pin the server's tools, freeze the contract and wrap a Gateway around the backend."""
-    client.initialize()
+    """`build_servers` for a config with one server."""
+    (name,) = config.servers
+    return build_servers(config, {name: client}, run_id=run_id, audit=audit)
+
+
+def build_servers(
+    config: ProxyConfig,
+    clients: Mapping[str, StdioClient],
+    *,
+    run_id: str,
+    audit: AuditSink | None,
+) -> ProxyServer:
+    """Pin every server's tools, freeze one contract and wrap one Gateway around all of them.
+
+    Raises `RoutingError` when a contract name is also reported by another server tool, and
+    `ValueError` when a configured tool is not reported.
+    """
+    for client in clients.values():
+        client.initialize()
     policy = build_policy(config)
-    backend = McpBackend(
-        client,
-        policy=policy,
-        effects={tool: spec.effect for tool, spec in config.tools.items()},
-        readers=tool_readers(config),
-        fields=tool_fields(config),
+    backend = build_routing(
+        config, clients, policy=policy, readers=tool_readers(config), fields=tool_fields(config)
     )
     pinned = backend.list_tools()
+    clashes = backend.collisions()
+    if clashes:
+        raise RoutingError("; ".join(clashes))
     contract = build_contract(config, pinned)
     gateway = Gateway(
         backend=backend,
@@ -85,9 +101,9 @@ def build_server(
             classifier=None,
         )
     )
-    exposed = [tool for tool in backend.pinned_definitions() if tool.name in config.tools]
-    server = ProxyServer(gateway, exposed, audit=audit)
-    client.on_notification = server.on_server_notification
+    server = ProxyServer(gateway, backend.pinned_definitions(), audit=audit)
+    for client in clients.values():
+        client.on_notification = server.on_server_notification
     return server
 
 
@@ -151,29 +167,47 @@ def check_main(argv: Sequence[str]) -> int:
     config = _load_config(config_path)
     if config is None:
         return 2
-    client: StdioClient | None = None
+    clients: dict[str, StdioClient] = {}
     try:
-        client = StdioClient(
-            config.server.command,
-            cwd=config_path.resolve().parent,
-            timeout_seconds=config.server.timeout_seconds,
-        )
-        client.initialize()
-        backend = McpBackend(client, policy=build_policy(config), effects={}, readers={})
+        clients = _start_clients(config, config_path)
+        for client in clients.values():
+            client.initialize()
+        backend = build_routing(config, clients, policy=build_policy(config), readers={}, fields={})
         manifests = backend.list_tools()
         schemas = {tool.name: tool.input_schema for tool in backend.pinned_definitions()}
+        collisions = backend.collisions()
     except (ServerError, OSError) as failure:
         detail = failure.detail if isinstance(failure, ServerError) else str(failure)
-        _log(f"the server failed to start or list its tools: {type(failure).__name__}: {detail}")
+        _log(f"a server failed to start or list its tools: {type(failure).__name__}: {detail}")
         return 2
     finally:
-        if client is not None:
-            client.close()
-    report = check_config(config, manifests, schemas)
+        _close_all(clients)
+    report = check_config(config, manifests, schemas, collisions)
     print(report.model_dump_json(indent=2) if args.json else render_report(report), end="")
     if args.json:
         print()
     return 0 if report.ok else 1
+
+
+def _start_clients(config: ProxyConfig, config_path: Path) -> dict[str, StdioClient]:
+    """Start every server (in the config file's directory); on a failure stop the ones started."""
+    started: dict[str, StdioClient] = {}
+    try:
+        for name, spec in config.servers.items():
+            started[name] = StdioClient(
+                spec.command,
+                cwd=config_path.resolve().parent,
+                timeout_seconds=spec.timeout_seconds,
+            )
+    except BaseException:
+        _close_all(started)
+        raise
+    return started
+
+
+def _close_all(clients: Mapping[str, StdioClient]) -> None:
+    for client in clients.values():
+        client.close()
 
 
 def serve_main(argv: Sequence[str]) -> int:
@@ -184,23 +218,30 @@ def serve_main(argv: Sequence[str]) -> int:
     config_path: Path = args.config
     audit_path: Path | None = args.audit_log
     config = ProxyConfig.model_validate_json(config_path.read_bytes())
-    client = StdioClient(
-        config.server.command,
-        cwd=config_path.resolve().parent,
-        timeout_seconds=config.server.timeout_seconds,
-    )
     run_id = f"mcp-{uuid.uuid4().hex[:12]}"
+    clients: dict[str, StdioClient] = {}
     try:
-        server = build_server(
-            config,
-            client,
-            run_id=run_id,
-            audit=None if audit_path is None else _audit_file(audit_path),
-        )
-        _log(f"run {run_id}: fronting {' '.join(config.server.command)}")
+        try:
+            clients = _start_clients(config, config_path)
+            server = build_servers(
+                config,
+                clients,
+                run_id=run_id,
+                audit=None if audit_path is None else _audit_file(audit_path),
+            )
+        except (ServerError, OSError, ValueError) as failure:
+            # Every server must start and match the config, or the contract would not cover it.
+            detail = failure.detail if isinstance(failure, ServerError) else str(failure)
+            _log(f"startup failed: {type(failure).__name__}: {detail}")
+            return 2
+        fronted = [
+            " ".join(spec.command) if not config.multi else f"{name}: {' '.join(spec.command)}"
+            for name, spec in config.servers.items()
+        ]
+        _log(f"run {run_id}: fronting {'; '.join(fronted)}")
         serve(server, sys.stdin.buffer, sys.stdout.buffer)
     finally:
-        client.close()
+        _close_all(clients)
     return 0
 
 
