@@ -208,5 +208,5 @@ def test_json_output_is_a_report(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert main(["check", "--config", str(_bank_config(tmp_path)), "--json"]) == 0
     report = CheckReport.model_validate_json(capsys.readouterr().out)
     assert report.ok
-    assert [row.tool for row in report.tools] == ["pay_bill", "read_inbox"]
+    assert [row.tool for row in report.tools] == ["add_contact", "pay_bill", "read_inbox"]
     assert render_report(report) == EXPECTED.read_text()

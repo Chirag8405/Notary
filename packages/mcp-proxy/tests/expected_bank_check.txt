@@ -1,3 +1,5 @@
+tool add_contact  effect=write  hash=81112750c48afac75e5bafff69239566f81fb1b236efc3b17213fd50741765d3
+  param name  marker=endorse  unit=identifier  kind=identifier
 tool pay_bill  effect=irreversible  hash=832e7c5ec7c8b24b6c43f9e3ba5729dd99006223208ee94a252608be03f86546
   param amount  marker=free  unit=amount  kind=amount
   param payee  marker=ledger  unit=iban  kind=destination

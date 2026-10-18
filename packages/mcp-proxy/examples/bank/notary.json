@@ -9,14 +9,18 @@
         "payee": { "marker": { "kind": "ledger", "ledger": "payees" } },
         "amount": { "marker": { "kind": "free" } }
       }
+    },
+    "add_contact": {
+      "effect": "write",
+      "params": { "name": { "marker": { "kind": "endorse" } } }
     }
   },
   "budget": {
-    "max_effects": 2,
+    "max_effects": 3,
     "max_spend_cents": 20000,
     "max_egress_bytes": 0,
     "max_call_amount_cents": 20000,
-    "max_approvals": 1
+    "max_approvals": 2
   },
   "authorized_irreversible": ["pay_bill"],
   "ledger": [
