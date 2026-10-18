@@ -21,7 +21,7 @@ from builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 from stdio_session import StdioSession, proxy_command, request, tool_call
 
-from notary_core.models import DecisionMade, EffectExecuted, EndorsementRequested
+from notary_core.models import DecisionMade, EffectExecuted, EndorsementRequested, RunFinished
 from notary_mcp_proxy import BackendResult, RawCall
 from notary_mcp_proxy.approvals import ApprovalDesk, Pending, printable
 from notary_mcp_proxy.control import (
@@ -144,6 +144,13 @@ class Rig:
     def types(self) -> list[str]:
         return [entry.event.type for entry in self.gateway.chain]
 
+    def summary(self) -> str:
+        """The `run_finished` summary after the agent closed the connection."""
+        self.server.finish_run()
+        last = self.gateway.chain[-1].event
+        assert isinstance(last, RunFinished)
+        return last.summary
+
     def verdicts(self) -> list[str]:
         return [
             e.event.decision.verdict
@@ -220,6 +227,7 @@ def test_approve_runs_the_call(make_rig: Callable[..., Rig]) -> None:
     assert any(isinstance(e.event, EffectExecuted) for e in rig.gateway.chain)
     assert rig.gateway.session.approvals_used == 1
     assert [e.ledger for e in rig.gateway.ledger][-1] == "endorsed"
+    assert rig.summary().endswith("; approved: e1")
 
 
 @pytest.mark.invariant("I4")
@@ -249,6 +257,8 @@ def test_reject_has_no_effect(make_rig: Callable[..., Rig]) -> None:
     assert rig.verdicts() == ["ESCALATE"]
     assert "effect_executed" not in rig.types()
     assert rig.gateway.pending_endorsements() == ()
+    assert rig.gateway.approve("e1", ()) is None  # no card is left that could be approved later
+    assert rig.summary().endswith("; rejected: e1 (user)")
 
 
 def test_timeout_rejects(make_rig: Callable[..., Rig]) -> None:
@@ -269,6 +279,9 @@ def test_timeout_rejects(make_rig: Callable[..., Rig]) -> None:
         "error": "unknown or already decided endorsement",
     }
     assert rig.gateway.pending_endorsements() == ()
+    assert rig.gateway.approve("e1", ()) is None
+    assert "effect_executed" not in rig.types()
+    assert rig.summary().endswith("; rejected: e1 (timeout)")
 
 
 def test_a_late_approval_never_counts() -> None:
@@ -543,15 +556,26 @@ def test_find_socket_needs_exactly_one(tmp_path: Path) -> None:
 def test_without_a_desk_every_escalation_is_rejected_at_once() -> None:
     backend = RecordingBackend()
     gateway = make_gateway(backend)
-    server = ProxyServer(gateway, [])  # `--control none`
+    server = ProxyServer(gateway, [], reject_unanswered=True)  # `--control none`
     answer = server.handle(add_contact(1))
     assert is_error(answer)
+    assert "NOTARY escalated add_contact (e1)" in text_of(answer)
     assert "approvals are disabled" in text_of(answer)
+    assert "LEDGER_NOVEL_ESCALATE" in text_of(answer) or "ENDORSE" in text_of(answer)
     assert backend.calls == []
     assert gateway.pending_endorsements() == ()
     requested = [e for e in gateway.chain if isinstance(e.event, EndorsementRequested)]
     assert len(requested) == 1  # the card was logged, then closed
     assert gateway.reject("e1") is None
+
+
+def test_an_embedder_without_a_desk_keeps_the_endorsement_pending() -> None:
+    backend = RecordingBackend()
+    gateway = make_gateway(backend)
+    answer = ProxyServer(gateway, []).handle(add_contact(1))
+    assert "NOTARY escalated add_contact (e1)" in text_of(answer)
+    assert len(gateway.pending_endorsements()) == 1  # the embedder resolves it on the Gateway
+    assert backend.calls == []
 
 
 def test_pending_endorsements_is_a_read_only_snapshot() -> None:
@@ -679,5 +703,7 @@ def test_control_none_over_stdio_rejects_at_once(tmp_path_factory: pytest.TempPa
     session.send(tool_call(2, "add_contact", {"name": "Alpha Consulting"}))
     answer = session.result(2)
     assert answer["isError"] is True
+    assert "NOTARY escalated add_contact (e1)" in json.dumps(answer)
     assert "approvals are disabled" in json.dumps(answer)
-    session.finish()
+    err = session.finish()
+    assert "approvals disabled" in err

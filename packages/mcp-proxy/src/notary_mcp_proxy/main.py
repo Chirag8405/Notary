@@ -57,6 +57,7 @@ def build_server(
     audit_append: AuditAppend = append,
     desk: ApprovalDesk | None = None,
     control_hint: str = "",
+    reject_unanswered: bool = False,
 ) -> ProxyServer:
     """`build_servers` for a config with one server."""
     (name,) = config.servers
@@ -67,6 +68,7 @@ def build_server(
         audit_append=audit_append,
         desk=desk,
         control_hint=control_hint,
+        reject_unanswered=reject_unanswered,
     )
 
 
@@ -78,12 +80,14 @@ def build_servers(
     audit_append: AuditAppend = append,
     desk: ApprovalDesk | None = None,
     control_hint: str = "",
+    reject_unanswered: bool = False,
 ) -> ProxyServer:
     """Pin every server's tools, freeze one contract and wrap one Gateway around all of them.
 
     `audit_append` stores every audit entry; `durable_append(log)` makes each one durable before
     the Gateway goes on. `run_started` is appended here, so it is the first entry on disk.
-    `desk` is where escalated calls wait for the user; without one every escalation is rejected.
+    `desk` is where escalated calls wait for the user; without one, `reject_unanswered` rejects
+    every escalation at once (`--control none`) and otherwise the endorsement stays pending.
 
     Raises `RoutingError` when a contract name is also reported by another server tool, and
     `ValueError` when a configured tool is not reported.
@@ -122,7 +126,13 @@ def build_servers(
             classifier=None,
         )
     )
-    server = ProxyServer(gateway, backend.pinned_definitions(), desk, control_hint=control_hint)
+    server = ProxyServer(
+        gateway,
+        backend.pinned_definitions(),
+        desk,
+        control_hint=control_hint,
+        reject_unanswered=reject_unanswered,
+    )
     for client in clients.values():
         client.on_notification = server.on_server_notification
     return server
@@ -292,6 +302,7 @@ def serve_main(argv: Sequence[str]) -> int:
                 audit_append=append if log is None else durable_append(log),
                 desk=desk,
                 control_hint=hint,
+                reject_unanswered=control_path is None,
             )
             if desk is not None and control_path is not None:
                 control = ControlServer(desk, control_path)

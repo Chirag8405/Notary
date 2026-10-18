@@ -128,14 +128,21 @@ class ProxyServer:
         desk: ApprovalDesk | None = None,
         *,
         control_hint: str = "",
+        reject_unanswered: bool = False,
     ) -> None:
-        """`desk` is where an escalated call waits for the user; None rejects every escalation.
+        """`desk` is where an escalated call waits for the user.
 
-        `control_hint` is printed with each card (how the user answers it, e.g. the CLI line).
+        Without a desk, `reject_unanswered` (`--control none`) rejects every escalation at once;
+        otherwise the call is answered "escalated" and the endorsement stays pending for the
+        embedder to resolve through the Gateway (in-process harnesses). `control_hint` is printed
+        with each card (how the user answers it, e.g. the CLI line).
         """
         self._gateway = gateway
         self._desk = desk
         self._control_hint = control_hint
+        self._reject_unanswered = reject_unanswered
+        self._approved: list[str] = []
+        self._rejected_ids: list[tuple[str, str]] = []
         self._cancelled: Callable[[JsonValue], bool] = _never
         self._input_closed: Callable[[], bool] = lambda: False
         self._tools: list[JsonObject] = [exposed_definition(tool) for tool in tools]
@@ -185,7 +192,7 @@ class ProxyServer:
             f"closed by the agent after {self._calls} tool calls"
             if halted is None
             else f"halted: {halted}; closed after {self._calls} tool calls"
-        )
+        ) + self._escalation_summary()
         self._gateway.emit(
             lambda run, lane, seq: RunFinished(
                 type="run_finished",
@@ -196,6 +203,20 @@ class ProxyServer:
                 summary=summary,
             )
         )
+
+    def _escalation_summary(self) -> str:
+        """How the escalations ended, for `run_finished` (a rejection has no event of its own).
+
+        `; approved: e2; rejected: e1 (user), e3 (timeout)`; empty when nothing escalated.
+        """
+        parts: list[str] = []
+        if self._approved:
+            parts.append("approved: " + ", ".join(self._approved))
+        if self._rejected_ids:
+            parts.append(
+                "rejected: " + ", ".join(f"{eid} ({cause})" for eid, cause in self._rejected_ids)
+            )
+        return "".join(f"; {part}" for part in parts)
 
     def _respond(self, message: JsonObject) -> JsonObject | None:
         method = as_str(message.get("method"))
@@ -251,7 +272,7 @@ class ProxyServer:
             # The pre-flight listing failed: no decision was made and nothing ran.
             report(f"call {tool}", failure)
             return _text_result(f"{tool} failed: {unchecked_text(failure)}", is_error=True)
-        if outcome.status == "escalated":
+        if outcome.status == "escalated" and (self._desk is not None or self._reject_unanswered):
             return self._after_escalation(call, outcome, request_id)
         return self._answer(call, outcome)
 
@@ -316,6 +337,7 @@ class ProxyServer:
             return _text_result(
                 f"NOTARY blocked {call.tool}: the endorsement is gone", is_error=True
             )
+        self._approved.append(endorsement_id)
         diagnostic(f"{endorsement_id}: approved by the user; the call is decided again")
         if approved.status == "blocked" and approved.error is not None:
             diagnostic(f"{endorsement_id}: the approval was not applied: {quoted(approved.error)}")
@@ -339,9 +361,18 @@ class ProxyServer:
         endorsement_id = outcome.endorsement_id
         if endorsement_id is not None:
             self._gateway.reject(endorsement_id)
+            cause = "disabled" if disabled else "card mismatch" if bad_row else answer.cause
+            self._rejected_ids.append((endorsement_id, cause))
         if disabled:
+            # Today's "escalated" answer with its reasons, now final: the card is closed.
             why = "approvals are disabled, so the endorsement was rejected"
-        elif bad_row:
+            diagnostic(f"{endorsement_id}: rejected (disabled): {why}")
+            return _text_result(
+                f"NOTARY escalated {call.tool} ({endorsement_id}): it needs the user's "
+                f"endorsement and did not run ({why}).\n{_reasons(outcome.decision)}".rstrip(),
+                is_error=True,
+            )
+        if bad_row:
             why = "the endorsement card did not match the call, so it was rejected"
         elif answer.cause == "timeout":
             seconds = 0.0 if self._desk is None else self._desk.timeout_seconds
