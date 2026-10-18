@@ -6,9 +6,10 @@ from collections.abc import Mapping
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from notary_core.gateway import ToolResultField
-from notary_core.models import NotaryModel, ToolEffect
+from notary_core.models import DecisionUnit, NotaryModel, ToolEffect
 from notary_core.pinning import ToolManifest
 from notary_core.policy.sensitive_params import PolicyTable, effective_effect, param_policy
+from notary_core.provenance import normalize_readers
 from notary_core.units import canonicalize_amount, to_cents
 from notary_mcp_proxy.backend import (
     BackendEffect,
@@ -25,10 +26,23 @@ from notary_mcp_proxy.client import (
     diagnostic,
     quoted,
 )
+from notary_mcp_proxy.config import FieldSpec
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object, as_str
+from notary_mcp_proxy.structured import (
+    TYPES_FIELD,
+    StructureError,
+    covers,
+    declared,
+    flatten,
+    relative,
+    schema_paths,
+    specificity,
+    types_text,
+)
 
 RESULT_RECORD = "result"
-"""Record id of a call's result; its values are `<call_id>.result.<field>`."""
+"""Record id of the part of a call's result that has the tool's readers; its values are
+`<call_id>.result.<field>`. Fields with other readers are in `result-1`, `result-2`, ..."""
 NON_STRING_TYPES = frozenset({"integer", "number", "boolean", "object", "array", "null"})
 FAIL_CLOSED_READERS: tuple[str, ...] = ("user",)
 """Readers of a tool the config does not name (it cannot pass the scope check anyway)."""
@@ -82,10 +96,18 @@ def decode_argument(text: str, schema_type: str | None) -> JsonValue:
         return text
 
 
-def content_fields(answer: JsonObject) -> tuple[ToolResultField, ...]:
-    """One field per content block: a text block's text, any other block as JSON."""
+def content_fields(
+    answer: JsonObject, skip: frozenset[int] = frozenset()
+) -> tuple[ToolResultField, ...]:
+    """One field per content block: a text block's text, any other block as JSON.
+
+    `skip` holds block indexes that are not labeled (the copies of `structuredContent`); the
+    other blocks keep their index in the name.
+    """
     fields: list[ToolResultField] = []
     for index, block in enumerate(as_list(answer.get("content")) or []):
+        if index in skip:
+            continue
         entry = as_object(block)
         text = (
             as_str(entry.get("text")) if entry is not None and entry.get("type") == "text" else None
@@ -94,6 +116,118 @@ def content_fields(answer: JsonObject) -> tuple[ToolResultField, ...]:
             text = encode_argument(block)
         fields.append(ToolResultField(name=f"content_{index:03d}", text=text, unit=None))
     return tuple(fields)
+
+
+def _canonical_json(value: JsonValue) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def duplicate_blocks(answer: JsonObject, structured: JsonObject) -> frozenset[int]:
+    """Indexes of text blocks that only serialize `structuredContent` (the MCP compat copy).
+
+    They are not labeled: such a copy would carry the tool's readers for every field and let a
+    field the config marks secret be quoted from it. The agent gets one serialization rebuilt
+    from the labeled fields instead (`ProxyServer`). A text block that differs in any way is not a
+    duplicate and is labeled like any other block, with the tool's readers.
+    """
+    wanted = _canonical_json(structured)
+    found: set[int] = set()
+    for index, block in enumerate(as_list(answer.get("content")) or []):
+        entry = as_object(block)
+        text = (
+            as_str(entry.get("text")) if entry is not None and entry.get("type") == "text" else None
+        )
+        if text is None:
+            continue
+        try:
+            parsed: JsonValue = _JSON.validate_json(text)
+        except ValidationError:
+            continue
+        if _canonical_json(parsed) == wanted:
+            found.add(index)
+    return frozenset(found)
+
+
+def field_settings(
+    path: str, config: Mapping[str, FieldSpec], schema: frozenset[str]
+) -> tuple[tuple[str, ...] | None, DecisionUnit | None]:
+    """Readers and unit the config sets for a leaf at `path` (relative); only declared paths.
+
+    Each setting comes from the most specific pattern that covers the path and sets it.
+    """
+    if not config or not declared(path, schema):
+        return None, None
+    readers: tuple[str, ...] | None = None
+    unit: DecisionUnit | None = None
+    ranked = sorted(
+        (pattern for pattern in config if covers(pattern, path)), key=specificity, reverse=True
+    )
+    for pattern in ranked:
+        spec = config[pattern]
+        if readers is None and spec.readers is not None:
+            readers = spec.readers
+        if unit is None and spec.unit is not None:
+            unit = spec.unit
+    return readers, unit
+
+
+def result_records(
+    answer: JsonObject,
+    *,
+    readers: tuple[str, ...],
+    config: Mapping[str, FieldSpec],
+    schema: frozenset[str],
+) -> tuple[BackendRecord, ...]:
+    """The result as records: text blocks, then one field per leaf of `structuredContent`.
+
+    Raises `StructureError` when `structuredContent` is present but is not an object, is too big
+    or deep, or would give two fields one name. Fields are grouped by readers: record `result`
+    for the tool's readers, `result-1`, ... for the others in order of their first field name.
+    """
+    named: list[tuple[ToolResultField, tuple[str, ...]]] = []
+    tool_readers = normalize_readers(readers)
+    if "structuredContent" in answer:
+        structured = as_object(answer.get("structuredContent"))
+        if structured is None:
+            raise StructureError("structuredContent is not an object")
+        leaves = flatten(structured)
+        for field in content_fields(answer, duplicate_blocks(answer, structured)):
+            named.append((field, tool_readers))
+        kinds = types_text(leaves)
+        if kinds is not None:
+            named.append((ToolResultField(name=TYPES_FIELD, text=kinds, unit=None), tool_readers))
+        for path, text, _ in leaves:
+            own_readers, unit = field_settings(relative(path), config, schema)
+            who = tool_readers if own_readers is None else normalize_readers(own_readers)
+            named.append((ToolResultField(name=path, text=text, unit=unit), who))
+    else:
+        named.extend((field, tool_readers) for field in content_fields(answer))
+    names = [field.name for field, _ in named]
+    if len(set(names)) != len(names):
+        raise StructureError("two result fields share a name")
+    groups: dict[tuple[str, ...], list[ToolResultField]] = {}
+    for field, who in named:
+        groups.setdefault(who, []).append(field)
+    others = sorted(
+        (who for who in groups if who != tool_readers),
+        key=lambda w: min(field.name for field in groups[w]),
+    )
+    records = (
+        [
+            BackendRecord(
+                record_id=RESULT_RECORD, readers=tool_readers, fields=tuple(groups[tool_readers])
+            )
+        ]
+        if tool_readers in groups
+        else []
+    )
+    for number, who in enumerate(others, start=1):
+        records.append(
+            BackendRecord(
+                record_id=f"{RESULT_RECORD}-{number}", readers=who, fields=tuple(groups[who])
+            )
+        )
+    return tuple(records)
 
 
 class PinnedTool(NotaryModel):
@@ -149,12 +283,14 @@ def parse_tool(raw: JsonObject) -> PinnedTool:
 
 
 def exposed_definition(tool: PinnedTool) -> JsonObject:
-    """What the agent is shown (`outputSchema` is not exposed yet)."""
+    """What the agent is shown: the pinned definition without `_meta`."""
     shown: JsonObject = {
         "name": tool.name,
         "description": tool.description,
         "inputSchema": tool.input_schema,
     }
+    if tool.output_schema is not None:
+        shown["outputSchema"] = tool.output_schema
     if tool.title is not None:
         shown["title"] = tool.title
     if tool.annotations is not None:
@@ -170,18 +306,23 @@ class McpBackend:
         policy: PolicyTable,
         effects: Mapping[str, ToolEffect],
         readers: Mapping[str, tuple[str, ...]],
+        fields: Mapping[str, Mapping[str, FieldSpec]] | None = None,
     ) -> None:
         self._client = client
         self._policy = policy
         self._effects = dict(effects)
         self._readers = dict(readers)
+        self._fields = dict(fields or {})
+        self._declared: dict[str, frozenset[str]] = {}
         self._pinned: dict[str, PinnedTool] = {}
 
     def list_tools(self) -> tuple[ToolManifest, ...]:
         manifests: list[ToolManifest] = []
         for raw in self._client.list_tools():
             tool = parse_tool(raw)
-            self._pinned.setdefault(tool.name, tool)
+            if tool.name not in self._pinned:
+                self._pinned[tool.name] = tool
+                self._declared[tool.name] = schema_paths(tool.output_schema or {})
             manifests.append(
                 ToolManifest(
                     name=tool.name, description=tool.description, input_schema=pinned_text(tool)
@@ -209,20 +350,29 @@ class McpBackend:
         except ServerError as failure:
             report(f"call {tool}", failure)
             return BackendResult(records=(), effect=None, error=error_text(failure))
-        fields = content_fields(answer)
-        readers = self._readers.get(tool, FAIL_CLOSED_READERS)
-        records = (
-            (BackendRecord(record_id=RESULT_RECORD, readers=readers, fields=fields),)
-            if fields
-            else ()
-        )
+        try:
+            records = result_records(
+                answer,
+                readers=self._readers.get(tool, FAIL_CLOSED_READERS),
+                config=self._fields.get(tool, {}),
+                schema=self._declared.get(tool, frozenset()),
+            )
+        except StructureError as failure:
+            # The tool ran, but nothing of this result is handed on, so no spend is metered.
+            diagnostic(f"call {tool}: bad structuredContent: {quoted(str(failure))}")
+            return BackendResult(records=(), effect=None, error=ERR_PROTOCOL)
         if answer.get("isError") is True:
             # The server's error content is labeled like any result; only ERR_TOOL is ours.
             return BackendResult(records=records, effect=None, error=ERR_TOOL)
-        return BackendResult(records=records, effect=self._effect(tool, args, fields), error=None)
+        blocks = len(as_list(answer.get("content")) or [])
+        return BackendResult(
+            records=records,
+            effect=self._effect(tool, args, blocks, "structuredContent" in answer),
+            error=None,
+        )
 
     def _effect(
-        self, tool: str, args: Mapping[str, str], fields: tuple[ToolResultField, ...]
+        self, tool: str, args: Mapping[str, str], blocks: int, structured: bool
     ) -> BackendEffect:
         """Spend and egress measured the way the budget step measures them."""
         cents = 0
@@ -235,7 +385,8 @@ class McpBackend:
                 egress += len(text.encode("utf-8"))
         effect = effective_effect(self._policy, tool, self._effects.get(tool))
         return BackendEffect(
-            summary=f"{tool}: {len(fields)} content block(s)",
+            summary=f"{tool}: {blocks} content block(s)"
+            + (", structuredContent" if structured else ""),
             spent_cents=cents,
             egress_bytes=egress,
             mutating=effect != "read",

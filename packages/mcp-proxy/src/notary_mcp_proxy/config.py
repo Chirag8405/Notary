@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import LabelingPolicy, ToolOriginRule
@@ -37,6 +37,7 @@ from notary_core.policy.sensitive_params import (
     make_tool_policy,
 )
 from notary_core.units import canonicalize
+from notary_mcp_proxy.structured import StructureError, validate_pattern
 
 PUBLIC: tuple[str, ...] = ("*",)
 
@@ -55,6 +56,15 @@ class ParamSpec(NotaryModel):
     """`unit` and `kind` are ignored for a tool `DEFAULT_POLICY` knows: the reviewed row wins."""
 
 
+class FieldSpec(NotaryModel):
+    """Config for one field of a tool's `structuredContent`; unset keys fall back to the tool."""
+
+    readers: tuple[str, ...] | None = None
+    """Who may read the field; none means the tool's readers."""
+    unit: DecisionUnit | None = None
+    """How the resolver compares a quote of the field (e.g. `iban` ignores spaces and case)."""
+
+
 class ToolSpec(NotaryModel):
     effect: ToolEffect
     params: dict[str, ParamSpec] = {}
@@ -62,6 +72,23 @@ class ToolSpec(NotaryModel):
     """Who may read this tool's results; `["user"]` marks them secret."""
     origin: Origin | None = None
     """Origin of the results; none means `tool:<name>`. Results are always untrusted."""
+    fields: dict[str, FieldSpec] = {}
+    """Per-field config of `structuredContent`, keyed by path (`iban`, `items.*.iban`; see
+    `structured.py`). It applies only to paths the tool's pinned `outputSchema` declares; any
+    other key the server sends gets the tool's readers and no unit. A pattern covers the paths
+    below it too, and the most specific pattern that sets a value wins."""
+
+    @field_validator("fields")
+    @classmethod
+    def _patterns_are_paths(cls, fields: dict[str, FieldSpec]) -> dict[str, FieldSpec]:
+        for pattern, spec in fields.items():
+            try:
+                validate_pattern(pattern)
+            except StructureError as failure:
+                raise ValueError(f"field pattern {pattern!r}: {failure}") from failure
+            if spec.readers is None and spec.unit is None:
+                raise ValueError(f"field pattern {pattern!r} sets neither readers nor unit")
+        return fields
 
 
 class LedgerSpec(NotaryModel):
@@ -162,3 +189,7 @@ def build_labeling(config: ProxyConfig) -> LabelingPolicy:
 
 def tool_readers(config: ProxyConfig) -> Mapping[str, tuple[str, ...]]:
     return {tool: spec.readers for tool, spec in config.tools.items()}
+
+
+def tool_fields(config: ProxyConfig) -> Mapping[str, Mapping[str, FieldSpec]]:
+    return {tool: spec.fields for tool, spec in config.tools.items() if spec.fields}
