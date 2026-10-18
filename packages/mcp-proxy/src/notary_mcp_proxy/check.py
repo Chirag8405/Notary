@@ -9,6 +9,7 @@ from typing import Literal
 from notary_core.models import NotaryModel, Sha256Hex, ToolEffect
 from notary_core.pinning import ToolManifest, manifest_hash
 from notary_core.policy.sensitive_params import (
+    DEFAULT_POLICY,
     ManifestInfo,
     effective_effect,
     effective_marker,
@@ -17,7 +18,7 @@ from notary_core.policy.sensitive_params import (
     unclassified_params,
 )
 from notary_core.units import canonicalize
-from notary_mcp_proxy.config import ProxyConfig, build_policy
+from notary_mcp_proxy.config import ProxyConfig, build_policy, routes
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object, as_str
 
 Severity = Literal["error", "warning", "info"]
@@ -31,6 +32,8 @@ FindingCode = Literal[
     "LEDGER_VALUE_PLACEHOLDER",
     "IRREVERSIBLE_NOT_AUTHORIZED",
     "SERVER_TOOL_NOT_EXPOSED",
+    "TOOL_NAME_COLLISION",
+    "RENAMED_TOOL_UNREVIEWED",
 ]
 SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
 
@@ -45,6 +48,8 @@ class Finding(NotaryModel):
 
 class ToolRow(NotaryModel):
     tool: str
+    server: str | None = None
+    """The server that runs the tool; set only when the config has several servers."""
     effect: ToolEffect
     manifest_hash: Sha256Hex
     params: tuple[tuple[str, str, str, str], ...]
@@ -166,15 +171,44 @@ def _ledger_findings(config: ProxyConfig) -> list[Finding]:
     return found
 
 
+def _routing_findings(config: ProxyConfig, collisions: Sequence[str]) -> list[Finding]:
+    """A contract name another server tool also answers to; a renamed tool's reviewed row."""
+    found = [
+        Finding(severity="error", code="TOOL_NAME_COLLISION", tool=None, param=None, detail=text)
+        for text in collisions
+    ]
+    for tool, spec in sorted(config.tools.items()):
+        if spec.remote_name in DEFAULT_POLICY and tool not in DEFAULT_POLICY:
+            found.append(
+                Finding(
+                    severity="warning",
+                    code="RENAMED_TOOL_UNREVIEWED",
+                    tool=tool,
+                    param=None,
+                    detail=(
+                        f"the reviewed row of `{spec.remote_name}` does not apply to the "
+                        f"contract name `{tool}`; its parameters are classified by the config"
+                    ),
+                )
+            )
+    return found
+
+
 def check_config(
     config: ProxyConfig,
     manifests: Sequence[ToolManifest],
     schemas: Mapping[str, JsonObject],
+    collisions: Sequence[str] = (),
 ) -> CheckReport:
-    """What the config exposes and every problem with it; `schemas` maps tool to `inputSchema`."""
+    """What the config exposes and every problem with it.
+
+    `manifests` and `schemas` (tool -> `inputSchema`) are keyed by CONTRACT name; `collisions`
+    are the texts from `RoutingBackend.collisions`.
+    """
     policy = build_policy(config)
+    servers = {tool: name for tool, (name, _) in routes(config).items()} if config.multi else {}
     by_name = {manifest.name: manifest for manifest in manifests}
-    findings: list[Finding] = []
+    findings: list[Finding] = _routing_findings(config, collisions)
     rows: list[ToolRow] = []
     present: list[str] = []
     for tool, spec in sorted(config.tools.items()):
@@ -186,7 +220,11 @@ def check_config(
                     code="TOOL_MISSING",
                     tool=tool,
                     param=None,
-                    detail="the config names a tool the server does not report",
+                    detail=(
+                        "the config names a tool the server does not report"
+                        if not config.multi
+                        else f"the config names a tool server `{servers[tool]}` does not report"
+                    ),
                 )
             )
             continue
@@ -203,7 +241,13 @@ def check_config(
             for name, param in sorted(spec.params.items())
         )
         rows.append(
-            ToolRow(tool=tool, effect=effect, manifest_hash=manifest_hash(manifest), params=params)
+            ToolRow(
+                tool=tool,
+                server=servers.get(tool),
+                effect=effect,
+                manifest_hash=manifest_hash(manifest),
+                params=params,
+            )
         )
     findings.extend(
         Finding(
@@ -252,7 +296,13 @@ def check_config(
 def render_report(report: CheckReport) -> str:
     """Deterministic text: tools sorted, then findings by severity; no times or paths."""
     lines: list[str] = []
-    for row in report.tools:
+    section: str | None = None
+    for row in sorted(report.tools, key=lambda r: (r.server or "", r.tool)):
+        if row.server is not None and row.server != section:
+            if section is not None:
+                lines.append("")
+            section = row.server
+            lines.append(f"server {section}")
         lines.append(f"tool {row.tool}  effect={row.effect}  hash={row.manifest_hash}")
         for name, marker, unit, kind in row.params:
             lines.append(f"  param {name}  marker={marker}  unit={unit}  kind={kind}")

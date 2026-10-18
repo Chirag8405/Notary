@@ -1,0 +1,33 @@
+{
+  "servers": {
+    "mail": { "command": ["python3", "mail_server.py"] },
+    "files": { "command": ["python3", "files_server.py"] }
+  },
+  "user_intent": "Read my inbox and email Bob (bob@example.com) a short status from notes/plan.txt.",
+  "tools": {
+    "read_inbox": { "server": "mail", "effect": "read", "origin": { "kind": "email" } },
+    "send_email": {
+      "server": "mail",
+      "effect": "write",
+      "params": {
+        "to": { "marker": { "kind": "ledger", "ledger": "contacts" } },
+        "subject": { "marker": { "kind": "free" } },
+        "body": { "marker": { "kind": "free" } }
+      }
+    },
+    "read_file": {
+      "server": "files",
+      "effect": "read",
+      "readers": ["user"],
+      "params": { "path": { "marker": { "kind": "free" } } }
+    }
+  },
+  "budget": {
+    "max_effects": 6,
+    "max_spend_cents": 0,
+    "max_egress_bytes": 2000,
+    "max_call_amount_cents": 0,
+    "max_approvals": 1
+  },
+  "ledger": [{ "ledger": "contacts", "key": "Bob", "unit": "email", "value": "bob@example.com" }]
+}
