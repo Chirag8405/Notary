@@ -133,7 +133,7 @@ def test_exposure_stays_pinned_after_a_rug_pull(start: Start) -> None:
     assert tool["title"] == "Look up"
     assert tool["description"] == "Look a thing up."
     assert tool["annotations"] == {"readOnlyHint": True}
-    assert "outputSchema" not in tool
+    assert tool["outputSchema"] == ORIGINAL["outputSchema"]
     assert "_meta" not in tool
 
 

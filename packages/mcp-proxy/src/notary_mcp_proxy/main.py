@@ -23,6 +23,7 @@ from notary_mcp_proxy.config import (
     build_labeling,
     build_ledger,
     build_policy,
+    tool_fields,
     tool_readers,
 )
 from notary_mcp_proxy.gateway import Gateway
@@ -58,6 +59,7 @@ def build_server(
         policy=policy,
         effects={tool: spec.effect for tool, spec in config.tools.items()},
         readers=tool_readers(config),
+        fields=tool_fields(config),
     )
     pinned = backend.list_tools()
     contract = build_contract(config, pinned)

@@ -7,6 +7,7 @@ has no approval channel yet.
 """
 
 import queue
+import re
 import threading
 from collections.abc import Callable, Sequence
 from typing import IO
@@ -40,6 +41,14 @@ from notary_mcp_proxy.mcp_backend import (
     report,
     unchecked_text,
 )
+from notary_mcp_proxy.structured import (
+    PREFIX,
+    TYPES_FIELD,
+    StructureError,
+    compact,
+    leaves_from,
+    unflatten,
+)
 
 SUPPORTED_VERSIONS = frozenset({"2024-11-05", "2025-03-26", PROTOCOL_VERSION})
 SERVER_INFO: JsonObject = {"name": "notary", "version": "0.0.0"}
@@ -51,6 +60,8 @@ INSTRUCTIONS = (
 AuditSink = Callable[[Sequence[AuditEntry]], None]
 
 LIST_CHANGED = "notifications/tools/list_changed"
+
+ERR_REBUILD = "the tool result could not be rebuilt from its logged fields"
 
 
 def _text_result(text: str, *, is_error: bool) -> JsonObject:
@@ -73,6 +84,30 @@ def _drift_line(pins: PinReport) -> str:
         f"tools/list_changed: {verdict}; drifted={names(pins.drifted)} "
         f"unpinned={names(pins.unpinned)} missing={names(pins.missing)}"
     )
+
+
+class _Labeled:
+    """What a call's logged values say: the text blocks and the rebuilt structured content."""
+
+    def __init__(self, blocks: list[str], structured: JsonObject | None) -> None:
+        self.blocks = blocks
+        self.structured = structured
+
+    def texts(self) -> list[str]:
+        """The structured content serialized (older clients read only text), then the blocks."""
+        if self.structured is None:
+            return list(self.blocks)
+        return [compact(self.structured), *self.blocks]
+
+    def result(self, *, is_error: bool, lead: str | None = None) -> JsonObject:
+        texts = self.texts()
+        if lead is not None:
+            texts = [lead, *texts]
+        content: list[JsonValue] = [{"type": "text", "text": text} for text in texts]
+        answer: JsonObject = {"content": content, "isError": is_error}
+        if self.structured is not None:
+            answer["structuredContent"] = self.structured
+        return answer
 
 
 class ProxyServer:
@@ -197,10 +232,11 @@ class ProxyServer:
 
     def _answer(self, call: RawCall, outcome: MediationOutcome) -> JsonObject:
         if outcome.status == "executed":
-            content: list[JsonValue] = [
-                {"type": "text", "text": text} for text in self._labeled_texts(call)
-            ]
-            return {"content": content, "isError": False}
+            try:
+                return self._labeled(call).result(is_error=False)
+            except StructureError as failure:
+                diagnostic(f"{call.tool}: {quoted(str(failure))}")
+                return _text_result(f"NOTARY halted: {ERR_REBUILD}", is_error=True)
         if outcome.status == "blocked":
             text = f"NOTARY blocked {call.tool}; it did not run.\n{_reasons(outcome.decision)}"
         elif outcome.status == "escalated":
@@ -210,16 +246,48 @@ class ProxyServer:
             )
         elif outcome.status == "tool_error":
             # outcome.error is one of our constants; the server's content follows as labeled text.
-            text = "\n".join([f"{call.tool} failed: {outcome.error}", *self._labeled_texts(call)])
+            try:
+                labeled = self._labeled(call)
+            except StructureError as failure:
+                diagnostic(f"{call.tool}: {quoted(str(failure))}")
+                return _text_result(f"{call.tool} failed: {outcome.error}", is_error=True)
+            lead = f"{call.tool} failed: {outcome.error}"
+            if labeled.structured is None:
+                return _text_result("\n".join([lead, *labeled.blocks]).rstrip(), is_error=True)
+            return labeled.result(is_error=True, lead=lead)
         else:
             text = f"NOTARY halted: {outcome.error}"
         return _text_result(text.rstrip(), is_error=True)
 
-    def _labeled_texts(self, call: RawCall) -> list[str]:
-        """The call's result fields, read back from the store they were labeled into."""
-        prefix = f"{call.call_id}.{RESULT_RECORD}."
-        values = self._gateway.store.as_mapping()
-        return [values[value_id].text for value_id in sorted(values) if value_id.startswith(prefix)]
+    def _labeled(self, call: RawCall) -> _Labeled:
+        """The call's result, read back from the store it was labeled into.
+
+        Every value of a record `<call_id>.result` or `<call_id>.result-N`. The text blocks are the
+        `content_NNN` fields; `structuredContent` is rebuilt from the `structured.*` fields, so the
+        agent gets exactly the values that were logged, with the readers they were logged under.
+        """
+        pattern = re.compile(rf"{re.escape(call.call_id)}\.{RESULT_RECORD}(?:-[0-9]+)?\.(.*)", re.S)
+        blocks: dict[str, str] = {}
+        leaves: dict[str, str] = {}
+        kinds: str | None = None
+        for value_id, value in self._gateway.store.as_mapping().items():
+            found = pattern.fullmatch(value_id)
+            if found is None:
+                continue
+            name = found.group(1)
+            if name == TYPES_FIELD:
+                kinds = value.text
+            elif name == PREFIX or name.startswith(f"{PREFIX}."):
+                leaves[name] = value.text
+            else:
+                blocks[name] = value.text
+        texts = [blocks[name] for name in sorted(blocks)]
+        if not leaves:
+            return _Labeled(texts, None)
+        rebuilt = as_object(unflatten(leaves_from(leaves, kinds)))
+        if rebuilt is None:
+            raise StructureError("structured content is not an object")
+        return _Labeled(texts, rebuilt)
 
     def _flush_audit(self) -> None:
         chain = self._gateway.chain
