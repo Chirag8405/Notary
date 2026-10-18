@@ -319,8 +319,11 @@ class Wire:
         assert message is not None
         return message
 
-    def finish(self) -> list[JsonObject]:
+    def close_input(self) -> None:
         self._to_proxy.close()
+
+    def finish(self) -> list[JsonObject]:
+        self.close_input()
         self.thread.join(PATIENCE)
         assert not self.thread.is_alive()
         rest: list[JsonObject] = []
@@ -340,7 +343,7 @@ def wire(make_rig: Callable[..., Rig]) -> Iterator[tuple[Rig, Wire]]:
     rig = make_rig()
     made = Wire(rig.server)
     yield rig, made
-    made._to_proxy.close()
+    made.close_input()
     made.thread.join(PATIENCE)
     made.close()
 
