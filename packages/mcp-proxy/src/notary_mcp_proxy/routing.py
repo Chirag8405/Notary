@@ -149,5 +149,10 @@ def build_routing(
             effects={remote: effects[tool] for tool, remote in own.items()},
             readers={remote: readers[tool] for tool, remote in own.items() if tool in readers},
             fields={remote: fields[tool] for tool, remote in own.items() if tool in fields},
+            records={
+                remote: config.tools[tool].record_readers
+                for tool, remote in own.items()
+                if config.tools[tool].records
+            },
         )
     return RoutingBackend(backends, mapping)

@@ -14,7 +14,13 @@ from typing import IO
 
 from pydantic import JsonValue
 
-from notary_core.models import AuditEntry, Decision
+from notary_core.models import (
+    AuditEntry,
+    Decision,
+    DecisionMade,
+    ResolvedValue,
+    ValueLabeled,
+)
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
 from notary_mcp_proxy.dispatch import Dispatcher
@@ -316,6 +322,9 @@ class ProxyServer:
                 leaves[name] = value.text
             else:
                 blocks[name] = value.text
+        records = self._record_values(call)
+        if any(pattern.fullmatch(value.ref.id) is None for value in records):
+            return _Labeled([], _records_object(call.call_id, records))
         texts = [blocks[name] for name in sorted(blocks)]
         if not leaves:
             return _Labeled(texts, None)
@@ -324,11 +333,55 @@ class ProxyServer:
             raise StructureError("structured content is not an object")
         return _Labeled(texts, rebuilt)
 
+    def _record_values(self, call: RawCall) -> list[ResolvedValue]:
+        """The values the call's tool result was labeled into, in the order they were logged.
+
+        These are the `value_labeled` events after the call's last decision whose id starts with
+        `<call_id>.`: arguments are labeled before the decision, so they are not among them.
+        """
+        chain = self._gateway.chain
+        last = max(
+            (
+                index
+                for index, entry in enumerate(chain)
+                if isinstance(entry.event, DecisionMade) and entry.event.call_id == call.call_id
+            ),
+            default=-1,
+        )
+        found: list[ResolvedValue] = []
+        for entry in chain[last + 1 :]:
+            event = entry.event
+            if isinstance(event, ValueLabeled) and event.value.id.startswith(f"{call.call_id}."):
+                value = self._gateway.store.get(event.value.id)
+                if value is not None:
+                    found.append(value)
+        return found
+
     def flush_audit(self) -> None:
         chain = self._gateway.chain
         if self._audit is not None and len(chain) > self._logged:
             self._audit(chain[self._logged :])
         self._logged = len(chain)
+
+
+def _records_object(call_id: str, values: Sequence[ResolvedValue]) -> JsonObject:
+    """The records-mode result as `{"records": [...]}`, rebuilt from the logged values only.
+
+    A value id is `<call_id>.<record_id>.<field>`; the split is at the last dot (a field name
+    with a dot would be shown in the record id, never lost). Each record's readers are those
+    logged on its values (the backend labels a record's fields alike).
+    """
+    records: dict[str, JsonObject] = {}
+    for value in values:
+        record_id, _, name = value.ref.id[len(call_id) + 1 :].rpartition(".")
+        record = records.setdefault(
+            record_id,
+            {"record_id": record_id, "readers": list(value.ref.label.readers), "fields": []},
+        )
+        fields = record["fields"]
+        if isinstance(fields, list):
+            fields.append({"name": name, "text": value.text, "unit": value.unit})
+    return {"records": list(records.values())}
 
 
 def is_call(message: JsonObject) -> bool:
