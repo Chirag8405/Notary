@@ -366,12 +366,14 @@ version = "0.0.0"
 source = { editable = "packages/eval" }
 dependencies = [
     { name = "notary-core" },
+    { name = "notary-mcp-proxy" },
     { name = "notary-world" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "notary-core", editable = "packages/core" },
+    { name = "notary-mcp-proxy", editable = "packages/mcp-proxy" },
     { name = "notary-world", editable = "packages/world" },
 ]
 
