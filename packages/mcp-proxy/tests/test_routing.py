@@ -73,7 +73,7 @@ def start() -> Iterator[Start]:
             for name, spec in config.servers.items()
         }
         clients.extend(started.values())
-        return build_servers(config, started, run_id="run-test", audit=None)
+        return build_servers(config, started, run_id="run-test")
 
     yield run
     for client in clients:

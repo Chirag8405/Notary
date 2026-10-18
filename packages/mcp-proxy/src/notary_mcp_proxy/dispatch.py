@@ -61,8 +61,6 @@ class Target(Protocol):
 
     def check_drift_now(self) -> None: ...
 
-    def flush_audit(self) -> None: ...
-
     def route_drift_checks(self, schedule: Callable[[], None]) -> None: ...
 
 
@@ -285,7 +283,6 @@ class Dispatcher:
     # -- worker thread ---------------------------------------------------------------------------
 
     def _work(self) -> None:
-        self._server.flush_audit()  # `run_started` reaches the audit log before the first request
         while True:
             with self._state:
                 while not self._queue and self._phase != "eof":

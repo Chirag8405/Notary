@@ -86,7 +86,7 @@ def start(tmp_path: Path, clients: list[StdioClient]) -> Start:
         )
         client = StdioClient(command)
         clients.append(client)
-        proxy = build_server(config, client, run_id="run-test", audit=None)
+        proxy = build_server(config, client, run_id="run-test")
         client.timeout_seconds = TIGHT
         return proxy
 
@@ -237,8 +237,8 @@ def test_end_of_input_drops_the_queued_calls_and_answers_the_running_one(tmp_pat
     config.write_text(
         json.dumps({**CONFIG, "server": {"command": command, "timeout_seconds": 1.0}})
     )
-    audit = tmp_path / "audit.jsonl"
-    session = StdioSession(proxy_command(config, "--audit-log", str(audit)))
+    audit = tmp_path / "audit"
+    session = StdioSession(proxy_command(config, "--audit-dir", str(audit)))
     session.send(tool_call(1, "slow", {}))
     with fifo.open(encoding="utf-8") as arrived:  # blocks until the call reached the server
         assert arrived.readline() == "slow\n"
@@ -251,9 +251,10 @@ def test_end_of_input_drops_the_queued_calls_and_answers_the_running_one(tmp_pat
     assert ERR_TIMEOUT in str((as_list(running["content"]) or [{}])[0] or {})
     assert [e["name"] for e in _server_log(tmp_path) if e["method"] == "tools/call"] == ["slow"]
     proposed = [
-        json.loads(line)["proposal"]["call_id"]
-        for line in audit.read_text().splitlines()
-        if json.loads(line)["type"] == "call_proposed"
+        json.loads(line)["event"]["proposal"]["call_id"]
+        for chain in audit.glob("*.chain.jsonl")
+        for line in chain.read_text().splitlines()
+        if json.loads(line)["event"]["type"] == "call_proposed"
     ]
     assert proposed == ["c1"]
 

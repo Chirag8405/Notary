@@ -11,10 +11,12 @@ from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
 
+from notary_core.audit import append
 from notary_core.gateway import make_labeler
-from notary_core.models import AuditEntry, RunStarted
+from notary_core.models import RunStarted
 from notary_core.monitor import decide
 from notary_core.resolver import ArgumentResolver
+from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
 from notary_mcp_proxy.check import check_config, render_report
 from notary_mcp_proxy.client import ServerError, StdioClient
 from notary_mcp_proxy.config import (
@@ -26,34 +28,22 @@ from notary_mcp_proxy.config import (
     tool_fields,
     tool_readers,
 )
-from notary_mcp_proxy.gateway import Gateway
+from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
 from notary_mcp_proxy.routing import RoutingError, build_routing
-from notary_mcp_proxy.server import AuditSink, ProxyServer, serve
+from notary_mcp_proxy.server import ProxyServer, serve
 
 
 def _log(text: str) -> None:
     print(f"notary-mcp-proxy: {text}", file=sys.stderr, flush=True)
 
 
-def _audit_file(path: Path) -> AuditSink:
-    """Appends each new event as one JSON line (readable by `notary replay`)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    def sink(entries: Sequence[AuditEntry]) -> None:
-        with path.open("a", encoding="utf-8") as out:
-            for entry in entries:
-                out.write(entry.event.model_dump_json() + "\n")
-
-    return sink
-
-
 def build_server(
-    config: ProxyConfig, client: StdioClient, *, run_id: str, audit: AuditSink | None
+    config: ProxyConfig, client: StdioClient, *, run_id: str, audit_append: AuditAppend = append
 ) -> ProxyServer:
     """`build_servers` for a config with one server."""
     (name,) = config.servers
-    return build_servers(config, {name: client}, run_id=run_id, audit=audit)
+    return build_servers(config, {name: client}, run_id=run_id, audit_append=audit_append)
 
 
 def build_servers(
@@ -61,9 +51,12 @@ def build_servers(
     clients: Mapping[str, StdioClient],
     *,
     run_id: str,
-    audit: AuditSink | None,
+    audit_append: AuditAppend = append,
 ) -> ProxyServer:
     """Pin every server's tools, freeze one contract and wrap one Gateway around all of them.
+
+    `audit_append` stores every audit entry; `durable_append(log)` makes each one durable before
+    the Gateway goes on. `run_started` is appended here, so it is the first entry on disk.
 
     Raises `RoutingError` when a contract name is also reported by another server tool, and
     `ValueError` when a configured tool is not reported.
@@ -88,6 +81,7 @@ def build_servers(
         resolver=ArgumentResolver(),
         run_id=run_id,
         policy=policy,
+        audit_append=audit_append,
     )
     gateway.pin_session()
     gateway.emit(
@@ -101,7 +95,7 @@ def build_servers(
             classifier=None,
         )
     )
-    server = ProxyServer(gateway, backend.pinned_definitions(), audit=audit)
+    server = ProxyServer(gateway, backend.pinned_definitions())
     for client in clients.values():
         client.on_notification = server.on_server_notification
     return server
@@ -213,36 +207,60 @@ def _close_all(clients: Mapping[str, StdioClient]) -> None:
 def serve_main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="notary-mcp-proxy [serve]", description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="proxy config (JSON)")
-    parser.add_argument("--audit-log", type=Path, help="append the event log here (JSON lines)")
+    parser.add_argument(
+        "--audit-dir",
+        type=Path,
+        help="write this run's audit chain and anchor here (<run>.chain.jsonl, <run>.anchor.json)",
+    )
     args = parser.parse_args(argv)
     config_path: Path = args.config
-    audit_path: Path | None = args.audit_log
+    audit_dir: Path | None = args.audit_dir
     config = ProxyConfig.model_validate_json(config_path.read_bytes())
     run_id = f"mcp-{uuid.uuid4().hex[:12]}"
     clients: dict[str, StdioClient] = {}
+    log: RunLog | None = None
     try:
         try:
             clients = _start_clients(config, config_path)
+            if audit_dir is not None:
+                log = RunLog(audit_dir, run_id)
             server = build_servers(
                 config,
                 clients,
                 run_id=run_id,
-                audit=None if audit_path is None else _audit_file(audit_path),
+                audit_append=append if log is None else durable_append(log),
             )
-        except (ServerError, OSError, ValueError) as failure:
+        except (ServerError, OSError, ValueError, AuditWriteError) as failure:
             # Every server must start and match the config, or the contract would not cover it.
             detail = failure.detail if isinstance(failure, ServerError) else str(failure)
             _log(f"startup failed: {type(failure).__name__}: {detail}")
+            return 2
+        if server.gateway.halted is not None:
+            _log(f"startup failed: NOTARY halted: {server.gateway.halted}")
             return 2
         fronted = [
             " ".join(spec.command) if not config.multi else f"{name}: {' '.join(spec.command)}"
             for name, spec in config.servers.items()
         ]
         _log(f"run {run_id}: fronting {'; '.join(fronted)}")
+        if log is not None:
+            _log(f"run {run_id}: audit chain {log.chain_path}")
         serve(server, sys.stdin.buffer, sys.stdout.buffer)
+        server.finish_run()  # serve() joined the worker: nothing else touches the Gateway
+        if log is not None:
+            _report_head(run_id, log, halted=server.gateway.halted)
     finally:
         _close_all(clients)
+        if log is not None:
+            log.close()
     return 0
+
+
+def _report_head(run_id: str, log: RunLog, *, halted: str | None) -> None:
+    """The head on stderr is a second copy of the anchor that an attacker on disk cannot edit."""
+    anchor = log.anchor
+    state = "closed" if halted is None else f"halted ({halted})"
+    _log(f"run {run_id} {state}: length {anchor.length} head {anchor.head}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
