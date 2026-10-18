@@ -16,6 +16,7 @@ from notary_core.models import (
     Decision,
     DecisionMade,
     EndorsementRequested,
+    ExpectedOutcome,
     LedgerEntry,
     UserEndorsedSource,
 )
@@ -27,8 +28,7 @@ from notary_mcp_proxy.server import ProxyServer
 from notary_server.world_config import proxy_config_for
 from notary_world.attacks import attack_world, control_world, get_setup
 from notary_world.executor import MAX_ESCALATION_ROUNDS, EscalationMode
-from notary_world.models import ScriptedCall
-from notary_world.scenarios import Scenario
+from notary_world.scenarios import Scenario, get_scenario
 from notary_world.state import WorldState
 from notary_world.tools import RawToolCall, param_unit
 
@@ -36,7 +36,10 @@ from notary_world.tools import RawToolCall, param_unit
 @dataclass
 class ProxiedCall:
     call_id: str
-    scripted: ScriptedCall
+    call: RawToolCall
+    """The call as it was sent (`tool` and `args`; the `call_id` is the proxy's)."""
+    expected: ExpectedOutcome | None
+    """The fixture's expected outcome; None for a plain scenario call."""
     response: JsonObject
     """The `tools/call` result the agent got for the first proposal."""
     decisions: list[Decision] = field(default_factory=list)
@@ -59,13 +62,36 @@ class ProxiedRun:
     """The scripted calls with the proxy's call ids (`c1`, `c2`, ...) for an engine run."""
 
 
-def library_item(item_id: str, seed: int) -> tuple[Scenario, tuple[ScriptedCall, ...], str | None]:
-    """(poisoned scenario, scripted calls, the attack id or None for a control)."""
+Planned = tuple[RawToolCall, ExpectedOutcome | None]
+
+
+def library_item(item_id: str, seed: int) -> tuple[Scenario, list[Planned], str | None]:
+    """(poisoned scenario, calls with their expected outcome, the attack id or None).
+
+    `item_id` is an attack (A1..A14), a control (B1..B4) or a scenario with golden calls
+    (`legitimate_bill`, `poisoned_bill`). The calls get the proxy's ids: `c1`, `c2`, ...
+    """
     if item_id.startswith("A"):
         scenario, scripted = attack_world(item_id, seed)
-        return scenario, scripted, item_id
-    scenario, scripted = control_world(item_id, seed)
-    return scenario, scripted, None
+        attack: str | None = item_id
+    elif item_id.startswith("B"):
+        scenario, scripted = control_world(item_id, seed)
+        attack = None
+    else:
+        scenario = get_scenario(item_id, seed)
+        return (
+            scenario,
+            [
+                (RawToolCall(call_id=f"c{i}", tool=c.tool, args=dict(c.args)), None)
+                for i, c in enumerate(scenario.calls, start=1)
+            ],
+            None,
+        )
+    planned: list[Planned] = [
+        (RawToolCall(call_id=f"c{i}", tool=c.tool, args=dict(c.args)), c.expected)
+        for i, c in enumerate(scripted, start=1)
+    ]
+    return scenario, planned, attack
 
 
 def approval_entries(gateway: Gateway, decision: Decision, call_id: str) -> list[LedgerEntry]:
@@ -130,9 +156,11 @@ def _resolve(server: ProxyServer, call_id: str, escalation: EscalationMode) -> N
             return
 
 
-def run_through_proxy(item_id: str, tmp_path: Path, *, seed: int = 0) -> ProxiedRun:
+def run_through_proxy(
+    item_id: str, tmp_path: Path, *, seed: int = 0, descriptions: str = "after-first-call"
+) -> ProxiedRun:
     """One attack (A1..A14) or control (B1..B4) through the proxy; see the module docstring."""
-    scenario, scripted, attack_id = library_item(item_id, seed)
+    scenario, planned, attack_id = library_item(item_id, seed)
     escalation: EscalationMode = "reject" if attack_id is None else get_setup(attack_id).escalation
     dump = tmp_path / f"{item_id}-world.json"
     command = [
@@ -143,6 +171,8 @@ def run_through_proxy(item_id: str, tmp_path: Path, *, seed: int = 0) -> Proxied
         scenario.scenario_id,
         "--seed",
         str(seed),
+        "--descriptions",
+        descriptions,
         "--dump-state",
         str(dump),
     ]
@@ -153,7 +183,7 @@ def run_through_proxy(item_id: str, tmp_path: Path, *, seed: int = 0) -> Proxied
     calls: list[ProxiedCall] = []
     try:
         server = build_server(config, client, run_id=f"run-mcp-{item_id}", audit=None)
-        for index, call in enumerate(scripted, start=1):
+        for index, (call, expected) in enumerate(planned, start=1):
             answer = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -171,7 +201,8 @@ def run_through_proxy(item_id: str, tmp_path: Path, *, seed: int = 0) -> Proxied
             calls.append(
                 ProxiedCall(
                     call_id=call_id,
-                    scripted=call,
+                    call=call,
+                    expected=expected,
                     response=response,
                     decisions=_decisions(server.gateway, call_id),
                 )
@@ -186,8 +217,5 @@ def run_through_proxy(item_id: str, tmp_path: Path, *, seed: int = 0) -> Proxied
         calls=calls,
         gateway=gateway,
         world_after=WorldState.model_validate_json(dump.read_text(encoding="utf-8")),
-        engine_calls=tuple(
-            RawToolCall(call_id=f"c{i}", tool=c.tool, args=dict(c.args))
-            for i, c in enumerate(scripted, start=1)
-        ),
+        engine_calls=tuple(call for call, _ in planned),
     )
