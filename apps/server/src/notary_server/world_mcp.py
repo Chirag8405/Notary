@@ -13,7 +13,7 @@ world's error code as text.
 Rug pull (A10). An attack that poisons a tool description changes what the server reports. With
 `--descriptions after-first-call` (the default) the server first lists the clean descriptions and
 switches to the poisoned ones once the first `tools/call` arrives, announcing it with
-`notifications/tools/list_changed`: the proxy pinned the clean tools and the change is drift.
+`notifications/tools/list_changed` (sent just before that call's answer): the proxy pinned the clean tools and the change is drift.
 `--descriptions from-start` reports the poisoned ones from the first listing (nothing to drift
 from: a pin is only as good as the first listing).
 
@@ -95,7 +95,9 @@ class WorldServer:
         dump_state: Path | None = None,
     ) -> None:
         self._state = state
-        self._switch_after_first_call = descriptions == "after-first-call"
+        self._switch_after_first_call = descriptions == "after-first-call" and bool(
+            state.tool_descriptions
+        )
         self._armed = not self._switch_after_first_call
         self._dump = dump_state
         self._announce: list[JsonObject] = []
@@ -106,7 +108,7 @@ class WorldServer:
         return self._state
 
     def take_notifications(self) -> list[JsonObject]:
-        """Notifications to send after the answer just returned (and forget them)."""
+        """Notifications to send before the answer just returned (and forget them)."""
         out, self._announce = self._announce, []
         return out
 
@@ -196,10 +198,11 @@ def serve(server: WorldServer, reader: IO[bytes], writer: IO[bytes]) -> None:
         if message is None:
             return
         answer = server.handle(message)
-        if answer is not None:
-            write_message(writer, answer)
+        # The notice goes first, so a client has it before it has the answer (no race to test).
         for notification in server.take_notifications():
             write_message(writer, notification)
+        if answer is not None:
+            write_message(writer, answer)
 
 
 def world_for(scenario: str | None, attack: str | None, seed: int) -> WorldState:
