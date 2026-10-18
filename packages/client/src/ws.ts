@@ -52,7 +52,12 @@ export type RunMode = components["schemas"]["ModeList"]["modes"][number];
 
 /** Keyed by the union, so a lane or mode the schema adds fails to compile here until listed. */
 const LANES: Readonly<Record<RunLane, true>> = { undefended: true, classifier: true, notary: true };
-const MODES: Readonly<Record<RunMode, true>> = { golden: true, cassette: true, live: true };
+const MODES: Readonly<Record<RunMode, true>> = {
+  golden: true,
+  cassette: true,
+  live: true,
+  mcp: true,
+};
 
 export interface RunOptions {
   lane?: RunLane;
@@ -94,9 +99,13 @@ export type CloseKind =
   | "run_conflict"
   | "unsupported_command"
   | "mode_unavailable"
+  | "chain_broken"
   | "other";
 
-/** Name the close codes the server uses: 4400, 4404, 4409, 4422 and 4501 (1000 and 1005 end a run). */
+/**
+ * Name the close codes the server uses: 4400, 4404, 4409, 4422, 4501 and 4503 (1000 and 1005 end
+ * a run). 4503 is an MCP run whose audit chain failed verification.
+ */
 export function describeClose(code: number): CloseKind {
   switch (code) {
     case 1000:
@@ -112,6 +121,8 @@ export function describeClose(code: number): CloseKind {
       return "unsupported_command";
     case 4501:
       return "mode_unavailable";
+    case 4503:
+      return "chain_broken";
     default:
       return "other";
   }

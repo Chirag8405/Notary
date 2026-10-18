@@ -22,6 +22,7 @@ describe("package exports", () => {
       "runStreamUrl",
       "describeClose",
       "listModes",
+      "listMcpRuns",
       "getAnchor",
       "createRestClient",
       "encodeCommand",

@@ -7,7 +7,7 @@ from notary_core.models import Event, Lane, NotaryModel
 from notary_server.runner import ScenarioNotFoundError
 from notary_world.golden import golden_streams
 
-RunMode = Literal["golden", "cassette", "live"]
+RunMode = Literal["golden", "cassette", "live", "mcp"]
 
 
 class RunUnavailableError(Exception):
@@ -32,9 +32,14 @@ class RunRequest(NotaryModel):
 
 
 class RunSource(Protocol):
-    def events(self, request: RunRequest) -> Iterator[Event]:
+    def events(self, request: RunRequest) -> Iterator[Event | None]:
         """Return the events of the run. Raise `KeyError` (or `ScenarioNotFoundError`) for an
-        unknown scenario. The iterator may block: the server drives it from a worker thread."""
+        unknown scenario. The iterator may block: the server drives it from a worker thread.
+
+        A source that follows a run which is still being written (`mcp`) yields `None` when it
+        has nothing new, after a short wait. The server skips it. This keeps every step short:
+        a step in flight cannot be cancelled, so a source that waited for the next event inside
+        one step would hold the socket of a client that has already left."""
         ...
 
 

@@ -9,6 +9,7 @@ fixed reason; no mode ever falls back to another.
 
 import time
 from collections.abc import Callable, Iterator, Mapping
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI
@@ -36,6 +37,7 @@ from notary_server.hijacked import (
 from notary_server.lanes import lane_hooks, stream_for_lane
 from notary_server.limits import Clock, PlaygroundLimits, RateLimiter
 from notary_server.llm import DEFAULT_MODEL, CassetteClient, CassetteMissError, LlmClient
+from notary_server.mcp_runs import McpRunsSource
 from notary_server.playground import LaneRunner
 from notary_server.runner import ScenarioNotFoundError
 from notary_server.sources import (
@@ -51,6 +53,8 @@ from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 DEFAULT_ANCHOR_DB = ":memory:"
 DEFAULT_ENDORSEMENT_TIMEOUT_SECONDS = 300.0
 DEFAULT_ARENA_MAX_ROUNDS = 10
+MCP_POLL_SECONDS = 0.25
+"""How long a followed MCP chain waits before it looks for new entries again."""
 LIVE_RUN_NOTE = "live run: a real model answered, so this run is not reproducible"
 """Appended to the `run_finished` summary of every live run (the event contract has no field for
 it). A cassette or golden run never carries it."""
@@ -89,13 +93,16 @@ class Settings(NotaryModel):
     limit_window_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)] = (
         DEFAULT_LIMIT_WINDOW_SECONDS
     )
+    mcp_runs_dir: Path | None = None
+    """The directory the MCP proxy writes its audit chains to (`NOTARY_MCP_RUNS_DIR`). Unset: mode
+    `mcp` is not listed and `GET /mcp/runs` is 404. The server only reads it."""
 
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
         """Read `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS` and the
         limits of the playground (`NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`,
         `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
-        `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`).
+        `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`) and `NOTARY_MCP_RUNS_DIR` (empty is unset).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -114,6 +121,9 @@ class Settings(NotaryModel):
         rounds = environ.get("NOTARY_ARENA_MAX_ROUNDS")
         if rounds is not None:
             values["arena_max_rounds"] = _number("NOTARY_ARENA_MAX_ROUNDS", rounds, int)
+        mcp_runs_dir = environ.get("NOTARY_MCP_RUNS_DIR")
+        if mcp_runs_dir:
+            values["mcp_runs_dir"] = Path(mcp_runs_dir)
         for name, field, parse in _LIMIT_VARIABLES:
             raw = environ.get(name)
             if raw is not None:
@@ -335,6 +345,10 @@ def build_app(
             model=settings.live_model,
         ),
     }
+    if settings.mcp_runs_dir is not None:
+        sources["mcp"] = McpRunsSource(
+            settings.mcp_runs_dir, poll=lambda: time.sleep(MCP_POLL_SECONDS), anchors=anchors
+        )
     return create_app(
         event_delay=event_delay,
         sources=sources,
@@ -350,4 +364,5 @@ def build_app(
             max_sessions_per_client=settings.hijacked_sessions_per_client,
         ),
         limits=build_limits(settings, clock),
+        mcp_runs_dir=settings.mcp_runs_dir,
     )

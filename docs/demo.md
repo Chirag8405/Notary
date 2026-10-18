@@ -14,7 +14,7 @@ Components and IDs (A1-A14, I1-I6) are defined in [architecture.md](architecture
 
 ### Run modes and recording
 
-`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live>` (`GET /runs/modes` lists the modes). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Groq API.
+`WS /ws/runs/{scenario}?lane=<undefended|classifier|notary>&mode=<golden|cassette|live|mcp>` (`GET /runs/modes` lists the modes; `mcp` only when `NOTARY_MCP_RUNS_DIR` is set, and then `{scenario}` is an MCP proxy run id). `golden` (default) serves the hand-built streams; `cassette` replays a recorded run through the real agent runner, Gateway pieces and monitor; `live` calls the Groq API.
 
 Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the requested lane (its own stream per lane, #193) and `legitimate_bill` on the NOTARY lane only (#196: the baseline lanes have no golden `legitimate_bill` stream and close `4404`). The x-ray page uses `golden` for both scenarios and for the three-lane view of `poisoned_bill` (#206); the three-lane view of `legitimate_bill` does not exist (only the NOTARY lane has a stream), so the page shows its single view.
 
@@ -25,6 +25,7 @@ Mode notes for the x-ray page: `golden` serves `poisoned_bill` under the request
 | `NOTARY_ENDORSEMENT_TIMEOUT` | `300` | seconds an escalation waits for the user's `endorsement_decision` before it is rejected (fail closed); use a few seconds for a stage run |
 | `NOTARY_ANCHOR_DB` | `:memory:` | SQLite file of the audit anchors; keep it away from any saved run records. `:memory:` loses the anchors on restart |
 | `NOTARY_ARENA_MAX_ROUNDS` | `10` | cap on `rounds` for the attacker arena |
+| `NOTARY_MCP_RUNS_DIR` | unset | the directory the MCP proxy writes its audit chains to (`notary-mcp-proxy --audit-dir`). Opt-in: unset, `mode=mcp` is not listed (`4501`) and `GET /mcp/runs` is 404. The server only reads it. See [Watch a session in the X-ray](#watch-a-claude-code-session-in-the-x-ray) |
 
 A cassette miss (`4502 cassette miss`), a missing cassette (`4502 cassette not found`) or a missing key is an error with a fixed reason; the server never falls back to another mode.
 
@@ -230,6 +231,16 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 - Concurrency: tool calls are decided one at a time, in the order they arrive, on one worker thread, so the audit chain order is the arrival order (independent read-only calls are not run in parallel). While a call runs, `initialize`, `ping`, `tools/list`, unknown methods and invalid lines are still answered at once. `notifications/cancelled` for a queued call removes it (no events, no response); for the running call it sets a flag that long waits check, the decision already logged stays in the chain, and the call gets no response; a cancel for an unknown or finished call is ignored. The proxy can send its own requests to the client (ids `n1`, `n2`, ...; this is the base for approvals and elicitation): the answer wakes the waiting call, a timeout sends `notifications/cancelled`, and the end of input unblocks the wait with an error. A drift check after `notifications/tools/list_changed` is queued behind the calls already waiting and runs on the same worker. Writes to stdout are serialized, one message per line.
 - A client that closes stdin with calls queued gets those calls dropped: the call in progress finishes (its decision stays in the chain) and the queued calls are never proposed, because nobody is left to receive their results and a queued effect (a payment) must not run for a client that has gone. A script that sends requests and closes stdin must wait for the answers first.
 - Limits of this version: stdio only, one timeout for every tool, an unknown effect after a timeout is not reconciled, and the server's tool definitions are shown to the agent as pinned at startup (they are the user's to review).
+
+#### Watch a Claude Code session in the X-ray
+
+The server can show a proxy run live in `/x-ray`, from the audit chain the proxy writes; the proxy sends nothing over the network. Start the server with the proxy's audit directory, then run the session:
+
+1. `NOTARY_MCP_RUNS_DIR="$PWD/.notary/mcp-runs" pnpm dev` (the directory `.mcp.json` passes to `--audit-dir`; use an absolute path, the server may run from another working directory).
+2. Start Claude Code in the repo root with `.mcp.json` and ask it to pay the December bill (the demo check above).
+3. Open `/x-ray`, choose the mode `mcp` under "Advanced", then pick the run under "MCP run" (`Refresh runs` re-reads the list, newest first; the list shows each run's length and `live` or `finished`). The page shows the run's contract, every labeled value, each decision with its ordered reasons and the effects, from the first entry on, and follows new entries as the agent works. A "live" badge stays until the run's `run_finished`.
+
+Behavior: `GET /mcp/runs` lists runs from the anchor files (`mcp-<12 hex>` only; newest first by the anchor's modification time, so by last activity; at most 100). `WS /ws/runs/<run id>?lane=notary&mode=mcp` replays the chain from index 0 and then follows it; the lane is always `notary`. Nothing is sent before it is verified: each entry must be the next index, carry the previous entry's hash, hash correctly (`entry_hash`) and name the run of its file. A line that does not parse, an edited or reordered line, a file that shrinks or a line over 4 MiB closes the socket `4503 chain broken` after the last verified event. A last line without its newline is a write in progress and is waited for. A proxy that dies in the middle of a line leaves the run "live" until the page is closed (the server cannot tell it from a slow one). The server also keeps the head of each verified entry in its own anchor store (`GET /runs/<run id>/anchor`, shown in the footer once the run has finished), and a chain that later hashes differently at the same length is `chain broken`; an entry cut off the end is not detected, as in the audit log itself. A run id is checked against `mcp-<12 hex>` before it is a path, and symlinks are refused, so the server reads only regular files directly inside the directory. Sending commands on an `mcp` socket closes it `4422`: an escalation shows as ESCALATE in the decision stream and cannot be approved from the X-ray yet (#262). Events are sent without the 0.4 s pacing of the scripted modes.
 
 #### Several servers behind one proxy
 

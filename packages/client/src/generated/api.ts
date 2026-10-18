@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mcp Runs */
+        get: operations["listMcpRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playground/arena": {
         parameters: {
             query?: never;
@@ -677,10 +694,26 @@ export interface components {
              */
             kind: "llm";
         };
+        /** McpRunInfo */
+        McpRunInfo: {
+            /** Finished */
+            finished: boolean;
+            /** Head */
+            head: string | null;
+            /** Length */
+            length: number;
+            /** Run Id */
+            run_id: string;
+        };
+        /** McpRunList */
+        McpRunList: {
+            /** Runs */
+            runs: components["schemas"]["McpRunInfo"][];
+        };
         /** ModeList */
         ModeList: {
             /** Modes */
-            modes: ("golden" | "cassette" | "live")[];
+            modes: ("golden" | "cassette" | "live" | "mcp")[];
         };
         /**
          * NamedSourceMarker
@@ -998,6 +1031,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    listMcpRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpRunList"];
                 };
             };
         };

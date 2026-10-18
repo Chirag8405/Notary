@@ -18,13 +18,23 @@ export type ViewMode = "single" | "three-lane";
 export const SCENARIOS = ["poisoned_bill", "legitimate_bill"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
+/** The modes that run a scenario. */
 export const MODES: readonly RunMode[] = ["golden", "cassette", "live"];
+
+/** Every mode; `mcp` follows a run of the MCP proxy and is offered only when the server lists it. */
+export const ALL_MODES: readonly RunMode[] = [...MODES, "mcp"];
+
+/** The run id format of the MCP proxy (`mcp-` and 12 lowercase hex digits). */
+const MCP_RUN_ID = /^mcp-[0-9a-f]{12}$/;
+
+export const DEFAULT_SCENARIO = "poisoned_bill";
 
 /** The mode used when the address names none (or names an unknown one): never "live". */
 export const DEFAULT_MODE: RunMode = "golden";
 
 export interface XRayParams {
-  scenario: Scenario;
+  /** A scenario name; in mode `mcp` a run id, or "" while none is chosen. */
+  scenario: string;
   mode: RunMode;
   viewMode: ViewMode;
   /** The demo step named in the address (1 to 4); absent when there is none. */
@@ -116,6 +126,9 @@ export function effectsOf(
     );
 }
 
+export const CHAIN_BROKEN =
+  "The audit chain of this run failed verification, so the stream was stopped. Only the events before the break were verified and shown.";
+
 /** The sentence shown for a failed stream. */
 export function describeStreamError(
   closeCode: number | undefined,
@@ -133,6 +146,8 @@ export function describeStreamError(
       return "Unknown scenario.";
     case "mode_unavailable":
       return "This mode is not available on the server.";
+    case "chain_broken":
+      return CHAIN_BROKEN;
     case "bad_request":
       return "The server rejected the request.";
     case "run_conflict":
@@ -170,9 +185,15 @@ export function parseXRayParams(raw: {
   const mode = first(raw.mode);
   const number = Number(first(raw.step));
   const step = Number.isInteger(number) && number >= 1 && number <= 4 ? number : undefined;
+  const chosen = ALL_MODES.find((item) => item === mode) ?? DEFAULT_MODE;
   return {
-    scenario: SCENARIOS.find((item) => item === scenario) ?? "poisoned_bill",
-    mode: MODES.find((item) => item === mode) ?? DEFAULT_MODE,
+    scenario:
+      chosen === "mcp"
+        ? scenario !== undefined && MCP_RUN_ID.test(scenario)
+          ? scenario
+          : ""
+        : (SCENARIOS.find((item) => item === scenario) ?? DEFAULT_SCENARIO),
+    mode: chosen,
     viewMode: first(raw.view) === "three" ? "three-lane" : "single",
     ...(step === undefined ? {} : { step }),
   };
@@ -217,18 +238,24 @@ export function goldenBlockedReason(scenario: string, viewMode: ViewMode): strin
   return null;
 }
 
+export const MCP_LABEL = "mcp (a live run of the MCP proxy, read from its verified audit chain)";
+
 /**
- * The mode selector's options in a fixed order (golden, cassette, live), whatever order the
- * server lists them in. While the list is unknown or unusable, all three are shown.
+ * The mode selector's options in a fixed order (golden, cassette, live, mcp), whatever order the
+ * server lists them in. While the list is unknown or unusable, the first three are shown. `mcp` is
+ * shown only when the server lists it: it needs a runs directory on the server.
  */
 export function modeOptions(
   scenario: string,
   serverModes: readonly string[] | null,
   viewMode: ViewMode,
 ): readonly ModeOption[] {
-  const listed = serverModes === null ? MODES : MODES.filter((mode) => serverModes.includes(mode));
+  const listed =
+    serverModes === null ? MODES : ALL_MODES.filter((mode) => serverModes.includes(mode));
+  const usable = listed.some((mode) => mode !== "mcp") ? listed : [...MODES, ...listed];
   const blocked = goldenBlockedReason(scenario, viewMode);
-  return (listed.length === 0 ? MODES : listed).map((mode): ModeOption => {
+  return usable.map((mode): ModeOption => {
+    if (mode === "mcp") return { mode, enabled: true, note: null, label: MCP_LABEL };
     if (mode === "golden") return { mode, enabled: blocked === null, note: blocked, label: mode };
     if (mode === "live") return { mode, enabled: true, note: null, label: LIVE_LABEL };
     return { mode, enabled: true, note: null, label: CASSETTE_LABEL };
@@ -263,6 +290,23 @@ export function settleSelection(selection: Selection): Selection & { note: strin
   };
 }
 
+/**
+ * The selection after the mode is changed. The first argument of a scenario mode is a scenario
+ * name and that of `mcp` a run id, so crossing between the two clears the other kind of name:
+ * entering `mcp` leaves no run chosen, leaving it returns to the default scenario.
+ */
+export function selectMode(selection: Selection, mode: RunMode): Selection {
+  if (mode === selection.mode) return selection;
+  if (mode === "mcp") return { scenario: "", mode, viewMode: "single" };
+  if (selection.mode === "mcp") return { ...selection, scenario: DEFAULT_SCENARIO, mode };
+  return { ...selection, mode };
+}
+
+export const MCP_NO_RUN = "Choose a run of the MCP proxy to follow it here.";
+export const MCP_NOT_ENABLED =
+  "MCP runs are not enabled on this server (start it with NOTARY_MCP_RUNS_DIR set to the proxy's audit directory).";
+export const MCP_UNKNOWN_RUN = "The server has no such MCP run. Refresh the list and choose again.";
+
 export const LIVE_UNAVAILABLE =
   "This mode is not available on the server (live needs an LLM API key).";
 
@@ -278,6 +322,12 @@ export function streamProblem(input: {
   mode: RunMode;
 }): { text: string; offerCassette: boolean } {
   const text = describeStreamError(input.closeCode, input.message, input.apiUrl);
+  if (input.mode === "mcp") {
+    // There is no cassette to fall back to for a run of the proxy.
+    if (input.closeCode === 4501) return { text: MCP_NOT_ENABLED, offerCassette: false };
+    if (input.closeCode === 4404) return { text: MCP_UNKNOWN_RUN, offerCassette: false };
+    return { text, offerCassette: false };
+  }
   if (input.closeCode === 4501) {
     return {
       text: input.mode === "live" ? LIVE_UNAVAILABLE : text,
