@@ -17,10 +17,10 @@ packages/ui     -> @notary/schema
 packages/client -> @notary/schema
 packages/schema -> (nothing)
 packages/core   -> (pydantic + stdlib only)
-packages/mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world)
+packages/mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world; cli may also use notary_eval)
 ```
 
-Python layers (import-linter, root `pyproject.toml`): `server | cli | eval` > `mcp_proxy | world` > `core`.
+Python layers (import-linter, root `pyproject.toml`): `server | cli` > `eval` > `mcp_proxy | world` > `core`.
 TS direction is enforced by `eslint-plugin-boundaries` (`packages/config-eslint/boundaries.js`).
 `config-typescript` and `config-eslint` are tooling only. Violations fail `lint`.
 

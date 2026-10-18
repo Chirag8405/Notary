@@ -101,7 +101,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] Hypothesis fuzz harness asserting I1-I5 after every step (runs against the real monitor; `FakeMonitor` is not used)
 - [x] Hijacked Mode runner (raw tool calls, no LLM)
 - [x] **Classifier-only** baseline: lane B owns the `ClassifierFilter` (a pure function from content to filtered content plus flags; classifier: see P0b) and its eval wrapper. It plugs into lane C's runner through the frozen pre-filter hook and needs no agent loop of its own
-- [x] `notary replay`, `notary fuzz`, `notary attack` implemented (`bench` may stay stubbed)
+- [x] `notary replay`, `notary fuzz`, `notary attack` implemented (`notary bench` now runs the attack library per lane, see P6)
 - Accept: `cd packages/world && uv run pytest`; `uv run notary attack --list` prints A1-A14; after CP1, `uv run notary fuzz` reports zero violations
 - Accept (baseline): `ClassifierFilter` has unit tests; the Classifier-only lane reproduces the swapped-IBAN loss once plugged into the P3b runner (CP2)
 - Demo-able: full attack run from the terminal, no UI, no LLM; stage-script step 2 once the filter is plugged into the runner.
@@ -177,7 +177,8 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 
 - Packages: `packages/mcp-proxy` (lane A), `packages/eval` (lane B)
 - [x] Eval result shapes and JSON export (`packages/eval/src/notary_eval/results.py`: `TaskResult`, `EvalResults`, `export_results`, with a round-trip test)
-- [ ] Eval harness: `run_agentdojo` and `notary bench` are still stubs (`NotImplementedError` / "not implemented yet"); charts from the export do not exist
+- [x] `notary bench`: runs the attack library (A1-A14, B1-B4) with no defence and with the real monitor and exports the results JSON per lane (`notary_eval.library`)
+- [ ] Eval harness: `run_agentdojo` is still a stub (`NotImplementedError`); charts from the export do not exist
 - [ ] MCP proxy in front of a real MCP server (lane A): first version done, a stdio proxy (`notary-mcp-proxy`, `.mcp.json` for Claude Code) in front of the toy bank server ([demo.md](demo.md#mcp-proxy-with-claude-code)); still to do: an approval path for ESCALATE, live X-ray stream, the clip
 - [ ] AgentDojo banking and Slack runs (if allowed); results export JSON -> charts (lane B)
 - [ ] #240 Model-dependence eval: attack success per model and lane, 20+ rounds per cell with confidence intervals (first measurement of 3 Groq models is in [demo.md](demo.md); the full run needs several days of the 200,000 tokens per model per day Groq limit; left for later)

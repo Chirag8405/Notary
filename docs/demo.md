@@ -183,7 +183,7 @@ It is not part of the default gate (`pnpm turbo run lint typecheck test build`),
 
 ### CLI usage and exit codes
 
-The CLI computes nothing itself: it calls `notary_world` and `notary_core`, prints deterministic text (no timestamps, no absolute paths) and sets the exit code. `--save-dir` is the only place it writes. Run it with `uv run notary ...` from `packages/cli`.
+The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `notary_core`, prints deterministic text (no timestamps, no absolute paths) and sets the exit code. `--save-dir` is the only place it writes. Run it with `uv run notary ...` from `packages/cli`.
 
 | Command | What it does |
 | --- | --- |
@@ -192,15 +192,15 @@ The CLI computes nothing itself: it calls `notary_world` and `notary_core`, prin
 | `notary attack --all` | Run A1-A14 then B1-B4 and print a table with a summary line |
 | `notary fuzz [--examples N] [--seed S] [--profile ci\|full]` | Fuzz the real monitor with an adversarial LLM, checking I1-I6 after every step; prints the minimized program on a violation |
 | `notary replay RUN.json [--expect-head H] [--expect-length N]` | Print the events of a saved run and verify its audit chain; the anchors detect tail truncation, which the chain alone cannot |
-| `notary bench` | Stub: prints `bench: not implemented yet` |
+| `notary bench [--out DIR] [--seed S]` | Run A1-A14 and B1-B4 with no defence and with the real monitor; prints attacks that succeeded and controls completed per lane, and with `--out` writes `none.json` and `notary.json` (`packages/eval` results export) |
 
 `--monitor` defaults to `real`; `fake` replays the fixtures' expected verdicts and exists only to test the harness. A real-monitor mismatch is never hidden: the two known deviations (A3, A6) keep `attack A3`, `attack A6` and `attack --all` at exit 1 until CP1 resolves them.
 
 | Exit code | Meaning |
 | --- | --- |
 | `0` | success: every outcome matches, zero fuzz violations, chain verified |
-| `1` | a verification failed: an outcome mismatch, a fuzz violation, or a broken or truncated audit chain |
-| `2` | usage error, unreadable or invalid input, or not implemented (`bench`) |
+| `1` | a verification failed: an outcome mismatch, a fuzz violation, a broken or truncated audit chain, or (`bench`) the NOTARY lane let an attack succeed or broke a benign control |
+| `2` | usage error or unreadable or invalid input |
 
 ### MCP proxy with Claude Code
 

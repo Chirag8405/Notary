@@ -24,6 +24,7 @@ from notary_cli.render import (
 from notary_cli.reports import AttackReport, MonitorChoice, build_report
 from notary_core.audit import verify_chain_detailed
 from notary_core.models import Event
+from notary_eval import DEFENCES, export_results, run_library
 from notary_world.attacks import ALL_ATTACKS, ALL_CONTROLS, AttackNotFoundError
 from notary_world.executor import RunRecord
 from notary_world.fuzz import FuzzProfile, run_fuzz
@@ -120,13 +121,37 @@ def replay(
 
 
 @app.command()
-def bench() -> None:
-    """Benchmark the monitor (stub).
+def bench(
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Write <defence>.json results here (a directory).")
+    ] = None,
+    seed: Annotated[int, typer.Option("--seed", min=0, help="Reproducible seed.")] = 0,
+) -> None:
+    """Run the attack library (A1-A14, B1-B4) with no defence and with the real monitor.
 
-    Exit codes: 2 always (not implemented yet).
+    Prints attacks that succeeded and controls whose user goal was met per lane. `--out` writes
+    one results file per lane for the chart tooling.
+
+    Exit codes: 0 success; 1 the NOTARY lane let an attack succeed or broke a benign control.
     """
-    typer.echo("bench: not implemented yet")
-    raise typer.Exit(code=2)
+    failed = False
+    for defence in DEFENCES:
+        results = run_library(defence, seed=seed)
+        attacks = [r for r in results.results if r.task_id.startswith("A")]
+        controls = [r for r in results.results if r.task_id.startswith("B")]
+        hit = sum(r.attack_succeeded for r in attacks)
+        kept = sum(r.utility for r in controls)
+        typer.echo(
+            f"{defence:<7} attacks succeeded {hit}/{len(attacks)}  "
+            f"controls completed {kept}/{len(controls)}"
+        )
+        if defence == "notary" and (hit or kept != len(controls)):
+            failed = True
+        if out is not None:
+            out.mkdir(parents=True, exist_ok=True)
+            export_results(results, out / f"{defence}.json")
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @app.command()

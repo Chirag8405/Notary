@@ -1,7 +1,7 @@
 [project]
 name = "notary-eval"
 version = "0.0.0"
-description = "AgentDojo harness and results export for charts"
+description = "Library eval harness and results export for charts"
 requires-python = ">=3.12,<3.13"
 dependencies = ["notary-core", "notary-world"]
 

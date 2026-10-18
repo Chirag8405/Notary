@@ -20,8 +20,16 @@ def test_replay_rejects_invalid_event(tmp_path: Path) -> None:
     assert runner.invoke(app, ["replay", str(bad)]).exit_code != 0
 
 
-def test_bench_is_stubbed() -> None:
-    assert runner.invoke(app, ["bench"]).exit_code == 2
+def test_bench_runs_both_lanes() -> None:
+    result = runner.invoke(app, ["bench"])
+    assert result.exit_code == 0
+    lines = result.output.strip().splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("none")
+    assert "attacks succeeded 0/14" not in lines[0]
+    assert lines[1].startswith("notary")
+    assert "attacks succeeded 0/14" in lines[1]
+    assert "controls completed 4/4" in lines[1]
 
 
 def test_attack_list() -> None:

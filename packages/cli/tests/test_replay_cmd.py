@@ -97,11 +97,10 @@ def test_replay_rejects_garbage(tmp_path: Path) -> None:
         assert "not a run record or event file" in result.output
 
 
-@pytest.mark.invariant("I6")
-def test_bench_stays_a_stub() -> None:
-    result = runner.invoke(app, ["bench"])
-    assert result.exit_code == 2
-    assert "bench: not implemented yet" in result.output
+def test_bench_out_writes_one_results_file_per_lane(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["bench", "--out", str(tmp_path)])
+    assert result.exit_code == 0
+    assert sorted(f.name for f in tmp_path.iterdir()) == ["none.json", "notary.json"]
 
 
 @pytest.mark.invariant("I6")

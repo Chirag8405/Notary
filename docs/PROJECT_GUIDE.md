@@ -302,8 +302,8 @@ apps/server  -> notary_core, notary_world, notary_mcp_proxy
 packages/ui, client -> @notary/schema
 packages/schema     -> nothing
 packages/core       -> pydantic + stdlib only
-mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world)
-Python layers: server | cli | eval  >  mcp_proxy | world  >  core
+mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world; cli may also use notary_eval)
+Python layers: server | cli  >  eval  >  mcp_proxy | world  >  core
 ```
 
 ### `packages/core/src/notary_core` (the heart, ~1,500 lines + 500 tests)
@@ -341,7 +341,7 @@ Python layers: server | cli | eval  >  mcp_proxy | world  >  core
 
 ### Other packages
 
-- `packages/cli`: `notary replay FILE` prints typed events; `notary attack --list` prints A1–A14; `fuzz`, `bench` and `attack` (run) are **stubs** (exit code 2).
+- `packages/cli`: `notary replay FILE` prints typed events; `notary attack --list` prints A1–A14; `bench` runs the attack library with no defence and with the real monitor; `fuzz` and `attack` (run) are **stubs** (exit code 2).
 - `packages/eval`: `TaskResult`/`EvalResults` shapes and `export_results`; `run_agentdojo` is `NotImplementedError`.
 - `packages/mcp-proxy`: `ToolPin` model and a `Gateway` class whose methods raise `NotImplementedError`.
 - `apps/server`: `GET /health`, `GET /scenarios`, `GET /attacks`, and `WS /ws/runs/{scenario}` that replays a golden stream event by event (0.4 s apart), each validated by the `Event` model. No real agent loop yet.
