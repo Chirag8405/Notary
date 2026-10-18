@@ -64,6 +64,18 @@ def hook_output(answer: HookAnswer) -> str:
     )
 
 
+def hook_reason(output: str) -> str:
+    """The reason inside a deny output (for stderr); a generic text if it cannot be read."""
+    try:
+        parsed: JsonValue = json.loads(output)
+    except ValueError:
+        return "NOTARY guard: denied"
+    outer = as_object(parsed)
+    specific = as_object(outer.get("hookSpecificOutput")) if outer else None
+    reason = as_str(specific.get("permissionDecisionReason")) if specific else None
+    return reason or "NOTARY guard: denied"
+
+
 def run_hook(stdin_text: str, policy_text: str | None) -> str:
     """Stdin and policy file text in, stdout text out. Any failure is a deny."""
     try:

@@ -4,6 +4,7 @@ stdout carries only MCP messages; diagnostics go to stderr.
 """
 
 import argparse
+import json
 import sys
 import uuid
 from collections.abc import Sequence
@@ -24,7 +25,7 @@ from notary_mcp_proxy.config import (
     tool_readers,
 )
 from notary_mcp_proxy.gateway import Gateway
-from notary_mcp_proxy.guard import run_hook
+from notary_mcp_proxy.guard import hook_reason, run_hook
 from notary_mcp_proxy.mcp_backend import McpBackend
 from notary_mcp_proxy.server import AuditSink, ProxyServer, serve
 
@@ -87,24 +88,46 @@ def build_server(
     return server
 
 
+def _hook_deny(reason: str) -> int:
+    """Exit 2 is the only code that blocks a tool in Claude Code (stderr goes to the model)."""
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        )
+    )
+    print(reason, file=sys.stderr, flush=True)
+    return 2
+
+
 def hook_main(argv: Sequence[str]) -> int:
-    """`hook pre-tool-use --policy PATH`: the Claude Code guard (stdin event, stdout answer)."""
+    """`hook pre-tool-use --policy PATH`: allow = no output, exit 0; deny = exit 2."""
     parser = argparse.ArgumentParser(prog="notary-mcp-proxy hook pre-tool-use")
     parser.add_argument("--policy", type=Path, required=True, help="guard policy (JSON)")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv)  # a usage error exits 2, which also blocks
     policy_path: Path = args.policy
     try:
-        policy_text: str | None = policy_path.read_text(encoding="utf-8")
-    except (OSError, ValueError):
-        policy_text = None
-    try:
-        stdin_text = sys.stdin.buffer.read().decode("utf-8")
-    except (OSError, ValueError):
-        stdin_text = ""
-    output = run_hook(stdin_text, policy_text)
-    if output:
+        try:
+            policy_text: str | None = policy_path.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            policy_text = None
+        try:
+            stdin_text = sys.stdin.buffer.read().decode("utf-8")
+        except (OSError, ValueError):
+            stdin_text = ""
+        output = run_hook(stdin_text, policy_text)
+        if not output:
+            return 0
         print(output)
-    return 0
+        print(hook_reason(output), file=sys.stderr, flush=True)
+        return 2
+    except Exception as error:
+        return _hook_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
