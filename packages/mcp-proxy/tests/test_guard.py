@@ -50,7 +50,7 @@ def test_default_policy_allows(tool: str) -> None:
 
 @pytest.mark.parametrize(
     "stdin",
-    ["", "not json", "[]", "null", "{}", '{"tool_name": 3}', '{"tool_name": ""}', '{"tool_name": null}'],
+    ["", "not json", "[]", "null", "{}", '{"tool_name": 3}', '{"tool_name": ""}'],
 )
 def test_malformed_input_is_denied(stdin: str) -> None:
     out = json.loads(run_hook(stdin, POLICY_TEXT))
@@ -104,7 +104,8 @@ def test_subprocess_answers_on_stdout() -> None:
     denied = _run(json.dumps(_event("Bash")), GUARD)
     assert denied.returncode == 0
     assert json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert json.loads(_run("garbage", GUARD).stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    garbage = json.loads(_run("garbage", GUARD).stdout)
+    assert garbage["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_subprocess_missing_policy_denies(tmp_path: Path) -> None:

@@ -83,5 +83,5 @@ def run_hook(stdin_text: str, policy_text: str | None) -> str:
         if event is None:
             return hook_output(_deny("NOTARY guard: the hook input is not a JSON object; denied"))
         return hook_output(decide_hook(event, policy))
-    except Exception as error:  # noqa: BLE001 - the hook must fail closed
+    except Exception as error:
         return hook_output(_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied"))
