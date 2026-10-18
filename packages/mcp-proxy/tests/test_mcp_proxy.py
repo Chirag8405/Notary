@@ -1,7 +1,6 @@
 """The stdio MCP proxy in front of a real MCP server (the toy bank in `examples/bank`)."""
 
 import json
-import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -17,6 +16,7 @@ from notary_mcp_proxy.jsonrpc import JsonObject
 from notary_mcp_proxy.main import build_server
 from notary_mcp_proxy.mcp_backend import content_fields, decode_argument, encode_argument
 from notary_mcp_proxy.server import ProxyServer
+from stdio_session import StdioSession, proxy_command, request, tool_call
 
 BANK = Path(__file__).resolve().parents[1] / "examples" / "bank"
 ACME_IBAN = "DE00ACME00000000000001"
@@ -143,36 +143,14 @@ def test_non_text_blocks_are_kept_as_json() -> None:
 def test_stdio_end_to_end(tmp_path: Path) -> None:
     """The proxy as Claude Code runs it: a child process speaking MCP on stdin/stdout."""
     audit = tmp_path / "audit.jsonl"
-    messages: list[JsonObject] = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "x"}},
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {"name": "pay_bill", "arguments": {"payee": ATTACKER_IBAN, "amount": 120}},
-        },
-    ]
-    done = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "notary_mcp_proxy",
-            "--config",
-            str(_config(tmp_path)),
-            "--audit-log",
-            str(audit),
-        ],
-        input="".join(json.dumps(m) + "\n" for m in messages),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=True,
-    )
-    answers = [json.loads(line) for line in done.stdout.splitlines()]
-    assert [a["id"] for a in answers] == [1, 2]
-    assert answers[0]["result"]["protocolVersion"] == "2025-06-18"
-    assert answers[1]["result"]["isError"] is True
+    session = StdioSession(proxy_command(_config(tmp_path), "--audit-log", str(audit)))
+    session.send(request(1, "initialize", {"protocolVersion": "x"}))
+    session.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    session.send(tool_call(2, "pay_bill", {"payee": ATTACKER_IBAN, "amount": 120}))
+    first, second = session.result(1), session.result(2)  # read before stdin closes
+    session.finish()
+    assert first["protocolVersion"] == "2025-06-18"
+    assert second["isError"] is True
     types = [json.loads(line)["type"] for line in audit.read_text().splitlines()]
     assert types[0] == "run_started"
     assert "effect_executed" not in types

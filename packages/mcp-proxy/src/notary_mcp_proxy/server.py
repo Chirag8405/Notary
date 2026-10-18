@@ -17,21 +17,18 @@ from pydantic import JsonValue
 from notary_core.models import AuditEntry, Decision
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
+from notary_mcp_proxy.dispatch import Dispatcher
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
 from notary_mcp_proxy.jsonrpc import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
-    PARSE_ERROR,
     JsonObject,
-    MessageError,
     as_object,
     as_str,
     error,
-    read_message,
     result,
-    write_message,
 )
 from notary_mcp_proxy.mcp_backend import (
     RESULT_RECORD,
@@ -121,13 +118,42 @@ class ProxyServer:
         self._calls = 0
         self._drift_requests: queue.Queue[None] = queue.Queue()
         self._drift_worker: threading.Thread | None = None
+        self._schedule_drift: Callable[[], None] | None = None
 
     @property
     def gateway(self) -> Gateway:
         return self._gateway
 
     def handle(self, message: JsonObject) -> JsonObject | None:
-        """The answer to one message; None for a notification or a stray response."""
+        """The answer to one message, synchronously; None for a notification or a stray response.
+
+        One thread does everything here (the in-process tests, scripts). The `Dispatcher` instead
+        calls `handle_fast` on the reader thread and `handle_call` on its single worker thread.
+        """
+        if is_call(message):
+            return self.handle_call(message)
+        answer = self.handle_fast(message)
+        self.flush_audit()
+        return answer
+
+    def handle_fast(self, message: JsonObject) -> JsonObject | None:
+        """`initialize`, `ping`, `tools/list`, unknown methods and invalid messages.
+
+        Safe on the reader thread while a call runs: it never touches the Gateway or the audit
+        sink. A `tools/call` is not answered here (`handle_call` does that).
+        """
+        if is_call(message):
+            return error(message.get("id"), INTERNAL_ERROR, "tools/call is not a fast method")
+        return self._respond(message)
+
+    def handle_call(self, message: JsonObject) -> JsonObject | None:
+        """A `tools/call`: label, decide, run. Only the thread that owns the Gateway calls this."""
+        try:
+            return self._respond(message)
+        finally:
+            self.flush_audit()
+
+    def _respond(self, message: JsonObject) -> JsonObject | None:
         method = as_str(message.get("method"))
         if "id" not in message:
             return None
@@ -157,8 +183,6 @@ class ProxyServer:
                 f"internal error in {method}: {type(failure).__name__}: {quoted(str(failure))}"
             )
             return error(request_id, INTERNAL_ERROR, "internal error")
-        finally:
-            self._flush_audit()
 
     def _initialize(self, params: JsonObject) -> JsonObject:
         asked = as_str(params.get("protocolVersion"))
@@ -188,10 +212,16 @@ class ProxyServer:
     def on_server_notification(self, method: str, params: JsonObject) -> None:
         """Called on the client's reader thread: a changed tool list triggers a drift check.
 
-        The check itself runs on a worker (it needs `tools/list`, which the reader thread cannot
-        wait for). Requests are coalesced, so a flood of notifications costs one check at a time.
+        The check needs `tools/list`, which the reader thread cannot wait for, and it reads the
+        Gateway, which one thread owns. With a `Dispatcher` the check is queued behind the calls
+        already waiting and runs on its worker (`route_drift_checks`); without one (in-process
+        tests) a small thread of its own runs it. Requests are coalesced either way.
         """
         if method != LIST_CHANGED:
+            return
+        schedule = self._schedule_drift
+        if schedule is not None:
+            schedule()
             return
         if self._drift_worker is None:
             self._drift_worker = threading.Thread(
@@ -199,6 +229,10 @@ class ProxyServer:
             )
             self._drift_worker.start()
         self._drift_requests.put(None)
+
+    def route_drift_checks(self, schedule: Callable[[], None]) -> None:
+        """Have drift checks run by whoever owns the Gateway: `schedule` queues `check_drift_now`."""
+        self._schedule_drift = schedule
 
     def wait_for_drift_checks(self) -> None:
         """Block until every requested drift check has finished (tests use this)."""
@@ -215,12 +249,13 @@ class ProxyServer:
                     break
                 extra += 1
             try:
-                self._check_drift()
+                self.check_drift_now()
             finally:
                 for _ in range(extra + 1):
                     self._drift_requests.task_done()
 
-    def _check_drift(self) -> None:
+    def check_drift_now(self) -> None:
+        """Compare the pins with the server's tool list now and report on stderr."""
         try:
             pins = self._gateway.check_drift()
         except ServerError as failure:
@@ -289,23 +324,17 @@ class ProxyServer:
             raise StructureError("structured content is not an object")
         return _Labeled(texts, rebuilt)
 
-    def _flush_audit(self) -> None:
+    def flush_audit(self) -> None:
         chain = self._gateway.chain
         if self._audit is not None and len(chain) > self._logged:
             self._audit(chain[self._logged :])
         self._logged = len(chain)
 
 
+def is_call(message: JsonObject) -> bool:
+    return as_str(message.get("method")) == "tools/call"
+
+
 def serve(server: ProxyServer, reader: IO[bytes], writer: IO[bytes]) -> None:
-    """Answer messages until the agent closes the stream."""
-    while True:
-        try:
-            message = read_message(reader)
-        except MessageError as failure:
-            write_message(writer, error(None, PARSE_ERROR, str(failure)))
-            continue
-        if message is None:
-            return
-        answer = server.handle(message)
-        if answer is not None:
-            write_message(writer, answer)
+    """Answer messages until the agent closes the stream (see `Dispatcher`)."""
+    Dispatcher(server, reader, writer).run()
