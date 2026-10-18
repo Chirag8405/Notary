@@ -241,7 +241,7 @@ def outcome_of(events: Sequence[Event]) -> Outcome:
 
 
 def live_runner(source_for: Callable[[str], LiveSource]) -> RoundRunner:
-    """The round runner over live sources (one per model); Groq's limits become `ModelStoppedError`."""
+    """The round runner over live sources (one per model); a Groq limit stops the model."""
     sources: dict[str, LiveSource] = {}
 
     def run(model: str, attack: Attack, lane: Lane, seed: int) -> Outcome:
