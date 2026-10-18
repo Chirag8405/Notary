@@ -396,6 +396,9 @@ importers:
       '@notary/core':
         specifier: workspace:*
         version: link:../core
+      '@notary/mcp-proxy':
+        specifier: workspace:*
+        version: link:../mcp-proxy
       '@notary/world':
         specifier: workspace:*
         version: link:../world
