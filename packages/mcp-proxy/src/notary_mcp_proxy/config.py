@@ -10,7 +10,7 @@ hashes are not written; they are pinned from what the server reports at startup.
 
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
@@ -44,6 +44,7 @@ from notary_core.units import canonicalize
 from notary_mcp_proxy.structured import StructureError, validate_pattern
 
 PUBLIC: tuple[str, ...] = ("*",)
+RecordReaders = Literal["config", "narrow_by_server"]
 DEFAULT_SERVER = "default"
 """Name of the one server of the single `server` form."""
 
@@ -88,6 +89,23 @@ class ToolSpec(NotaryModel):
     `structured.py`). It applies only to paths the tool's pinned `outputSchema` declares; any
     other key the server sends gets the tool's readers and no unit. A pattern covers the paths
     below it too, and the most specific pattern that sets a value wins."""
+
+    records: bool = False
+    """The tool's `structuredContent` is `{"records": [{"record_id", "readers", "fields": [{"name",
+    "text", "unit"}]}]}`: each record becomes one record of the result with the server's
+    `record_id`, so a value id is `<call_id>.<record_id>.<field>` (see `mcp_backend.py`)."""
+    record_readers: RecordReaders = "config"
+    """Whose readers a record gets. `config`: the tool's `readers`, whatever the server says.
+    `narrow_by_server`: the join (intersection) of the tool's `readers` and the record's own,
+    so a server can make a record more secret but never more public. Needs `records`."""
+
+    @model_validator(mode="after")
+    def _record_settings_fit(self) -> Self:
+        if self.record_readers != "config" and not self.records:
+            raise ValueError("`record_readers` other than `config` needs `records`")
+        if self.records and self.fields:
+            raise ValueError("`fields` does not apply to a tool with `records`")
+        return self
 
     @field_validator("fields")
     @classmethod

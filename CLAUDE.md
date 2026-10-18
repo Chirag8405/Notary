@@ -17,7 +17,7 @@ packages/ui     -> @notary/schema
 packages/client -> @notary/schema
 packages/schema -> (nothing)
 packages/core   -> (pydantic + stdlib only)
-packages/mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world; cli may also use notary_eval)
+packages/mcp-proxy, cli, eval, world -> notary_core   (cli/eval may also use notary_world; eval may also use notary_mcp_proxy; cli may also use notary_eval)
 ```
 
 Python layers (import-linter, root `pyproject.toml`): `server | cli` > `eval` > `mcp_proxy | world` > `core`.

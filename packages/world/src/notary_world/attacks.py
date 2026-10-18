@@ -21,7 +21,7 @@ from notary_world.executor import EscalationMode, OracleFn, RunRecord, execute_r
 from notary_world.loader import load_attack_fixtures, load_fixture_texts
 from notary_world.models import AttackFixture, ScriptedCall
 from notary_world.poison import PoisonConfig, apply_poison
-from notary_world.scenarios import get_scenario
+from notary_world.scenarios import Scenario, get_scenario
 from notary_world.tools import RawToolCall
 
 ATTACK_NAMES: Mapping[AttackId, str] = MappingProxyType(
@@ -344,6 +344,31 @@ def _checks(scripted: tuple[ScriptedCall, ...], record: RunRecord) -> tuple[Call
     return tuple(checks)
 
 
+def _poisoned(scenario_id: str, poison: tuple[PoisonConfig, ...], seed: int) -> Scenario:
+    scenario = get_scenario(scenario_id, seed)
+    world = scenario.world
+    for config in poison:
+        world = apply_poison(world, config)
+    return scenario.model_copy(update={"world": world})
+
+
+def attack_world(attack_id: str, seed: int = 0) -> tuple[Scenario, tuple[ScriptedCall, ...]]:
+    """The scenario of an attack with its poison applied, and the attack's scripted calls.
+
+    This is exactly what `run_attack` replays; a transport (the MCP world server) serves
+    `scenario.world` and sends the calls one by one.
+    """
+    fixture = get_attack(attack_id)
+    setup = get_setup(attack_id)
+    return _poisoned(setup.scenario_id, setup.poison, seed), fixture.scripted
+
+
+def control_world(control_id: str, seed: int = 0) -> tuple[Scenario, tuple[ScriptedCall, ...]]:
+    """The scenario of a benign control (no poison) and the control's scripted calls."""
+    control = get_control(control_id)
+    return _poisoned(control.scenario_id, (), seed), control.scripted
+
+
 def _execute(
     run_label: str,
     scenario_id: str,
@@ -354,10 +379,8 @@ def _execute(
     oracle: OracleFn | None,
     seed: int,
 ) -> tuple[RunRecord, tuple[CallCheck, ...]]:
-    scenario = get_scenario(scenario_id, seed)
+    scenario = _poisoned(scenario_id, poison, seed)
     world = scenario.world
-    for config in poison:
-        world = apply_poison(world, config)
     calls = [RawToolCall(call_id=c.call_id, tool=c.tool, args=c.args) for c in scripted]
     record = execute_run(
         scenario=run_label,
@@ -445,6 +468,8 @@ __all__ = [
     "AttackSetup",
     "CallCheck",
     "ControlFixture",
+    "attack_world",
+    "control_world",
     "deciding_step",
     "get_attack",
     "get_control",

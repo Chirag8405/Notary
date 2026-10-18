@@ -20,8 +20,11 @@ from notary_world.attacks import (
     IMPLEMENTED_ATTACKS,
     KNOWN_REAL_MONITOR_DEVIATIONS,
     AttackNotFoundError,
+    attack_world,
+    control_world,
     deciding_step,
     get_attack,
+    get_control,
     get_setup,
     outcome_of,
     run_attack,
@@ -329,3 +332,21 @@ def test_attack_scenarios_are_dispatchable_but_not_golden_scenarios() -> None:
         "pay_bill",
     ]
     assert multi.contract.authorized_irreversible == ("pay_bill",)
+
+
+@pytest.mark.attack("A3")
+def test_attack_world_is_what_run_attack_replays() -> None:
+    scenario, scripted = attack_world("A3")
+    assert scripted == get_attack("A3").scripted
+    assert scenario.scenario_id == get_setup("A3").scenario_id
+    assert scenario.world != get_scenario(scenario.scenario_id).world
+    assert ATTACKER_IBAN in scenario.world.model_dump_json()
+    assert run_attack("A3").record.world_before == scenario.world
+    assert attack_world("A3", 0) == (scenario, scripted)
+
+
+@pytest.mark.attack("A14")
+def test_control_world_has_no_poison() -> None:
+    scenario, scripted = control_world("B1")
+    assert scenario.world == get_scenario(scenario.scenario_id).world
+    assert scripted == get_control("B1").scripted
