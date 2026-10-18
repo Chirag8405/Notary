@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from notary_core.gateway import ToolResultField
-from notary_core.models import ToolEffect
+from notary_core.models import NotaryModel, ToolEffect
 from notary_core.pinning import ToolManifest
 from notary_core.policy.sensitive_params import PolicyTable, effective_effect, param_policy
 from notary_core.units import canonicalize_amount, to_cents
@@ -59,6 +59,70 @@ def content_fields(answer: JsonObject) -> tuple[ToolResultField, ...]:
     return tuple(fields)
 
 
+class PinnedTool(NotaryModel):
+    """A tool definition as the server reported it; everything but `_meta` is pinned."""
+
+    name: str
+    title: str | None
+    description: str
+    input_schema: JsonObject
+    output_schema: JsonObject | None
+    annotations: JsonObject | None
+    icons: list[JsonValue] | None
+
+
+def pinned_text(tool: PinnedTool) -> str:
+    """Canonical envelope handed to core as `ToolManifest.input_schema`.
+
+    Sorted keys, absent keys omitted, so key order and whitespace of the server do not matter.
+    `_meta` is transport metadata and is not part of it.
+    """
+    envelope: JsonObject = {"inputSchema": tool.input_schema}
+    optional: dict[str, JsonValue | None] = {
+        "outputSchema": tool.output_schema,
+        "title": tool.title,
+        "annotations": tool.annotations,
+        "icons": tool.icons,
+    }
+    envelope.update({key: value for key, value in optional.items() if value is not None})
+    return schema_text(envelope)
+
+
+def parse_tool(raw: JsonObject) -> PinnedTool:
+    name = as_str(raw.get("name"))
+    if name is None:
+        raise ServerError("a tool has no name")
+    schema = raw.get("inputSchema")
+    if schema is not None and as_object(schema) is None:
+        raise ServerError(f"tool {name}: inputSchema is not an object")
+    output = raw.get("outputSchema")
+    if output is not None and as_object(output) is None:
+        raise ServerError(f"tool {name}: outputSchema is not an object")
+    return PinnedTool(
+        name=name,
+        title=as_str(raw.get("title")),
+        description=as_str(raw.get("description")) or "",
+        input_schema=as_object(schema) or {},
+        output_schema=as_object(output),
+        annotations=as_object(raw.get("annotations")),
+        icons=as_list(raw.get("icons")),
+    )
+
+
+def exposed_definition(tool: PinnedTool) -> JsonObject:
+    """What the agent is shown (`outputSchema` is not exposed yet)."""
+    shown: JsonObject = {
+        "name": tool.name,
+        "description": tool.description,
+        "inputSchema": tool.input_schema,
+    }
+    if tool.title is not None:
+        shown["title"] = tool.title
+    if tool.annotations is not None:
+        shown["annotations"] = tool.annotations
+    return shown
+
+
 class McpBackend:
     def __init__(
         self,
@@ -72,24 +136,27 @@ class McpBackend:
         self._policy = policy
         self._effects = dict(effects)
         self._readers = dict(readers)
-        self._schemas: dict[str, JsonObject] = {}
+        self._pinned: dict[str, PinnedTool] = {}
 
     def list_tools(self) -> tuple[ToolManifest, ...]:
         manifests: list[ToolManifest] = []
-        for tool in self._client.list_tools():
-            name = as_str(tool.get("name"))
-            if name is None:
-                raise ServerError("a tool has no name")
-            schema = as_object(tool.get("inputSchema")) or {}
-            self._schemas[name] = schema
-            description = as_str(tool.get("description")) or ""
+        for raw in self._client.list_tools():
+            tool = parse_tool(raw)
+            self._pinned.setdefault(tool.name, tool)
             manifests.append(
-                ToolManifest(name=name, description=description, input_schema=schema_text(schema))
+                ToolManifest(
+                    name=tool.name, description=tool.description, input_schema=pinned_text(tool)
+                )
             )
         return tuple(manifests)
 
+    def pinned_definitions(self) -> tuple[PinnedTool, ...]:
+        """The definitions from the first listing of each tool (what the agent is shown)."""
+        return tuple(self._pinned.values())
+
     def call_tool(self, tool: str, args: Mapping[str, str]) -> BackendResult:
-        properties = as_object(self._schemas.get(tool, {}).get("properties")) or {}
+        pinned = self._pinned.get(tool)
+        properties = as_object((pinned.input_schema if pinned else {}).get("properties")) or {}
         arguments: JsonObject = {
             name: decode_argument(text, as_str((as_object(properties.get(name)) or {}).get("type")))
             for name, text in args.items()

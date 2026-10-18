@@ -6,14 +6,12 @@ and an error naming the failing checks otherwise. An ESCALATE is reported as not
 has no approval channel yet.
 """
 
-import json
 from collections.abc import Callable, Sequence
 from typing import IO
 
 from pydantic import JsonValue
 
 from notary_core.models import AuditEntry, Decision
-from notary_core.pinning import ToolManifest
 from notary_mcp_proxy.client import PROTOCOL_VERSION
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
 from notary_mcp_proxy.jsonrpc import (
@@ -31,7 +29,12 @@ from notary_mcp_proxy.jsonrpc import (
     result,
     write_message,
 )
-from notary_mcp_proxy.mcp_backend import RESULT_RECORD, encode_argument
+from notary_mcp_proxy.mcp_backend import (
+    RESULT_RECORD,
+    PinnedTool,
+    encode_argument,
+    exposed_definition,
+)
 
 SUPPORTED_VERSIONS = frozenset({"2024-11-05", "2025-03-26", PROTOCOL_VERSION})
 SERVER_INFO: JsonObject = {"name": "notary", "version": "0.0.0"}
@@ -56,15 +59,10 @@ def _reasons(decision: Decision | None) -> str:
 
 class ProxyServer:
     def __init__(
-        self, gateway: Gateway, tools: Sequence[ToolManifest], *, audit: AuditSink | None = None
+        self, gateway: Gateway, tools: Sequence[PinnedTool], *, audit: AuditSink | None = None
     ) -> None:
         self._gateway = gateway
-        self._tools: list[JsonObject] = []
-        for manifest in tools:
-            schema: JsonValue = json.loads(manifest.input_schema)
-            self._tools.append(
-                {"name": manifest.name, "description": manifest.description, "inputSchema": schema}
-            )
+        self._tools: list[JsonObject] = [exposed_definition(tool) for tool in tools]
         self._audit = audit
         self._logged = 0
         self._calls = 0

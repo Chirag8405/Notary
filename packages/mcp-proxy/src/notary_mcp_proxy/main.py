@@ -80,7 +80,7 @@ def build_server(
             classifier=None,
         )
     )
-    exposed = [manifest for manifest in pinned if manifest.name in config.tools]
+    exposed = [tool for tool in backend.pinned_definitions() if tool.name in config.tools]
     return ProxyServer(gateway, exposed, audit=audit)
 
 
