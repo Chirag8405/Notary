@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Mapping
+from typing import get_args
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
@@ -9,7 +10,7 @@ from notary_core.gateway import ToolResultField
 from notary_core.models import DecisionUnit, NotaryModel, ToolEffect
 from notary_core.pinning import ToolManifest
 from notary_core.policy.sensitive_params import PolicyTable, effective_effect, param_policy
-from notary_core.provenance import normalize_readers
+from notary_core.provenance import join_readers, normalize_readers
 from notary_core.units import canonicalize_amount, to_cents
 from notary_mcp_proxy.backend import (
     BackendEffect,
@@ -26,9 +27,10 @@ from notary_mcp_proxy.client import (
     diagnostic,
     quoted,
 )
-from notary_mcp_proxy.config import FieldSpec
+from notary_mcp_proxy.config import FieldSpec, RecordReaders
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object, as_str
 from notary_mcp_proxy.structured import (
+    MAX_LEAVES,
     TYPES_FIELD,
     StructureError,
     covers,
@@ -230,6 +232,93 @@ def result_records(
     return tuple(records)
 
 
+
+
+def _record_readers(
+    entry: JsonObject, tool_readers: tuple[str, ...], mode: RecordReaders
+) -> tuple[str, ...]:
+    """The readers of one record: the tool's, narrowed (never widened) by the server's if asked."""
+    if mode == "config":
+        return tool_readers
+    listed = as_list(entry.get("readers"))
+    if listed is None or any(as_str(reader) is None for reader in listed):
+        raise StructureError("a record has no readers list")
+    return join_readers(tool_readers, [reader for reader in listed if isinstance(reader, str)])
+
+
+def _record_field(raw: JsonValue) -> ToolResultField:
+    entry = as_object(raw)
+    if entry is None or set(entry) - {"name", "text", "unit"}:
+        raise StructureError("a record field is not {name, text, unit}")
+    name, text, unit = as_str(entry.get("name")), as_str(entry.get("text")), entry.get("unit")
+    if not name or text is None:
+        raise StructureError("a record field has no name or text")
+    if unit is not None and not isinstance(unit, str):
+        raise StructureError("a record field has an unknown unit")
+    return ToolResultField(name=name, text=text, unit=None if unit is None else _unit(unit))
+
+
+def _unit(text: str) -> DecisionUnit:
+    for unit in get_args(DecisionUnit):
+        if unit == text:
+            return unit
+    raise StructureError("a record field has an unknown unit")
+
+
+def records_result(
+    answer: JsonObject, *, readers: tuple[str, ...], mode: RecordReaders
+) -> tuple[BackendRecord, ...]:
+    """A result in the `records` shape: one record per entry of `structuredContent.records`.
+
+    Each record keeps the server's `record_id`, so a value id is `<call_id>.<record_id>.<field>`;
+    the fields keep their names and units. Text blocks that only copy `structuredContent` are
+    dropped; any other text block is labeled with the tool's readers in record `result`
+    (`content_NNN` fields), after the server's records. Raises `StructureError` for anything that
+    is not exactly this shape, for a duplicate record id and for two values that would share an
+    id, so nothing the server sent is left unlabeled or ambiguous.
+    """
+    structured = as_object(answer.get("structuredContent"))
+    entries = None if structured is None else as_list(structured.get("records"))
+    if structured is None or entries is None or set(structured) != {"records"}:
+        raise StructureError("structuredContent is not {records: [...]}")
+    tool_readers = normalize_readers(readers)
+    records: list[BackendRecord] = []
+    taken: set[str] = set()
+    seen: set[str] = set()
+    count = 0
+
+    def add(record_id: str, who: tuple[str, ...], fields: tuple[ToolResultField, ...]) -> None:
+        nonlocal count
+        count += len(fields)
+        if record_id in seen or count > MAX_LEAVES:
+            raise StructureError("duplicate record id or too many fields")
+        seen.add(record_id)
+        for field in fields:
+            value_id = f"{record_id}.{field.name}"
+            if value_id in taken:
+                raise StructureError("two result values share an id")
+            taken.add(value_id)
+        records.append(BackendRecord(record_id=record_id, readers=who, fields=fields))
+
+    for raw in entries:
+        entry = as_object(raw)
+        if entry is None or set(entry) - {"record_id", "readers", "fields"}:
+            raise StructureError("a record is not {record_id, readers, fields}")
+        record_id = as_str(entry.get("record_id"))
+        listed = as_list(entry.get("fields"))
+        if not record_id or listed is None:
+            raise StructureError("a record has no id or fields")
+        add(
+            record_id,
+            _record_readers(entry, tool_readers, mode),
+            tuple(_record_field(item) for item in listed),
+        )
+    extra = content_fields(answer, duplicate_blocks(answer, structured))
+    if extra:
+        add(RESULT_RECORD, tool_readers, extra)
+    return tuple(records)
+
+
 class PinnedTool(NotaryModel):
     """A tool definition as the server reported it; everything but `_meta` is pinned."""
 
@@ -307,12 +396,14 @@ class McpBackend:
         effects: Mapping[str, ToolEffect],
         readers: Mapping[str, tuple[str, ...]],
         fields: Mapping[str, Mapping[str, FieldSpec]] | None = None,
+        records: Mapping[str, RecordReaders] | None = None,
     ) -> None:
         self._client = client
         self._policy = policy
         self._effects = dict(effects)
         self._readers = dict(readers)
         self._fields = dict(fields or {})
+        self._records: dict[str, RecordReaders] = dict(records or {})
         self._declared: dict[str, frozenset[str]] = {}
         self._pinned: dict[str, PinnedTool] = {}
 
@@ -351,12 +442,7 @@ class McpBackend:
             report(f"call {tool}", failure)
             return BackendResult(records=(), effect=None, error=error_text(failure))
         try:
-            records = result_records(
-                answer,
-                readers=self._readers.get(tool, FAIL_CLOSED_READERS),
-                config=self._fields.get(tool, {}),
-                schema=self._declared.get(tool, frozenset()),
-            )
+            records = self._records_of(tool, answer)
         except StructureError as failure:
             # The tool ran, but nothing of this result is handed on, so no spend is metered.
             diagnostic(f"call {tool}: bad structuredContent: {quoted(str(failure))}")
@@ -369,6 +455,18 @@ class McpBackend:
             records=records,
             effect=self._effect(tool, args, blocks, "structuredContent" in answer),
             error=None,
+        )
+
+    def _records_of(self, tool: str, answer: JsonObject) -> tuple[BackendRecord, ...]:
+        readers = self._readers.get(tool, FAIL_CLOSED_READERS)
+        mode = self._records.get(tool)
+        if mode is not None and "structuredContent" in answer:
+            return records_result(answer, readers=readers, mode=mode)
+        return result_records(
+            answer,
+            readers=readers,
+            config=self._fields.get(tool, {}),
+            schema=self._declared.get(tool, frozenset()),
         )
 
     def _effect(
