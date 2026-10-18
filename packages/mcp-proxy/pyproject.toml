@@ -11,3 +11,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/notary_mcp_proxy"]
+
+[project.scripts]
+notary-mcp-proxy = "notary_mcp_proxy.main:main"

@@ -201,3 +201,13 @@ The CLI computes nothing itself: it calls `notary_world` and `notary_core`, prin
 | `0` | success: every outcome matches, zero fuzz violations, chain verified |
 | `1` | a verification failed: an outcome mismatch, a fuzz violation, or a broken or truncated audit chain |
 | `2` | usage error, unreadable or invalid input, or not implemented (`bench`) |
+
+### MCP proxy with Claude Code
+
+`notary-mcp-proxy --config CONFIG [--audit-log FILE]` (`packages/mcp-proxy`) is a stdio MCP server that runs the real MCP server named in its config as a child process and sends every tool call through `notary_mcp_proxy.Gateway` and the real monitor. The repo's `.mcp.json` registers it for Claude Code as `notary-bank`, in front of the toy bank in `packages/mcp-proxy/examples/bank` (an inbox with the swapped-IBAN bill and `pay_bill`). Run `uv sync` once, start Claude Code in the repo root, approve the `notary-bank` server, then ask it to pay the December bill.
+
+- The config is the contract the Intent Compiler would produce: tools with their effect and per-parameter markers, the budget, the authorized irreversible tools and user-authored ledger entries. Manifest hashes are not written: the proxy pins what the server reports at startup, so a later change to a description or schema is a rug pull (A10, `SCOPE_MANIFEST_MISMATCH`).
+- Only the contract's tools are listed to the agent, with the pinned manifests. Config tools that the sensitive-parameter table knows (`pay_bill`, `send_email`, ...) keep their reviewed rows; the others get a row built from the config.
+- ALLOW: the agent gets the result's labeled fields, one text block per content block. BLOCK: an error naming the failing check and reason code; the tool did not run. ESCALATE: reported as not run; there is no approval path yet.
+- `--audit-log` appends every event as a JSON line (`notary replay FILE` prints it). Defaults in `.mcp.json`: `.notary/mcp-audit.jsonl`, git-ignored.
+- Limits of this first version: stdio only, one request at a time, no timeout on the server, tool `title`/`annotations` are not pinned, a server's error text goes to the agent unlabeled.

@@ -178,7 +178,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - Packages: `packages/mcp-proxy` (lane A), `packages/eval` (lane B)
 - [x] Eval result shapes and JSON export (`packages/eval/src/notary_eval/results.py`: `TaskResult`, `EvalResults`, `export_results`, with a round-trip test)
 - [ ] Eval harness: `run_agentdojo` and `notary bench` are still stubs (`NotImplementedError` / "not implemented yet"); charts from the export do not exist
-- [ ] MCP proxy in front of a real MCP server (lane A): the `Gateway` adapter and the `ToolBackend` seam exist (P3a) but there is no MCP transport yet
+- [ ] MCP proxy in front of a real MCP server (lane A): first version done, a stdio proxy (`notary-mcp-proxy`, `.mcp.json` for Claude Code) in front of the toy bank server ([demo.md](demo.md#mcp-proxy-with-claude-code)); still to do: an approval path for ESCALATE, live X-ray stream, the clip
 - [ ] AgentDojo banking and Slack runs (if allowed); results export JSON -> charts (lane B)
 - [ ] #240 Model-dependence eval: attack success per model and lane, 20+ rounds per cell with confidence intervals (first measurement of 3 Groq models is in [demo.md](demo.md); the full run needs several days of the 200,000 tokens per model per day Groq limit; left for later)
 - [ ] Slide deck numbers updated from the export
