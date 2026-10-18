@@ -490,7 +490,8 @@ def test_the_proxy_process_gives_the_same_verdicts_over_stdio(item_id: str, tmp_
     config = proxy_config_for(scenario, command=command)
     path = tmp_path / "notary.json"
     path.write_text(config.model_dump_json(by_alias=True, exclude_defaults=True), encoding="utf-8")
-    session = _Stdio([sys.executable, "-m", "notary_mcp_proxy", "--config", str(path)], tmp_path)
+    proxy = [sys.executable, "-m", "notary_mcp_proxy", "--config", str(path)]
+    session = _Stdio([*proxy, "--control", "none"], tmp_path)
     try:
         session.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
         listed = session.request("tools/list", {})

@@ -2,8 +2,10 @@
 
 Only the tools in the contract are listed, with the manifests pinned at startup. A call is
 labeled, decided and logged by the Gateway; the agent gets the labeled result fields on ALLOW
-and an error naming the failing checks otherwise. An ESCALATE is reported as not run: the proxy
-has no approval channel yet.
+and an error naming the failing checks otherwise. An ESCALATE makes the call WAIT on the
+`ApprovalDesk` while the user approves or rejects the card on the control socket (a channel the
+agent does not reach through MCP); the agent then gets the result of the second decision (the
+tool's result after an approval, an error after a rejection, a timeout, a cancel or no desk).
 """
 
 import queue
@@ -14,14 +16,17 @@ from typing import IO, Literal
 
 from pydantic import JsonValue
 
+from notary_core.endorsement import ERR_BAD_APPROVAL_ROW, approval_entries, render_card
 from notary_core.models import (
     Decision,
     DecisionMade,
+    DecisionUnit,
     ResolvedValue,
     RunFinished,
     ValueLabeled,
 )
 from notary_core.pinning import PinReport
+from notary_mcp_proxy.approvals import Answer, ApprovalDesk, Pending, printable
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
 from notary_mcp_proxy.dispatch import Dispatcher
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
@@ -111,9 +116,35 @@ class _Labeled:
         return answer
 
 
+def _never(*_: JsonValue) -> bool:
+    return False
+
+
 class ProxyServer:
-    def __init__(self, gateway: Gateway, tools: Sequence[PinnedTool]) -> None:
+    def __init__(
+        self,
+        gateway: Gateway,
+        tools: Sequence[PinnedTool],
+        desk: ApprovalDesk | None = None,
+        *,
+        control_hint: str = "",
+        reject_unanswered: bool = False,
+    ) -> None:
+        """`desk` is where an escalated call waits for the user.
+
+        Without a desk, `reject_unanswered` (`--control none`) rejects every escalation at once;
+        otherwise the call is answered "escalated" and the endorsement stays pending for the
+        embedder to resolve through the Gateway (in-process harnesses). `control_hint` is printed
+        with each card (how the user answers it, e.g. the CLI line).
+        """
         self._gateway = gateway
+        self._desk = desk
+        self._control_hint = control_hint
+        self._reject_unanswered = reject_unanswered
+        self._approved: list[str] = []
+        self._rejected_ids: list[tuple[str, str]] = []
+        self._cancelled: Callable[[JsonValue], bool] = _never
+        self._input_closed: Callable[[], bool] = lambda: False
         self._tools: list[JsonObject] = [exposed_definition(tool) for tool in tools]
         self._calls = 0
         self._drift_requests: queue.Queue[None] = queue.Queue()
@@ -161,7 +192,7 @@ class ProxyServer:
             f"closed by the agent after {self._calls} tool calls"
             if halted is None
             else f"halted: {halted}; closed after {self._calls} tool calls"
-        )
+        ) + self._escalation_summary()
         self._gateway.emit(
             lambda run, lane, seq: RunFinished(
                 type="run_finished",
@@ -172,6 +203,20 @@ class ProxyServer:
                 summary=summary,
             )
         )
+
+    def _escalation_summary(self) -> str:
+        """How the escalations ended, for `run_finished` (a rejection has no event of its own).
+
+        `; approved: e2; rejected: e1 (user), e3 (timeout)`; empty when nothing escalated.
+        """
+        parts: list[str] = []
+        if self._approved:
+            parts.append("approved: " + ", ".join(self._approved))
+        if self._rejected_ids:
+            parts.append(
+                "rejected: " + ", ".join(f"{eid} ({cause})" for eid, cause in self._rejected_ids)
+            )
+        return "".join(f"; {part}" for part in parts)
 
     def _respond(self, message: JsonObject) -> JsonObject | None:
         method = as_str(message.get("method"))
@@ -195,7 +240,7 @@ class ProxyServer:
                 if name is None:
                     return error(request_id, INVALID_PARAMS, "missing tool name")
                 arguments = as_object(params.get("arguments")) or {}
-                return result(request_id, self._call(name, arguments))
+                return result(request_id, self._call(name, arguments, request_id))
             return error(request_id, METHOD_NOT_FOUND, f"method not found: {method}")
         except Exception as failure:
             # The exception text may quote server-authored data: it goes to stderr, not the agent.
@@ -214,7 +259,7 @@ class ProxyServer:
             "instructions": INSTRUCTIONS,
         }
 
-    def _call(self, tool: str, arguments: JsonObject) -> JsonObject:
+    def _call(self, tool: str, arguments: JsonObject, request_id: JsonValue) -> JsonObject:
         self._calls += 1
         call = RawCall(
             call_id=f"c{self._calls}",
@@ -227,7 +272,117 @@ class ProxyServer:
             # The pre-flight listing failed: no decision was made and nothing ran.
             report(f"call {tool}", failure)
             return _text_result(f"{tool} failed: {unchecked_text(failure)}", is_error=True)
+        if outcome.status == "escalated" and (self._desk is not None or self._reject_unanswered):
+            return self._after_escalation(call, outcome, request_id)
         return self._answer(call, outcome)
+
+    def _after_escalation(
+        self, call: RawCall, outcome: MediationOutcome, request_id: JsonValue
+    ) -> JsonObject:
+        """Wait for the user, then let the Gateway decide again (approve) or close it (reject).
+
+        Runs on the worker thread, which owns the Gateway: a choice made on the control thread is
+        only recorded on the desk and applied here. The worker is blocked meanwhile by design:
+        fast methods are still answered and later calls queue behind this one.
+        """
+        endorsement_id = outcome.endorsement_id
+        card = next(
+            (
+                p
+                for p in self._gateway.pending_endorsements()
+                if p.endorsement.endorsement_id == endorsement_id
+            ),
+            None,
+        )
+        desk = self._desk
+        if endorsement_id is None or card is None or desk is None:
+            return self._rejected(call, outcome, Answer("reject", "closed"), disabled=True)
+        text = printable(render_card(card.endorsement.card))
+        desk.open(
+            Pending(
+                endorsement_id=endorsement_id,
+                call_id=call.call_id,
+                tool=call.tool,
+                card_text=text,
+                remaining_approvals=card.remaining_approvals,
+            )
+        )
+        diagnostic(
+            f"{endorsement_id}: {call.tool} (call {call.call_id}) waits for the user "
+            f"({card.remaining_approvals} approval(s) left, {desk.timeout_seconds:g} s)\n"
+            f"{text}\n{self._control_hint.replace('{id}', endorsement_id)}".rstrip()
+        )
+        answer = desk.resolve(
+            endorsement_id,
+            cancelled=lambda: self._cancelled(request_id),
+            closed=self._input_closed,
+        )
+        if answer.choice == "reject":
+            return self._rejected(call, outcome, answer)
+        values = self._gateway.store.as_mapping()
+        units: dict[str, DecisionUnit | None] = {}
+        for param, ref in card.proposal.args.items():
+            value = values.get(ref.id)
+            units[param] = None if value is None else value.unit
+        entries = approval_entries(
+            endorsement_id, card.endorsement.card, card.proposal, values, units
+        )
+        if isinstance(entries, str):
+            diagnostic(
+                f"{endorsement_id}: approved by the user but refused: {ERR_BAD_APPROVAL_ROW}"
+            )
+            return self._rejected(call, outcome, Answer("reject", "user"), bad_row=True)
+        approved = self._gateway.approve(endorsement_id, entries)
+        if approved is None:
+            return _text_result(
+                f"NOTARY blocked {call.tool}: the endorsement is gone", is_error=True
+            )
+        self._approved.append(endorsement_id)
+        diagnostic(f"{endorsement_id}: approved by the user; the call is decided again")
+        if approved.status == "blocked" and approved.error is not None:
+            diagnostic(f"{endorsement_id}: the approval was not applied: {quoted(approved.error)}")
+            return _text_result(
+                f"NOTARY blocked {call.tool}: the endorsement could not be applied; "
+                "it did not run.",
+                is_error=True,
+            )
+        return self._answer(call, approved)
+
+    def _rejected(
+        self,
+        call: RawCall,
+        outcome: MediationOutcome,
+        answer: Answer,
+        *,
+        disabled: bool = False,
+        bad_row: bool = False,
+    ) -> JsonObject:
+        """Close the card without any effect and tell the agent why (the Gateway logs nothing)."""
+        endorsement_id = outcome.endorsement_id
+        if endorsement_id is not None:
+            self._gateway.reject(endorsement_id)
+            cause = "disabled" if disabled else "card mismatch" if bad_row else answer.cause
+            self._rejected_ids.append((endorsement_id, cause))
+        if disabled:
+            # Today's "escalated" answer with its reasons, now final: the card is closed.
+            why = "approvals are disabled, so the endorsement was rejected"
+            diagnostic(f"{endorsement_id}: rejected (disabled): {why}")
+            return _text_result(
+                f"NOTARY escalated {call.tool} ({endorsement_id}): it needs the user's "
+                f"endorsement and did not run ({why}).\n{_reasons(outcome.decision)}".rstrip(),
+                is_error=True,
+            )
+        if bad_row:
+            why = "the endorsement card did not match the call, so it was rejected"
+        elif answer.cause == "timeout":
+            seconds = 0.0 if self._desk is None else self._desk.timeout_seconds
+            why = f"no answer within {seconds:g} s"
+        elif answer.cause == "user":
+            why = "the user rejected the endorsement"
+        else:
+            why = "the request ended before the user answered"
+        diagnostic(f"{endorsement_id}: rejected ({answer.cause}): {why}")
+        return _text_result(f"NOTARY blocked {call.tool}: {why}", is_error=True)
 
     def on_server_notification(self, method: str, params: JsonObject) -> None:
         """Called on the client's reader thread: a changed tool list triggers a drift check.
@@ -249,6 +404,13 @@ class ProxyServer:
             )
             self._drift_worker.start()
         self._drift_requests.put(None)
+
+    def route_cancellation(
+        self, cancelled: Callable[[JsonValue], bool], input_closed: Callable[[], bool]
+    ) -> None:
+        """Let a call that waits for the user see the agent's cancel and the end of its input."""
+        self._cancelled = cancelled
+        self._input_closed = input_closed
 
     def route_drift_checks(self, schedule: Callable[[], None]) -> None:
         """Queue drift checks with the Gateway's owner: `schedule` queues a `check_drift_now`."""
@@ -295,6 +457,7 @@ class ProxyServer:
         if outcome.status == "blocked":
             text = f"NOTARY blocked {call.tool}; it did not run.\n{_reasons(outcome.decision)}"
         elif outcome.status == "escalated":
+            # Only reachable through `_answer` directly: `_call` waits for the user instead.
             text = (
                 f"NOTARY escalated {call.tool} ({outcome.endorsement_id}): it needs the user's "
                 f"endorsement and did not run.\n{_reasons(outcome.decision)}"

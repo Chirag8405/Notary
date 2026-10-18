@@ -78,6 +78,7 @@ def test_lists_only_the_contract_tools(proxy: ProxyServer) -> None:
     tools = result["tools"]
     assert isinstance(tools, list)
     assert sorted(str(t["name"]) for t in tools if isinstance(t, dict)) == [
+        "add_contact",
         "pay_bill",
         "read_inbox",
     ]

@@ -38,8 +38,18 @@ TOOLS = [
             "required": ["payee", "amount"],
         },
     },
+    {
+        "name": "add_contact",
+        "description": "Add a name to the user's address book.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "Name of the contact"}},
+            "required": ["name"],
+        },
+    },
 ]
 payments: list[dict[str, object]] = []
+contacts: list[str] = []
 
 
 def call(name: str, arguments: dict[str, object]) -> dict[str, object]:
@@ -48,6 +58,11 @@ def call(name: str, arguments: dict[str, object]) -> dict[str, object]:
     if name == "pay_bill":
         payments.append(arguments)
         text = f"paid {arguments.get('amount')} EUR to {arguments.get('payee')}"
+        print(f"bank: {text}", file=sys.stderr, flush=True)
+        return {"content": [{"type": "text", "text": text}], "isError": False}
+    if name == "add_contact":
+        contacts.append(str(arguments.get("name")))
+        text = f"added contact {arguments.get('name')}"
         print(f"bank: {text}", file=sys.stderr, flush=True)
         return {"content": [{"type": "text", "text": text}], "isError": False}
     return {"content": [{"type": "text", "text": f"unknown tool {name}"}], "isError": True}
