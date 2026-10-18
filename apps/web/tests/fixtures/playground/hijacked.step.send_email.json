@@ -3,7 +3,9 @@
   "body": {
     "call_id": "c2",
     "status": "blocked",
-    "reason_codes": ["SCOPE_TOOL_NOT_IN_CONTRACT"],
+    "reason_codes": [
+      "SCOPE_TOOL_NOT_IN_CONTRACT"
+    ],
     "events": [
       {
         "run_id": "run-hijacked-h1",
@@ -17,7 +19,9 @@
               "kind": "llm"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
@@ -37,7 +41,9 @@
               "kind": "llm"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89"
@@ -57,7 +63,9 @@
               "kind": "llm"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "a79768b4d781887042895387c8b6161cbefd517f2bd2b7fc2a76219770da416e"
@@ -82,7 +90,9 @@
                   "kind": "llm"
                 },
                 "integrity": "untrusted",
-                "readers": ["*"],
+                "readers": [
+                  "*"
+                ],
                 "span_pointer": null
               },
               "content_hash": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
@@ -94,7 +104,9 @@
                   "kind": "llm"
                 },
                 "integrity": "untrusted",
-                "readers": ["*"],
+                "readers": [
+                  "*"
+                ],
                 "span_pointer": null
               },
               "content_hash": "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89"
@@ -106,7 +118,9 @@
                   "kind": "llm"
                 },
                 "integrity": "untrusted",
-                "readers": ["*"],
+                "readers": [
+                  "*"
+                ],
                 "span_pointer": null
               },
               "content_hash": "a79768b4d781887042895387c8b6161cbefd517f2bd2b7fc2a76219770da416e"

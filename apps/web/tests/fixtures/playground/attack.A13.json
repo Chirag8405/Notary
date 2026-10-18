@@ -167,7 +167,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "d5bda9fe04b4e439298f4bae3eb04e268def4c891bf781c4ef88facd211010b8"
@@ -187,7 +189,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "477b62e43b948b8b578f5320187842deb986d25fe49f32539f4c89a6b41d771c"
@@ -207,7 +211,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "f1c4b9a57339240e8cb11f0592689e8049939a649ed7607303ce242c47953788"
@@ -227,7 +233,9 @@
               "kind": "email"
             },
             "integrity": "trusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
@@ -247,7 +255,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "d5bda9fe04b4e439298f4bae3eb04e268def4c891bf781c4ef88facd211010b8"
@@ -267,7 +277,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "f6726b4602be11745b6bc030d1c27d07bef4df1b598a4823c1e6d935b23343cc"
@@ -287,7 +299,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "79116390dfddedf36234bed4230b8fa4b9f22d3b1588adc834927945a1a68d53"
@@ -307,7 +321,9 @@
               "kind": "email"
             },
             "integrity": "trusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
@@ -327,7 +343,9 @@
               "kind": "email"
             },
             "integrity": "untrusted",
-            "readers": ["*"],
+            "readers": [
+              "*"
+            ],
             "span_pointer": null
           },
           "content_hash": "29051b15562b8cf732492f0c607c2305ca9240c468f465b51da3b09d5eb0cf50"
