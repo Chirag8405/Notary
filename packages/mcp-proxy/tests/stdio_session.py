@@ -73,8 +73,8 @@ class StdioSession:
         while request_id not in self._answers:
             line = self._lines.get(timeout=WAIT_SECONDS)
             assert line is not None, "the proxy closed stdout before answering"
-            message = json.loads(line)
-            assert isinstance(message, dict)
+            message = as_object(json.loads(line))
+            assert message is not None
             self._answers[message.get("id")] = message
         return self._answers[request_id]
 

@@ -11,6 +11,10 @@ Behaviors: `hang` never answers that call or any later request (it keeps reading
 `rpc_error` answers a JSON-RPC error whose message is `evil`; `late` holds its answer back and
 sends it just before the answer to the next request (a late answer, with no sleeping).
 
+`notify_fifo` (a path made with `os.mkfifo`) makes the server write one line to it when a call
+arrives, before it acts on the call; the write blocks until the test has opened the FIFO for
+reading, so the test learns that the call reached the server without polling or sleeping.
+
 Every request and every `notifications/cancelled` is appended as a JSON line to
 `<script>.calls.jsonl`.
 """
@@ -56,6 +60,10 @@ def reply(request_id: object, result: object) -> None:
 def call(name: str, request_id: object) -> None:
     """Handle one call."""
     global hung
+    fifo = script.get("notify_fifo")
+    if fifo is not None:
+        with open(fifo, "w", encoding="utf-8") as out:
+            out.write(name + "\n")
     behavior = script.get("behaviors", {}).get(name)
     if behavior == "hang":
         hung = True

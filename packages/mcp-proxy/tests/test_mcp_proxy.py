@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import JsonValue
+from stdio_session import StdioSession, proxy_command, request, tool_call
 
 from notary_core.models import EffectExecuted
 from notary_core.policy.sensitive_params import DEFAULT_POLICY
@@ -16,7 +17,6 @@ from notary_mcp_proxy.jsonrpc import JsonObject
 from notary_mcp_proxy.main import build_server
 from notary_mcp_proxy.mcp_backend import content_fields, decode_argument, encode_argument
 from notary_mcp_proxy.server import ProxyServer
-from stdio_session import StdioSession, proxy_command, request, tool_call
 
 BANK = Path(__file__).resolve().parents[1] / "examples" / "bank"
 ACME_IBAN = "DE00ACME00000000000001"

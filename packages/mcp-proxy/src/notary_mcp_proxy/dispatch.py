@@ -145,6 +145,8 @@ class Dispatcher:
         self._pending: dict[str, _Pending] = {}
         self._next_request = 0
         self._worker: threading.Thread | None = None
+        self.input_ended = threading.Event()
+        """Set once the reader saw the end of input and dropped the queue."""
         server.route_drift_checks(self._queue_drift_check)
 
     # -- public ----------------------------------------------------------------------------------
@@ -269,6 +271,7 @@ class Dispatcher:
         for pending in waiting:
             pending.closed = True
             pending.done.set()
+        self.input_ended.set()
 
     def _queue_drift_check(self) -> None:
         """Called on the client's reader thread: queue one drift check (coalesced)."""

@@ -231,7 +231,7 @@ class ProxyServer:
         self._drift_requests.put(None)
 
     def route_drift_checks(self, schedule: Callable[[], None]) -> None:
-        """Have drift checks run by whoever owns the Gateway: `schedule` queues `check_drift_now`."""
+        """Queue drift checks with the Gateway's owner: `schedule` queues a `check_drift_now`."""
         self._schedule_drift = schedule
 
     def wait_for_drift_checks(self) -> None:
