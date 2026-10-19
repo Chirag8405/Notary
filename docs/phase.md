@@ -179,7 +179,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [x] Eval result shapes and JSON export (`packages/eval/src/notary_eval/results.py`: `TaskResult`, `EvalResults`, `export_results`, with a round-trip test)
 - [x] `notary bench`: runs the attack library (A1-A14, B1-B4) with no defence and with the real monitor and exports the results JSON per lane (`notary_eval.library`)
 - [ ] Eval harness: `run_agentdojo` is still a stub (`NotImplementedError`); charts from the export do not exist
-- [ ] MCP proxy in front of a real MCP server (lane A): first version done, a stdio proxy (`notary-mcp-proxy`, `.mcp.json` for Claude Code) in front of the toy bank server ([demo.md](demo.md#mcp-proxy-with-claude-code)); still to do: an approval path for ESCALATE, live X-ray stream, the clip
+- [ ] MCP proxy in front of a real MCP server (lane A): done: a proxy (`notary-mcp-proxy`, `.mcp.json` for Claude Code) in front of the toy bank server and several servers over stdio and Streamable HTTP, with an approval path for ESCALATE, a live X-ray stream, hooks, a config check, a README and a config JSON Schema ([README](../packages/mcp-proxy/README.md), [demo.md](demo.md#mcp-proxy-with-claude-code)); still to do: the clip and the live checks marked pending
 - [ ] AgentDojo banking and Slack runs (if allowed); results export JSON -> charts (lane B)
 - [ ] #240 Model-dependence eval: attack success per model and lane, 20+ rounds per cell with confidence intervals (first measurement of 3 Groq models is in [demo.md](demo.md); the full run needs several days of the 200,000 tokens per model per day Groq limit; left for later)
 - [ ] Slide deck numbers updated from the export

@@ -30,7 +30,7 @@ TS direction is enforced by `eslint-plugin-boundaries` (`packages/config-eslint/
   `packages/core/tests/test_core_purity.py` and an import-linter contract enforce this.
 - **Types originate in Pydantic.** Never hand-edit generated files (`packages/schema/json/**`,
   `packages/schema/src/generated/**`, `packages/client/openapi.json`, `packages/client/src/generated/**`,
-  `packages/world/fixtures/streams/**`, `packages/world/fixtures/commands/**`). Change the model in `notary_core`, then run `pnpm schema:generate`.
+  `packages/world/fixtures/streams/**`, `packages/world/fixtures/commands/**`, `packages/mcp-proxy/schema/**`). Change the model in `notary_core`, then run `pnpm schema:generate`.
   If a generator produces poor output, fix the Pydantic model (or the Pydantic-side schema generator), not the output.
 - No `any` in TypeScript (`@typescript-eslint/no-explicit-any` is an error). No `Any` in Python (pyright strict + ruff ban on `typing.Any`).
 - All models: `extra="forbid"`, `frozen=True`, strict, discriminated unions with a literal `type`/`kind`.
