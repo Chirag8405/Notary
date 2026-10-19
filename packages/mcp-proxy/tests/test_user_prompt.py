@@ -825,7 +825,7 @@ def test_the_example_settings_install_the_guard_and_the_prompt_hook() -> None:
     (entry,) = group["hooks"]
     assert entry["type"] == "command"
     assert entry["command"].endswith("notary-mcp-proxy hook user-prompt-submit")
-    assert entry["timeout"] <= 30
+    assert HOOK_TIMEOUT < entry["timeout"] <= 30  # the hook's own wait ends before Claude Code's
     assert "hook pre-tool-use" in hooks["PreToolUse"][0]["hooks"][0]["command"]
 
 

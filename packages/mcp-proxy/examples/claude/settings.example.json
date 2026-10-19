@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "uv run --no-sync notary-mcp-proxy hook user-prompt-submit",
-            "timeout": 10
+            "timeout": 28
           }
         ]
       }
