@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import Discriminator, Field, Tag, field_validator, model_validator
+from pydantic import Discriminator, Field, JsonValue, Tag, field_validator, model_validator
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import LabelingPolicy, ToolOriginRule
@@ -201,12 +201,14 @@ def header_references(name: str, value: str) -> tuple[str, ...]:
     return tuple(_REFERENCE.findall(value))
 
 
-def _server_kind(value: object) -> str | None:
+def _server_kind(value: JsonValue | StdioServerSpec | HttpServerSpec) -> str | None:
     """The union tag: a spec without `kind` is the old stdio form."""
     if isinstance(value, dict):
-        kind: object = value.get("kind", "stdio")
+        kind = value.get("kind", "stdio")
         return kind if isinstance(kind, str) else None
-    return getattr(value, "kind", None)
+    if isinstance(value, (StdioServerSpec, HttpServerSpec)):
+        return value.kind
+    return None
 
 
 ServerSpec = Annotated[
