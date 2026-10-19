@@ -815,6 +815,18 @@ def test_a_value_both_typed_and_seen_in_an_email_keeps_the_lowest_integrity() ->
     assert decisions[-1].decision.verdict == "BLOCK"
 
 
+def test_the_example_settings_install_the_guard_and_the_prompt_hook() -> None:
+    settings = json.loads((BANK.parent / "claude" / "settings.example.json").read_text())
+    hooks = settings["hooks"]
+    assert set(hooks) == {"PreToolUse", "UserPromptSubmit"}
+    (group,) = hooks["UserPromptSubmit"]
+    (entry,) = group["hooks"]
+    assert entry["type"] == "command"
+    assert entry["command"].endswith("notary-mcp-proxy hook user-prompt-submit")
+    assert entry["timeout"] <= 30
+    assert "hook pre-tool-use" in hooks["PreToolUse"][0]["hooks"][0]["command"]
+
+
 def test_the_config_loads_and_a_server_in_process_still_works(
     tmp_path: Path,
 ) -> None:

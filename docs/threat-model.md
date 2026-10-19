@@ -129,10 +129,19 @@ An escalated MCP call waits for the user (docs/demo.md, "Approve or reject an es
 - Terminal injection: the card quotes values an attacker may have written; control characters are shown escaped in the log and by the CLI, so a value cannot rewrite the terminal.
 - The user can still be fooled at the card (A3, A9, A11); the per-session approval budget bounds how many cards can be raised.
 
+## The user's prompt as a trusted value (MCP proxy)
+
+With the `UserPromptSubmit` hook installed (docs/demo.md, "The user's prompt becomes a trusted value"), what the user typed is a value `request.<n>` with origin `user`, integrity `trusted`, readers `("*",)`. An argument that equals it, or is a span of it, gets that label (resolver rules 1 and 2), and a trusted value under a `ledger` marker is not looked up in the ledger (step 4 skips trusted values): typing an IBAN authorizes that payee, as in the engine. Without the hook nothing changes.
+
+- Only the control socket can create such a value. There is no MCP method, tool, prompt or resource for it, and `Gateway.add_user_value` has one caller (`ProxyServer.add_user_prompt`, run by the dispatcher's worker). Text that reaches the proxy through the agent (arguments, results) is never user-authored. The X-ray server's forwarder sends only `approve` and `reject`.
+- Residual risk, stated plainly and the same as for approvals: anything that runs as the same user can reach the control socket and add a "trusted user" value. An agent with a shell can send `{"op": "user_prompt", ...}` with the text it needs and then pay an IBAN it quotes. The socket protects against other users, not against the same user. Mitigation: the `PreToolUse` guard hook denies `Bash` and every non-NOTARY tool (or run with `--tools ""`). Install the guard together with this hook.
+- The hook forwards only prompts Claude Code marks `user` or `sdk`, and prompts without a mark (the field is rolling out, so a machine-injected turn without a `source` would be taken for the user's: a limit). It never forwards a machine-injected turn (`system`, `loop_wakeup`, `schedule_wakeup`, `poll_event`: peer and channel messages, task notifications) nor a prompt from a subagent. Text the user pastes into the prompt is the user's: pasting an untrusted email makes the IBANs in it trusted. The size limit is 8192 characters; a longer prompt stays untrusted.
+- A prompt that arrives while the worker is busy (a tool call, a card waiting for the user) is withdrawn after 3 s and not stored later; arguments quoting it stay untrusted. Every failure means less trust, never more.
+
 ## Honest limitations
 
 - A human can still be fooled at endorsement (A3, A9, A11).
-- An MCP agent with a shell can approve its own escalation through the control CLI (see "Approvals through the MCP proxy"); deny the shell.
+- An MCP agent with a shell can approve its own escalation through the control CLI (see "Approvals through the MCP proxy"); deny the shell. The same socket takes the user's prompt (see "The user's prompt as a trusted value"), so a shell can also forge a trusted user value.
 - Resource URIs and prompt arguments are chosen by the agent and reach the allow-listed server without a monitor decision (a read is not a tool call); allow only servers and prefixes that may see anything the agent has read (docs/demo.md, "Resources and prompts").
 - An attacker can steer among trusted values; effect budgets bound the damage.
 - Correct labels and the sensitive-parameter table are the trusted base, and are hand-authored.
