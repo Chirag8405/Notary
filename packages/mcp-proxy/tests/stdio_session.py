@@ -10,7 +10,7 @@ import queue
 import subprocess
 import sys
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import IO
 
@@ -36,9 +36,13 @@ def tool_call(request_id: int, name: str, arguments: JsonObject) -> JsonObject:
 
 
 class StdioSession:
-    def __init__(self, command: Sequence[str]) -> None:
+    def __init__(self, command: Sequence[str], *, env: Mapping[str, str] | None = None) -> None:
         self._process = subprocess.Popen(
-            list(command), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            list(command),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=None if env is None else dict(env),
         )
         stdin, stdout, stderr = self._process.stdin, self._process.stdout, self._process.stderr
         assert stdin is not None

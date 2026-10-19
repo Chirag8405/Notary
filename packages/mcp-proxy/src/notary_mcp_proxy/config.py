@@ -12,8 +12,9 @@ import re
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Discriminator, Field, JsonValue, Tag, field_validator, model_validator
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import LabelingPolicy, ToolOriginRule
@@ -42,6 +43,7 @@ from notary_core.policy.sensitive_params import (
     make_tool_policy,
 )
 from notary_core.units import canonicalize
+from notary_mcp_proxy.hosts import is_loopback_host
 from notary_mcp_proxy.structured import StructureError, validate_pattern
 
 PUBLIC: tuple[str, ...] = ("*",)
@@ -50,6 +52,22 @@ DEFAULT_SERVER = "default"
 """Name of the one server of the single `server` form."""
 _SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:[^\s]*")
 """A URI prefix starts with a scheme and holds no whitespace."""
+_HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_CREDENTIAL_HEADER = re.compile(r"authorization|cookie|token|key|secret|password|credential")
+MANAGED_HEADERS = frozenset(
+    {
+        "accept",
+        "connection",
+        "content-length",
+        "content-type",
+        "host",
+        "mcp-protocol-version",
+        "mcp-session-id",
+        "transfer-encoding",
+    }
+)
+"""Headers the HTTP client sets itself; a config may not."""
 RESOURCE_SOURCE = "resource:"
 PROMPT_SOURCE = "prompt:"
 """Prefixes of the synthetic labeling sources `resource:<server>` / `prompt:<server>`: the tool name
@@ -101,15 +119,104 @@ class PromptPolicy(NotaryModel):
         return allow
 
 
-class ServerSpec(NotaryModel):
-    command: Annotated[tuple[str, ...], Field(min_length=1)]
-    """Run in the config file's directory."""
+class _ServerCommon(NotaryModel):
     timeout_seconds: Annotated[float, Field(gt=0)] = 30.0
     """How long one request to the server may take before the call is answered with an error."""
     resources: ResourcePolicy | None = None
     """None (the default): the server's resources are hidden and `resources/*` is not served."""
     prompts: PromptPolicy | None = None
     """None (the default): the server's prompts are hidden and `prompts/*` is not served."""
+
+
+class StdioServerSpec(_ServerCommon):
+    """A server the proxy starts as a child process and speaks to over its stdin and stdout."""
+
+    kind: Literal["stdio"] = "stdio"
+    """The only form there was before `kind`: a spec without it is a stdio spec."""
+    command: Annotated[tuple[str, ...], Field(min_length=1)]
+    """Run in the config file's directory."""
+
+
+class HttpServerSpec(_ServerCommon):
+    """A server reached over MCP Streamable HTTP (spec 2025-06-18) at one endpoint URL."""
+
+    kind: Literal["http"]
+    url: str
+    """`https://host/path`; plain `http://` only for a loopback host (a bearer token must not
+    cross a network in the clear). No user name or password in the URL."""
+    headers: dict[str, str] = {}
+    """Extra request headers, e.g. `{"Authorization": "Bearer ${GITHUB_TOKEN}"}`. A value may
+    reference an environment variable only as `${NAME}`; it is resolved at startup (a missing or
+    empty variable fails startup) and never logged. A header that carries a credential
+    (`Authorization`, `Cookie`, a name with token / key / secret) must reference a variable: no
+    secrets in the config file."""
+
+    @field_validator("url")
+    @classmethod
+    def _url_is_an_endpoint(cls, url: str) -> str:
+        try:
+            parts = urlsplit(url)
+            host = parts.hostname
+            _ = parts.port  # raises ValueError for a bad port
+        except ValueError as failure:
+            raise ValueError("`url` is not a valid URL") from failure
+        if parts.scheme not in ("http", "https") or not host:
+            raise ValueError("`url` must be http(s)://host[:port]/path")
+        if parts.username is not None or parts.password is not None:
+            raise ValueError("`url` must not carry a user name or password; use `headers`")
+        if parts.fragment:
+            raise ValueError("`url` must not have a fragment")
+        if parts.scheme == "http" and not is_loopback_host(host):
+            raise ValueError("`url` must be https unless the host is loopback")
+        return url
+
+    @field_validator("headers")
+    @classmethod
+    def _headers_are_safe(cls, headers: dict[str, str]) -> dict[str, str]:
+        seen: set[str] = set()
+        for name, value in headers.items():
+            lowered = name.lower()
+            if _HEADER_NAME.fullmatch(name) is None:
+                raise ValueError(f"header name {name!r} is not a valid HTTP header name")
+            if lowered in seen:
+                raise ValueError(f"header {name!r} is listed twice")
+            seen.add(lowered)
+            if lowered in MANAGED_HEADERS:
+                raise ValueError(f"header {name!r} is set by the proxy and cannot be configured")
+            references = header_references(name, value)
+            if not references and _CREDENTIAL_HEADER.search(lowered):
+                raise ValueError(
+                    f"header {name!r} carries a credential: write it as ${{NAME}} (an "
+                    "environment variable), not as a literal"
+                )
+            if "\r" in value or "\n" in value:
+                raise ValueError(f"header {name!r}: a value may not contain a line break")
+        return headers
+
+
+def header_references(name: str, value: str) -> tuple[str, ...]:
+    """The environment variables a header value names, as `${NAME}`; a stray `${` is an error."""
+    if "${" in _REFERENCE.sub("", value):
+        raise ValueError(f"header {name!r}: write an environment variable as ${{NAME}}")
+    return tuple(_REFERENCE.findall(value))
+
+
+def _server_kind(value: JsonValue | StdioServerSpec | HttpServerSpec) -> str | None:
+    """The union tag: a spec without `kind` is the old stdio form."""
+    if isinstance(value, dict):
+        kind = value.get("kind", "stdio")
+        return kind if isinstance(kind, str) else None
+    if isinstance(value, (StdioServerSpec, HttpServerSpec)):
+        return value.kind
+    return None
+
+
+ServerSpec = Annotated[
+    Annotated[StdioServerSpec, Tag("stdio")] | Annotated[HttpServerSpec, Tag("http")],
+    Discriminator(_server_kind),
+]
+"""A server: `{"kind": "stdio", "command": [...]}` or `{"kind": "http", "url": ...}`.
+The old form without `kind` (`{"command": [...]}`) still means stdio."""
 
 
 class ParamSpec(NotaryModel):
@@ -264,15 +371,44 @@ class ProxyConfig(NotaryModel):
         return dict(self.named_servers)
 
     @property
-    def server(self) -> ServerSpec:
-        """The only server (the single form); an error when there are several."""
+    def server(self) -> StdioServerSpec:
+        """The only server, which must be a stdio one: an error for several or for an HTTP one."""
         if len(self.servers) != 1:
             raise ValueError("the config has several servers; use `servers`")
-        return next(iter(self.servers.values()))
+        spec = next(iter(self.servers.values()))
+        if not isinstance(spec, StdioServerSpec):
+            raise ValueError("the server is not a stdio server; it has no command")
+        return spec
 
     @property
     def multi(self) -> bool:
         return len(self.servers) > 1
+
+
+def resolve_headers(server: str, spec: HttpServerSpec, env: Mapping[str, str]) -> dict[str, str]:
+    """The headers to send, each `${NAME}` replaced by the variable in `env`.
+
+    A variable that is missing or empty, or whose value holds a line break, raises `ValueError`
+    naming the server, the header and the variable, never the value.
+    """
+    resolved: dict[str, str] = {}
+    for name, template in spec.headers.items():
+        value = template
+        for variable in header_references(name, template):
+            text = env.get(variable)
+            if not text:
+                raise ValueError(
+                    f"server {server!r}: header {name!r} needs the environment variable "
+                    f"{variable}, which is not set"
+                )
+            if any(char in text for char in "\r\n\0"):
+                raise ValueError(
+                    f"server {server!r}: the environment variable {variable} (header {name!r}) "
+                    "contains a line break or a NUL"
+                )
+            value = value.replace("${" + variable + "}", text)
+        resolved[name] = value
+    return resolved
 
 
 def routes(config: ProxyConfig) -> Mapping[str, tuple[str, str]]:

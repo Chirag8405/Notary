@@ -24,7 +24,7 @@ from notary_mcp_proxy.config import (
     LedgerSpec,
     ParamSpec,
     ProxyConfig,
-    ServerSpec,
+    StdioServerSpec,
     ToolSpec,
 )
 from notary_world.labeling import world_labeling_policy
@@ -67,7 +67,7 @@ def proxy_config_for(scenario: Scenario, *, command: Sequence[str]) -> ProxyConf
             LedgerSpec(ledger=entry.ledger, key=entry.key, unit=entry.unit, value=entry.canonical)
         )
     return ProxyConfig(
-        server=ServerSpec(command=tuple(command)),
+        server=StdioServerSpec(command=tuple(command)),
         user_intent=contract.user_intent,
         tools=tools,
         budget=contract.budget,

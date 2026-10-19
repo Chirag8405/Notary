@@ -1,16 +1,21 @@
-"""`notary-mcp-proxy --config notary.json`: a stdio MCP server in front of another one.
+"""`notary-mcp-proxy --config notary.json`: an MCP server in front of other MCP servers.
 
-stdout carries only MCP messages; diagnostics go to stderr.
+The agent connects over stdio (the default) or, with `--http HOST:PORT --token-file PATH`, over
+MCP Streamable HTTP. The servers behind it are stdio child processes or HTTP endpoints. In stdio
+mode stdout carries only MCP messages; diagnostics go to stderr.
 """
 
 import argparse
 import json
 import os
+import signal
 import sys
+import threading
 import uuid
 from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
+from types import FrameType
 
 from notary_core.audit import append
 from notary_core.gateway import make_labeler
@@ -20,7 +25,7 @@ from notary_core.resolver import ArgumentResolver
 from notary_mcp_proxy.approvals import ApprovalDesk, printable
 from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
 from notary_mcp_proxy.check import check_config, render_report
-from notary_mcp_proxy.client import ServerError, StdioClient
+from notary_mcp_proxy.client import McpClient, ServerError, StdioClient
 from notary_mcp_proxy.compile_client import (
     CompileClient,
     CompileUrlError,
@@ -28,10 +33,13 @@ from notary_mcp_proxy.compile_client import (
 )
 from notary_mcp_proxy.config import (
     ProxyConfig,
+    ServerSpec,
+    StdioServerSpec,
     build_contract,
     build_labeling,
     build_ledger,
     build_policy,
+    resolve_headers,
     tool_fields,
     tool_readers,
 )
@@ -46,6 +54,16 @@ from notary_mcp_proxy.control import (
 )
 from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
+from notary_mcp_proxy.http_client import HttpClient
+from notary_mcp_proxy.http_server import (
+    DEFAULT_BIND,
+    AgentEndpoint,
+    BindError,
+    HttpSettings,
+    TokenFileError,
+    parse_bind,
+    read_token_file,
+)
 from notary_mcp_proxy.prompt_hook import MAX_INPUT, forward_prompt
 from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
@@ -86,7 +104,7 @@ def write_control_file(directory: Path, run_id: str, socket_path: Path) -> Path:
 
 def build_server(
     config: ProxyConfig,
-    client: StdioClient,
+    client: McpClient,
     *,
     run_id: str,
     audit_append: AuditAppend = append,
@@ -111,7 +129,7 @@ def build_server(
 
 def build_servers(
     config: ProxyConfig,
-    clients: Mapping[str, StdioClient],
+    clients: Mapping[str, McpClient],
     *,
     run_id: str,
     audit_append: AuditAppend = append,
@@ -280,7 +298,7 @@ def check_main(argv: Sequence[str]) -> int:
     config = _load_config(config_path)
     if config is None:
         return 2
-    clients: dict[str, StdioClient] = {}
+    clients: dict[str, McpClient] = {}
     try:
         clients = _start_clients(config, config_path)
         for client in clients.values():
@@ -310,23 +328,43 @@ def check_main(argv: Sequence[str]) -> int:
     return 0 if report.ok else 1
 
 
-def _start_clients(config: ProxyConfig, config_path: Path) -> dict[str, StdioClient]:
-    """Start every server (in the config file's directory); on a failure stop the ones started."""
-    started: dict[str, StdioClient] = {}
+def _start_clients(
+    config: ProxyConfig, config_path: Path, env: Mapping[str, str] | None = None
+) -> dict[str, McpClient]:
+    """Connect to every server; on a failure stop the ones started.
+
+    A stdio server is started in the config file's directory. An HTTP server's header values
+    are resolved from `env` (default: the process environment) here, so a missing variable fails
+    startup; no connection is made until `initialize`.
+    """
+    started: dict[str, McpClient] = {}
+    variables = os.environ if env is None else env
     try:
         for name, spec in config.servers.items():
-            started[name] = StdioClient(
-                spec.command,
-                cwd=config_path.resolve().parent,
-                timeout_seconds=spec.timeout_seconds,
-            )
+            if isinstance(spec, StdioServerSpec):
+                started[name] = StdioClient(
+                    spec.command,
+                    cwd=config_path.resolve().parent,
+                    timeout_seconds=spec.timeout_seconds,
+                )
+            else:
+                started[name] = HttpClient(
+                    spec.url,
+                    headers=resolve_headers(name, spec, variables),
+                    timeout_seconds=spec.timeout_seconds,
+                )
     except BaseException:
         _close_all(started)
         raise
     return started
 
 
-def _close_all(clients: Mapping[str, StdioClient]) -> None:
+def _describe(spec: ServerSpec) -> str:
+    """For the log: the command, or the URL (never the headers)."""
+    return " ".join(spec.command) if isinstance(spec, StdioServerSpec) else spec.url
+
+
+def _close_all(clients: Mapping[str, McpClient]) -> None:
     for client in clients.values():
         client.close()
 
@@ -362,10 +400,71 @@ def serve_main(argv: Sequence[str]) -> int:
             "is. Needs the user-prompt-submit hook. run_started is then written at the first event"
         ),
     )
+    parser.add_argument(
+        "--http",
+        metavar="HOST:PORT",
+        help=(
+            "serve the agent over MCP Streamable HTTP at http://HOST:PORT/mcp instead of stdio "
+            f"(e.g. {DEFAULT_BIND}). Needs --token-file; binds to loopback only unless "
+            "--allow-remote-bind"
+        ),
+    )
+    parser.add_argument(
+        "--token-file",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "with --http: the file holding the bearer token every request must present "
+            "(Authorization: Bearer ...). It must not be readable by group or others (chmod 600); "
+            "try: openssl rand -hex 32"
+        ),
+    )
+    parser.add_argument(
+        "--allow-origin",
+        action="append",
+        default=[],
+        metavar="ORIGIN",
+        help=(
+            "with --http: accept requests whose Origin header is exactly this (e.g. "
+            "http://localhost:3000); repeatable. By default a request with an Origin is refused "
+            "(403); a request without one (a command-line client) is not affected"
+        ),
+    )
+    parser.add_argument(
+        "--allow-remote-bind",
+        action="store_true",
+        help="with --http: allow a HOST that is not loopback (anything that reaches the port can "
+        "try the token; put TLS in front of it)",
+    )
     args = parser.parse_args(argv)
     config_path: Path = args.config
     audit_dir: Path | None = args.audit_dir
     compile_url: str | None = args.compile_url
+    endpoint: AgentEndpoint | None = None
+    if args.http is None:
+        if args.token_file is not None or args.allow_origin or args.allow_remote_bind:
+            parser.error("--token-file, --allow-origin and --allow-remote-bind need --http")
+    else:
+        if args.token_file is None:
+            parser.error(
+                "--http needs --token-file (the proxy does not serve HTTP without a token)"
+            )
+        try:
+            host, port = parse_bind(args.http, allow_remote=args.allow_remote_bind)
+            settings = HttpSettings(
+                token=read_token_file(str(args.token_file)),
+                host=host,
+                port=port,
+                allowed_origins=frozenset(args.allow_origin),
+                allow_remote=args.allow_remote_bind,
+            )
+        except (BindError, TokenFileError) as failure:
+            parser.error(str(failure))  # a usage error: exit 2 before anything starts
+        try:
+            endpoint = AgentEndpoint(settings)
+        except OSError as failure:
+            _log(f"cannot listen on {args.http}: {failure.strerror}")
+            return 2
     compile_client: CompileClient | None = None
     if compile_url is not None:
         if args.control == "none":
@@ -398,7 +497,7 @@ def serve_main(argv: Sequence[str]) -> int:
     )
     control: ControlServer | None = None
     control_file: Path | None = None
-    clients: dict[str, StdioClient] = {}
+    clients: dict[str, McpClient] = {}
     log: RunLog | None = None
     try:
         try:
@@ -429,7 +528,7 @@ def serve_main(argv: Sequence[str]) -> int:
             _log(f"startup failed: NOTARY halted: {server.gateway.halted}")
             return 2
         fronted = [
-            " ".join(spec.command) if not config.multi else f"{name}: {' '.join(spec.command)}"
+            _describe(spec) if not config.multi else f"{name}: {_describe(spec)}"
             for name, spec in config.servers.items()
         ]
         _log(f"run {run_id}: fronting {'; '.join(fronted)}")
@@ -444,7 +543,11 @@ def serve_main(argv: Sequence[str]) -> int:
             _log(f"run {run_id}: approvals on {control.path} (timeout {timeout:g} s)")
         else:
             _log(f"run {run_id}: approvals disabled; every escalation is rejected at once")
-        serve(server, sys.stdin.buffer, sys.stdout.buffer)
+        if endpoint is None:
+            serve(server, sys.stdin.buffer, sys.stdout.buffer)
+        else:
+            _log(f"run {run_id}: listening on {endpoint.url} (a bearer token is required)")
+            _serve_http(endpoint, server)
         server.finish_run()  # serve() joined the worker: nothing else touches the Gateway
         if log is not None:
             _report_head(run_id, log, halted=server.gateway.halted)
@@ -454,9 +557,29 @@ def serve_main(argv: Sequence[str]) -> int:
         if control is not None:
             control.close()
         _close_all(clients)
+        if endpoint is not None:
+            endpoint.close()
         if log is not None:
             log.close()
     return 0
+
+
+def _serve_http(endpoint: AgentEndpoint, server: ProxyServer) -> None:
+    """Serve until the client deletes its session or the process gets SIGINT / SIGTERM."""
+
+    def stop(_signal: int, _frame: FrameType | None) -> None:
+        endpoint.stop()
+
+    if threading.current_thread() is not threading.main_thread():
+        endpoint.serve(server)  # signals can only be handled by the main thread
+        return
+    interrupt = signal.signal(signal.SIGINT, stop)
+    terminate = signal.signal(signal.SIGTERM, stop)
+    try:
+        endpoint.serve(server)
+    finally:
+        signal.signal(signal.SIGINT, interrupt)
+        signal.signal(signal.SIGTERM, terminate)
 
 
 def control_main(op: str, argv: Sequence[str]) -> int:

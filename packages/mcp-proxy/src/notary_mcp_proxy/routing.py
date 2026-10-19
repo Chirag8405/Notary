@@ -16,7 +16,7 @@ from notary_core.models import ToolEffect
 from notary_core.pinning import ToolManifest
 from notary_core.policy.sensitive_params import PolicyTable
 from notary_mcp_proxy.backend import BackendResult
-from notary_mcp_proxy.client import StdioClient
+from notary_mcp_proxy.client import McpClient
 from notary_mcp_proxy.config import FieldSpec, ProxyConfig
 from notary_mcp_proxy.config import routes as config_routes
 from notary_mcp_proxy.mcp_backend import ERR_EXITED, McpBackend, PinnedTool
@@ -121,7 +121,7 @@ class RoutingBackend:
 
 def build_routing(
     config: ProxyConfig,
-    clients: Mapping[str, StdioClient],
+    clients: Mapping[str, McpClient],
     *,
     policy: PolicyTable,
     readers: Mapping[str, tuple[str, ...]],

@@ -233,7 +233,7 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 - Structured results: when a result carries `structuredContent` (an object), every leaf becomes its own labeled value named by its path (`structured.iban`, `structured.items.0.amount`; a key with `.`, `*` or `\`, an empty key or one starting with a digit is escaped with a backslash, so a path reads one way only). The agent gets the `structuredContent` rebuilt from those labeled values (so it sees exactly what was logged) plus one text block with the same JSON, and `tools/list` shows the pinned `outputSchema`. Per-field config goes in `tools.<tool>.fields`, keyed by path relative to the root (`iban`, `items.*.iban`; `*` is one array index and nothing else is a wildcard): `readers` (for example `["user"]` marks a field secret, so quoting it in an egress `payload` is `CONF_READER_VIOLATION`) and `unit` (how the resolver compares a quote of it, for example `iban`). It applies only to paths the tool's pinned `outputSchema` declares: a key the server adds that the schema does not declare (an echoed, attacker-chosen key) gets the tool's readers and no unit. A pattern also covers the paths below it, and the most specific pattern that sets a value wins. Values with different readers are logged as separate records (`<call>.result` for the tool's readers, then `result-1`, `result-2`, ... in order of their first path). `structuredContent` that is not an object, nests deeper than 32 levels or has more than 2000 leaves fails closed: the call is answered with the protocol error and nothing of the result is shown or logged as a value. A text block whose JSON equals `structuredContent` (the compatibility copy the MCP spec recommends) is not labeled, because a whole-block copy would carry the tool's readers for every field; the one text block the agent gets is serialized from the labeled fields. Any other text block is labeled with the tool's readers, so if a tool also writes prose that quotes a secret field, set the tool's `readers` to the strictest value.
 - Concurrency: tool calls are decided one at a time, in the order they arrive, on one worker thread, so the audit chain order is the arrival order (independent read-only calls are not run in parallel). While a call runs, `initialize`, `ping`, `tools/list`, unknown methods and invalid lines are still answered at once. `notifications/cancelled` for a queued call removes it (no events, no response); for the running call it sets a flag that long waits check, the decision already logged stays in the chain, and the call gets no response; a cancel for an unknown or finished call is ignored. The proxy can send its own requests to the client (ids `n1`, `n2`, ...; this is the base for approvals and elicitation): the answer wakes the waiting call, a timeout sends `notifications/cancelled`, and the end of input unblocks the wait with an error. A drift check after `notifications/tools/list_changed` is queued behind the calls already waiting and runs on the same worker. Writes to stdout are serialized, one message per line.
 - A client that closes stdin with calls queued gets those calls dropped: the call in progress finishes (its decision stays in the chain) and the queued calls are never proposed, because nobody is left to receive their results and a queued effect (a payment) must not run for a client that has gone. A script that sends requests and closes stdin must wait for the answers first.
-- Limits of this version: stdio only (resources and prompts are opt-in, see below), one timeout for every tool, an unknown effect after a timeout is not reconciled, and the server's tool definitions are shown to the agent as pinned at startup (they are the user's to review).
+- Limits of this version: stdio between the agent and the proxy unless you give `--http` (see "Streamable HTTP" below; resources and prompts are opt-in), one timeout for every tool, an unknown effect after a timeout is not reconciled, and the server's tool definitions are shown to the agent as pinned at startup (they are the user's to review).
 
 #### Approve or reject an escalation
 
@@ -315,6 +315,63 @@ One proxy can front several MCP servers under one contract, one Value Store, one
 - Every server must start or the proxy exits with code 2; all are stopped when the proxy ends. A server that dies affects only its own tools, which are answered "the tool server is not running" before the Gateway (no events); the others keep working. `notifications/tools/list_changed` from any server runs the drift check over all of them. A tool that no server owns is blocked by the scope check as before.
 - `check` prints one section per server (`server <name>`, then its tools) when the config has several.
 - Limits: `egress_hosts` and the budget are per contract, not per server; a server that is alive but fails to list its tools makes calls to every server fail closed until it answers.
+
+#### Streamable HTTP: a remote server behind the proxy, and the proxy served over HTTP
+
+Both directions speak MCP Streamable HTTP (spec 2025-06-18), standard library only (no `mcp` SDK, no new dependency; decisions.md). They are independent: a stdio agent can sit in front of a remote server, and an HTTP agent in front of a stdio server.
+
+**A remote server behind the proxy.** Give the server `kind: "http"` and its endpoint URL (the old form without `kind` is still stdio, so no existing config changes):
+
+```json
+{
+  "servers": {
+    "tracker": {
+      "kind": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${TRACKER_TOKEN}" },
+      "timeout_seconds": 30
+    }
+  },
+  "user_intent": "...", "tools": { "...": { "server": "tracker", "...": "..." } }, "budget": { "...": 0 }
+}
+```
+
+- `headers` values may reference environment variables ONLY as `${NAME}`; they are resolved when the proxy starts. A variable that is missing or empty fails startup (exit 2) naming the variable, and a header that carries a credential (`Authorization`, `Cookie`, a name with token / key / secret / password) must use `${NAME}`, so the config file never holds a secret. Header values are never logged. Export the variable in the shell that starts the proxy (for Claude Code: the shell that starts `claude`, or the `env` of the server entry in `.mcp.json`).
+- `https://` is required unless the host is loopback (`http://127.0.0.1:PORT/mcp` for a local server); no user name or password in the URL; redirects are not followed.
+- It behaves like a stdio server for everything above it: tools are pinned at startup, every call is labeled, decided and logged, `timeout_seconds` bounds each request (the call is answered "the tool did not answer in time; it may still have run" and `notifications/cancelled` is posted), and the same constant error texts apply. The proxy ends the server's session (HTTP `DELETE`) when it exits. If the server forgets the session (404), its tools are answered "the tool server is not running" from then on (no new session: that would re-pin and could accept a rug pull). `resources` and `prompts` work on an HTTP server as on a stdio one. `notary-mcp-proxy check --config CONFIG` connects to it too.
+- Not supported yet: OAuth (use a static token from the environment; the SDK-based flow is a later issue), a standalone GET stream (a changed tool is still caught by the check before every call), SSE resumption.
+
+**The proxy served over HTTP**, for an agent that does not spawn it:
+
+```
+umask 077; openssl rand -hex 32 > .notary/mcp-token           # the bearer token; 0600 is required
+uv run --no-sync notary-mcp-proxy --config packages/mcp-proxy/examples/bank/notary.json \
+    --http 127.0.0.1:8765 --token-file .notary/mcp-token --audit-dir .notary/mcp-runs
+```
+
+It logs `listening on http://127.0.0.1:8765/mcp` and serves until the agent ends its session (HTTP `DELETE`) or the process gets SIGINT / SIGTERM; then it appends `run_finished` and prints the chain head, as it does when stdin closes. `--http` needs `--token-file`; stdout is unused in this mode.
+
+Connect Claude Code (verified against `claude mcp add --help`, Claude Code 2.1.303: `-t/--transport http`, `-H/--header`, `-s/--scope local|user|project`):
+
+```
+claude mcp add --transport http notary-bank http://127.0.0.1:8765/mcp \
+    --header "Authorization: Bearer $(cat .notary/mcp-token)"
+```
+
+This stores the token in Claude Code's own config (`~/.claude.json` for the default `local` scope). To keep it out of any file, use a project `.mcp.json` entry that reads it from the environment (Claude Code expands `${VAR}` in `.mcp.json`; not exercised here, see the pending checks):
+
+```json
+{ "mcpServers": { "notary-bank-http": {
+    "type": "http", "url": "http://127.0.0.1:8765/mcp",
+    "headers": { "Authorization": "Bearer ${NOTARY_MCP_TOKEN}" } } } }
+```
+
+- **Defaults are the strict ones.** The listener binds to the address you give; anything but loopback (127.0.0.0/8, `::1`, `localhost`) is refused unless you also pass `--allow-remote-bind`, and then anything that can reach the port can try the token (put TLS and a firewall in front). The token file must be a regular file that group and others cannot access (`chmod 600`; a looser mode is refused at startup with a message that does not show the token), 16 to 4096 visible ASCII characters. The token is not accepted on the command line or from the environment, and is never logged.
+- **Every request** needs `Authorization: Bearer <token>` (401, `WWW-Authenticate: Bearer`, otherwise; compared in constant time). On a loopback bind the `Host` header must name this machine and port, and an `Origin` header, if present, must be listed with `--allow-origin ORIGIN` (none by default; a command-line client sends none), else 403: a web page cannot reach the proxy, not even through DNS rebinding. POST must be `application/json` (415), at most 4 MiB (413).
+- **One session per proxy run.** The first `initialize` gets `Mcp-Session-Id`; a second `initialize` (another client, or the same one again) is 409; a request without the session id is 400 and with another id 404. `DELETE /mcp` ends the session and the run, like closing stdin: the call in progress finishes, the queued calls are dropped, `run_finished` is appended.
+- **Same proxy behind it**: the same `Dispatcher` (one worker thread owns the Gateway, calls are decided in arrival order), verdict texts and audit chain as over stdio (`test_http_server.py` runs the bank demo both ways and compares: ALLOW, BLOCK `LEDGER_NOT_FOUND`, ALLOW, identical results and event types). The control socket, `approve` / `reject`, the `UserPromptSubmit` hook, `--compile-url`, `--audit-dir` and the X-ray work unchanged with `--http`.
+- **Approvals.** The control socket always works. MCP elicitation works over HTTP when the client keeps the call's response stream open (the proxy answers a `tools/call` as `text/event-stream` and sends `elicitation/create` on it) or opens a `GET /mcp` stream; if neither exists the request is dropped and the card waits on the control socket (set `approvals.elicitation` to false to skip the attempt). Whether Claude Code shows the form over HTTP is a pending live check.
+- Cancellation: `notifications/cancelled` for a call in flight ends its HTTP reply with JSON-RPC error -32800; the decision already logged stays in the chain and the call gets no result, as over stdio.
 
 #### The attack library through the proxy
 

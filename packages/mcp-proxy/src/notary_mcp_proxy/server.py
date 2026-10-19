@@ -31,7 +31,13 @@ from notary_core.models import (
 )
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.approvals import Answer, ApprovalDesk, Pending, printable
-from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
+from notary_mcp_proxy.client import (
+    PROTOCOL_VERSION,
+    SUPPORTED_VERSIONS,
+    ServerError,
+    diagnostic,
+    quoted,
+)
 from notary_mcp_proxy.compile_client import COMPILE_TIMEOUT, PromptCompiler
 from notary_mcp_proxy.content import (
     IGNORED_NOTIFICATIONS,
@@ -78,7 +84,6 @@ from notary_mcp_proxy.structured import (
     unflatten,
 )
 
-SUPPORTED_VERSIONS = frozenset({"2024-11-05", "2025-03-26", PROTOCOL_VERSION})
 SERVER_INFO: JsonObject = {"name": "notary", "version": "0.0.0"}
 INSTRUCTIONS = (
     "Every tool call is checked by NOTARY against the user's frozen intent contract. "
