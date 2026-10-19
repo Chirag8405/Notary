@@ -6,6 +6,8 @@ and an error naming the failing checks otherwise. An ESCALATE makes the call WAI
 `ApprovalDesk` while the user approves or rejects the card on the control socket (a channel the
 agent does not reach through MCP); the agent then gets the result of the second decision (the
 tool's result after an approval, an error after a rejection, a timeout, a cancel or no desk).
+When the client declared MCP elicitation (and the config allows it) the same card is also put to
+the user in the client's own UI; the first answer, from the client or from the socket, wins.
 """
 
 import queue
@@ -28,7 +30,15 @@ from notary_core.models import (
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.approvals import Answer, ApprovalDesk, Pending, printable
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
-from notary_mcp_proxy.dispatch import Dispatcher
+from notary_mcp_proxy.dispatch import (
+    AskToken,
+    ClientAsker,
+    ClientRequestError,
+    ClientTimeoutError,
+    ClientWithdrawnError,
+    Dispatcher,
+)
+from notary_mcp_proxy.elicit import METHOD, approval_request, parse_answer, supports_form
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
 from notary_mcp_proxy.jsonrpc import (
     INTERNAL_ERROR,
@@ -120,6 +130,59 @@ def _never(*_: JsonValue) -> bool:
     return False
 
 
+class _Elicitation:
+    """One `elicitation/create` for one open card, asked from a thread of its own.
+
+    The worker thread waits on the desk (so the control socket keeps working); this thread waits
+    for the client and only RECORDS the answer on the desk, which refuses it when the socket (or
+    a timeout, cancel or the end of input) decided first. When the worker is done it calls
+    `stop()`: a request still open is withdrawn, so the client drops the form, and a late answer is
+    ignored.
+    """
+
+    def __init__(self, ask: ClientAsker, desk: ApprovalDesk, pending: Pending) -> None:
+        self._ask = ask
+        self._desk = desk
+        self._pending = pending
+        self._token = AskToken()
+        self.failure: tuple[str, str] | None = None
+        """(cause, why) when the request failed instead of being answered; set before `stop`."""
+        self._thread = threading.Thread(target=self._run, name="notary-elicitation", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._token.withdraw()
+        self._thread.join()
+
+    def _run(self) -> None:
+        endorsement_id = self._pending.endorsement_id
+        try:
+            answer = self._ask(
+                METHOD,
+                approval_request(self._pending),
+                timeout=self._desk.timeout_seconds,
+                token=self._token,
+            )
+        except ClientWithdrawnError:
+            return
+        except ClientRequestError as failure:
+            diagnostic(f"{endorsement_id}: elicitation failed: {quoted(str(failure))}")
+            if isinstance(failure, ClientTimeoutError):
+                self.failure = ("timeout", f"no answer within {self._desk.timeout_seconds:g} s")
+            else:
+                self.failure = ("client error", "the client could not ask the user")
+            if not self._desk.decide(endorsement_id, "reject"):
+                self.failure = None
+            return
+        choice = parse_answer(answer)
+        counted = self._desk.decide(endorsement_id, choice)
+        action = as_str(answer.get("action"))
+        diagnostic(
+            f"{endorsement_id}: elicitation answered {quoted(action or '?')} -> {choice}"
+            + ("" if counted else " (too late, ignored)")
+        )
+
+
 class ProxyServer:
     def __init__(
         self,
@@ -129,8 +192,12 @@ class ProxyServer:
         *,
         control_hint: str = "",
         reject_unanswered: bool = False,
+        elicitation: bool = True,
     ) -> None:
         """`desk` is where an escalated call waits for the user.
+
+        With `elicitation`, a client that declared the capability is also asked in its own UI
+        (needs a desk; the dispatcher routes the client requests).
 
         Without a desk, `reject_unanswered` (`--control none`) rejects every escalation at once;
         otherwise the call is answered "escalated" and the endorsement stays pending for the
@@ -141,6 +208,10 @@ class ProxyServer:
         self._desk = desk
         self._control_hint = control_hint
         self._reject_unanswered = reject_unanswered
+        self._elicitation = elicitation
+        self._client_elicits = False
+        self._ask: ClientAsker | None = None
+        self._elicit_failures: dict[str, tuple[str, str]] = {}
         self._approved: list[str] = []
         self._rejected_ids: list[tuple[str, str]] = []
         self._cancelled: Callable[[JsonValue], bool] = _never
@@ -252,6 +323,7 @@ class ProxyServer:
     def _initialize(self, params: JsonObject) -> JsonObject:
         asked = as_str(params.get("protocolVersion"))
         version = asked if asked in SUPPORTED_VERSIONS else PROTOCOL_VERSION
+        self._client_elicits = supports_form(params.get("capabilities"))
         return {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
@@ -298,25 +370,35 @@ class ProxyServer:
         if endorsement_id is None or card is None or desk is None:
             return self._rejected(call, outcome, Answer("reject", "closed"), disabled=True)
         text = printable(render_card(card.endorsement.card))
-        desk.open(
-            Pending(
-                endorsement_id=endorsement_id,
-                call_id=call.call_id,
-                tool=call.tool,
-                card_text=text,
-                remaining_approvals=card.remaining_approvals,
-            )
+        pending = Pending(
+            endorsement_id=endorsement_id,
+            call_id=call.call_id,
+            tool=call.tool,
+            card_text=text,
+            remaining_approvals=card.remaining_approvals,
         )
+        desk.open(pending)
         diagnostic(
             f"{endorsement_id}: {call.tool} (call {call.call_id}) waits for the user "
             f"({card.remaining_approvals} approval(s) left, {desk.timeout_seconds:g} s)\n"
             f"{text}\n{self._control_hint.replace('{id}', endorsement_id)}".rstrip()
         )
-        answer = desk.resolve(
-            endorsement_id,
-            cancelled=lambda: self._cancelled(request_id),
-            closed=self._input_closed,
-        )
+        elicitation = None
+        ask = self._ask
+        if ask is not None and self._elicitation and self._client_elicits:
+            diagnostic(f"{endorsement_id}: also asking the user through the client (elicitation)")
+            elicitation = _Elicitation(ask, desk, pending)
+        try:
+            answer = desk.resolve(
+                endorsement_id,
+                cancelled=lambda: self._cancelled(request_id),
+                closed=self._input_closed,
+            )
+        finally:
+            if elicitation is not None:
+                elicitation.stop()
+                if elicitation.failure is not None:
+                    self._elicit_failures[endorsement_id] = elicitation.failure
         if answer.choice == "reject":
             return self._rejected(call, outcome, answer)
         values = self._gateway.store.as_mapping()
@@ -361,7 +443,16 @@ class ProxyServer:
         endorsement_id = outcome.endorsement_id
         if endorsement_id is not None:
             self._gateway.reject(endorsement_id)
-            cause = "disabled" if disabled else "card mismatch" if bad_row else answer.cause
+            failed = self._elicit_failures.get(endorsement_id)
+            cause = (
+                "disabled"
+                if disabled
+                else "card mismatch"
+                if bad_row
+                else failed[0]
+                if failed is not None and answer.cause == "user"
+                else answer.cause
+            )
             self._rejected_ids.append((endorsement_id, cause))
         if disabled:
             # Today's "escalated" answer with its reasons, now final: the card is closed.
@@ -377,6 +468,8 @@ class ProxyServer:
         elif answer.cause == "timeout":
             seconds = 0.0 if self._desk is None else self._desk.timeout_seconds
             why = f"no answer within {seconds:g} s"
+        elif answer.cause == "user" and endorsement_id in self._elicit_failures:
+            why = self._elicit_failures[endorsement_id][1]
         elif answer.cause == "user":
             why = "the user rejected the endorsement"
         else:
@@ -411,6 +504,10 @@ class ProxyServer:
         """Let a call that waits for the user see the agent's cancel and the end of its input."""
         self._cancelled = cancelled
         self._input_closed = input_closed
+
+    def route_client_requests(self, ask: ClientAsker) -> None:
+        """Let a waiting call put its card to the user through the client (`ask_client`)."""
+        self._ask = ask
 
     def route_drift_checks(self, schedule: Callable[[], None]) -> None:
         """Queue drift checks with the Gateway's owner: `schedule` queues a `check_drift_now`."""

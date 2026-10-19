@@ -67,6 +67,21 @@ class Target(Protocol):
         self, cancelled: Callable[[JsonValue], bool], input_closed: Callable[[], bool]
     ) -> None: ...
 
+    def route_client_requests(self, ask: "ClientAsker") -> None: ...
+
+
+class ClientAsker(Protocol):
+    """`Dispatcher.ask_client`: what the proxy needs to send a request to the client."""
+
+    def __call__(
+        self,
+        method: str,
+        params: JsonObject,
+        *,
+        timeout: float,
+        token: "AskToken | None" = None,
+    ) -> JsonObject: ...
+
 
 class ClientRequestError(Exception):
     """A request the proxy sent to the client got no usable answer. The message is constant."""
@@ -92,11 +107,47 @@ class ClientRejectedError(ClientRequestError):
         super().__init__("the client answered with an error", detail=detail)
 
 
+class ClientWithdrawnError(ClientRequestError):
+    def __init__(self) -> None:
+        super().__init__("the request was withdrawn before the client answered")
+
+
 @dataclass
 class _Pending:
     done: threading.Event = field(default_factory=threading.Event)
     response: JsonObject | None = None
     closed: bool = False
+    withdrawn: bool = False
+
+
+class AskToken:
+    """Lets another thread take back a request `ask_client` is waiting on.
+
+    `withdraw()` wakes the waiting `ask_client`, which tells the client to cancel the request
+    (`notifications/cancelled`, so its UI can drop the form) and raises `ClientWithdrawnError`.
+    A withdrawal before the request is sent means it is never sent. A late answer is ignored.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._withdrawn = False
+        self._pending: _Pending | None = None
+
+    def withdraw(self) -> None:
+        with self._lock:
+            self._withdrawn = True
+            pending = self._pending
+        if pending is not None:
+            pending.withdrawn = True
+            pending.done.set()
+
+    def attach(self, pending: _Pending) -> bool:
+        """Register the request; False when it was withdrawn already."""
+        with self._lock:
+            if self._withdrawn:
+                return False
+            self._pending = pending
+            return True
 
 
 @dataclass(frozen=True)
@@ -151,6 +202,7 @@ class Dispatcher:
         """Set once the reader saw the end of input and dropped the queue."""
         server.route_drift_checks(self._queue_drift_check)
         server.route_cancellation(self.cancelled, self.input_ended.is_set)
+        server.route_client_requests(self.ask_client)
 
     # -- public ----------------------------------------------------------------------------------
 
@@ -164,16 +216,27 @@ class Dispatcher:
         reader.join()
         worker.join()
 
-    def ask_client(self, method: str, params: JsonObject, *, timeout: float) -> JsonObject:
+    def ask_client(
+        self,
+        method: str,
+        params: JsonObject,
+        *,
+        timeout: float,
+        token: AskToken | None = None,
+    ) -> JsonObject:
         """Send a request to the client and block the CALLING thread for its answer.
 
         Raises `ClientTimeoutError` (and tells the client to cancel), `ClientClosedError` when the
-        input ended and `ClientRejectedError` when the client answered with a JSON-RPC error.
+        input ended, `ClientRejectedError` when the client answered with a JSON-RPC error and
+        `ClientWithdrawnError` (and tells the client to cancel) when `token.withdraw()` was called
+        first.
         """
         pending = _Pending()
         with self._state:
             if self._phase == "eof":
                 raise ClientClosedError
+            if token is not None and not token.attach(pending):
+                raise ClientWithdrawnError
             self._next_request += 1
             request_id = f"n{self._next_request}"
             self._pending[request_id] = pending
@@ -181,14 +244,11 @@ class Dispatcher:
         answered = self._wait(pending.done, timeout)
         with self._state:
             self._pending.pop(request_id, None)
+        if pending.withdrawn:
+            self._cancel_request(request_id, "withdrawn")
+            raise ClientWithdrawnError
         if not answered and not pending.done.is_set():
-            self._write(
-                {
-                    "jsonrpc": "2.0",
-                    "method": CANCELLED,
-                    "params": {"requestId": request_id, "reason": "timeout"},
-                }
-            )
+            self._cancel_request(request_id, "timeout")
             raise ClientTimeoutError
         if pending.closed or pending.response is None:
             raise ClientClosedError
@@ -197,6 +257,15 @@ class Dispatcher:
             code = failure.get("code")
             raise ClientRejectedError(detail=f"{method}: code {code}")
         return as_object(pending.response.get("result")) or {}
+
+    def _cancel_request(self, request_id: str, reason: str) -> None:
+        self._write(
+            {
+                "jsonrpc": "2.0",
+                "method": CANCELLED,
+                "params": {"requestId": request_id, "reason": reason},
+            }
+        )
 
     def cancelled(self, request_id: JsonValue) -> bool:
         """Whether the call running now with this id was cancelled by the agent."""
