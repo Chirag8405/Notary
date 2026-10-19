@@ -14,7 +14,15 @@ from types import MappingProxyType
 from typing import Annotated, Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import Discriminator, Field, JsonValue, Tag, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    Discriminator,
+    Field,
+    JsonValue,
+    Tag,
+    field_validator,
+    model_validator,
+)
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import LabelingPolicy, ToolOriginRule
@@ -74,6 +82,13 @@ PROMPT_SOURCE = "prompt:"
 the labeler sees for content that is not a tool result. No contract tool may use them."""
 
 
+class ConfigModel(NotaryModel):
+    """Base of the config models: a field's docstring becomes its JSON Schema `description`, so an
+    editor shows it (the schema is `schema/proxy-config.schema.json`)."""
+
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+
 def resource_source(server: str) -> str:
     return f"{RESOURCE_SOURCE}{server}"
 
@@ -82,7 +97,7 @@ def prompt_source(server: str) -> str:
     return f"{PROMPT_SOURCE}{server}"
 
 
-class ResourcePolicy(NotaryModel):
+class ResourcePolicy(ConfigModel):
     """Which resources of one server the agent may see and read; the rest stays hidden."""
 
     allow: Annotated[tuple[str, ...], Field(min_length=1)]
@@ -105,7 +120,7 @@ class ResourcePolicy(NotaryModel):
         return allow
 
 
-class PromptPolicy(NotaryModel):
+class PromptPolicy(ConfigModel):
     """Which prompts of one server the agent may see and get. Definitions are pinned at startup."""
 
     allow: Annotated[tuple[str, ...], Field(min_length=1)]
@@ -119,7 +134,7 @@ class PromptPolicy(NotaryModel):
         return allow
 
 
-class _ServerCommon(NotaryModel):
+class _ServerCommon(ConfigModel):
     timeout_seconds: Annotated[float, Field(gt=0)] = 30.0
     """How long one request to the server may take before the call is answered with an error."""
     resources: ResourcePolicy | None = None
@@ -219,14 +234,14 @@ ServerSpec = Annotated[
 The old form without `kind` (`{"command": [...]}`) still means stdio."""
 
 
-class ParamSpec(NotaryModel):
+class ParamSpec(ConfigModel):
     marker: Marker
     unit: DecisionUnit | None = None
     kind: ParamKind = "other"
     """`unit` and `kind` are ignored for a tool `DEFAULT_POLICY` knows: the reviewed row wins."""
 
 
-class FieldSpec(NotaryModel):
+class FieldSpec(ConfigModel):
     """Config for one field of a tool's `structuredContent`; unset keys fall back to the tool."""
 
     readers: tuple[str, ...] | None = None
@@ -235,7 +250,7 @@ class FieldSpec(NotaryModel):
     """How the resolver compares a quote of the field (e.g. `iban` ignores spaces and case)."""
 
 
-class ToolSpec(NotaryModel):
+class ToolSpec(ConfigModel):
     effect: ToolEffect
     server: str | None = None
     """Which server runs the tool; required with several servers, else the only one."""
@@ -283,7 +298,7 @@ class ToolSpec(NotaryModel):
         return fields
 
 
-class LedgerSpec(NotaryModel):
+class LedgerSpec(ConfigModel):
     """A user-authored ledger entry, e.g. a known payee."""
 
     ledger: str
@@ -292,13 +307,22 @@ class LedgerSpec(NotaryModel):
     value: str
 
 
-class ApprovalSettings(NotaryModel):
+class ApprovalSettings(ConfigModel):
     elicitation: bool = True
     """Ask the user to approve an escalation in the client's own UI (MCP elicitation) when the
     client declared the capability. The control socket works either way; the first answer wins."""
 
 
-class ProxyConfig(NotaryModel):
+class ProxyConfig(ConfigModel):
+    """The NOTARY MCP proxy config: the servers to front and the user's contract for the session."""
+
+    # Exactly one of `server` and `servers`: the validator below enforces it, this tells editors.
+    model_config = ConfigDict(
+        json_schema_extra={"oneOf": [{"required": ["server"]}, {"required": ["servers"]}]}
+    )
+
+    schema_uri: str | None = Field(default=None, alias="$schema")
+    """Optional pointer to `proxy-config.schema.json` for editors; the proxy ignores it."""
     single_server: ServerSpec | None = Field(default=None, alias="server")
     """The single form, `"server": {...}`: one server, named `default`."""
     named_servers: dict[str, ServerSpec] = Field(default_factory=dict, alias="servers")

@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schema/proxy-config.schema.json",
   "servers": {
     "mail": { "command": ["python3", "mail_server.py"] },
     "files": { "command": ["python3", "files_server.py"] }

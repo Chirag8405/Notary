@@ -1,0 +1,894 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ApprovalSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "elicitation": {
+          "default": true,
+          "description": "Ask the user to approve an escalation in the client's own UI (MCP elicitation) when the\nclient declared the capability. The control socket works either way; the first answer wins.",
+          "title": "Elicitation",
+          "type": "boolean"
+        }
+      },
+      "title": "ApprovalSettings",
+      "type": "object"
+    },
+    "EffectBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "max_effects": {
+          "minimum": 0,
+          "title": "Max Effects",
+          "type": "integer"
+        },
+        "max_spend_cents": {
+          "minimum": 0,
+          "title": "Max Spend Cents",
+          "type": "integer"
+        },
+        "max_egress_bytes": {
+          "minimum": 0,
+          "title": "Max Egress Bytes",
+          "type": "integer"
+        },
+        "max_call_amount_cents": {
+          "minimum": 0,
+          "title": "Max Call Amount Cents",
+          "type": "integer"
+        },
+        "max_approvals": {
+          "minimum": 0,
+          "title": "Max Approvals",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_effects",
+        "max_spend_cents",
+        "max_egress_bytes",
+        "max_call_amount_cents",
+        "max_approvals"
+      ],
+      "title": "EffectBudget",
+      "type": "object"
+    },
+    "EmailOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EmailOrigin",
+      "type": "object"
+    },
+    "EndorseMarker": {
+      "additionalProperties": false,
+      "description": "Parameter may be untrusted but only after explicit human endorsement.",
+      "properties": {
+        "kind": {
+          "const": "endorse",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "EndorseMarker",
+      "type": "object"
+    },
+    "FieldSpec": {
+      "additionalProperties": false,
+      "description": "Config for one field of a tool's `structuredContent`; unset keys fall back to the tool.",
+      "properties": {
+        "readers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Who may read the field; none means the tool's readers.",
+          "title": "Readers"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "iban",
+                "email",
+                "url_host",
+                "amount",
+                "identifier"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the resolver compares a quote of the field (e.g. `iban` ignores spaces and case).",
+          "title": "Unit"
+        }
+      },
+      "title": "FieldSpec",
+      "type": "object"
+    },
+    "FileOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FileOrigin",
+      "type": "object"
+    },
+    "FreeMarker": {
+      "additionalProperties": false,
+      "description": "Parameter is unconstrained by the contract.",
+      "properties": {
+        "kind": {
+          "const": "free",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FreeMarker",
+      "type": "object"
+    },
+    "HttpServerSpec": {
+      "additionalProperties": false,
+      "description": "A server reached over MCP Streamable HTTP (spec 2025-06-18) at one endpoint URL.",
+      "properties": {
+        "timeout_seconds": {
+          "default": 30.0,
+          "description": "How long one request to the server may take before the call is answered with an error.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourcePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None (the default): the server's resources are hidden and `resources/*` is not served."
+        },
+        "prompts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PromptPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None (the default): the server's prompts are hidden and `prompts/*` is not served."
+        },
+        "kind": {
+          "const": "http",
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "description": "`https://host/path`; plain `http://` only for a loopback host (a bearer token must not\ncross a network in the clear). No user name or password in the URL.",
+          "title": "Url",
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Extra request headers, e.g. `{\"Authorization\": \"Bearer ${GITHUB_TOKEN}\"}`. A value may\nreference an environment variable only as `${NAME}`; it is resolved at startup (a missing or\nempty variable fails startup) and never logged. A header that carries a credential\n(`Authorization`, `Cookie`, a name with token / key / secret) must reference a variable: no\nsecrets in the config file.",
+          "title": "Headers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "url"
+      ],
+      "title": "HttpServerSpec",
+      "type": "object"
+    },
+    "LedgerMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must resolve to an entry of the named ledger.",
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ledger": {
+          "title": "Ledger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ledger"
+      ],
+      "title": "LedgerMarker",
+      "type": "object"
+    },
+    "LedgerOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ledger",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LedgerOrigin",
+      "type": "object"
+    },
+    "LedgerSpec": {
+      "additionalProperties": false,
+      "description": "A user-authored ledger entry, e.g. a known payee.",
+      "properties": {
+        "ledger": {
+          "title": "Ledger",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "iban",
+            "email",
+            "url_host",
+            "amount",
+            "identifier"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ledger",
+        "key",
+        "unit",
+        "value"
+      ],
+      "title": "LedgerSpec",
+      "type": "object"
+    },
+    "LiteralMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must equal this exact value.",
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "LiteralMarker",
+      "type": "object"
+    },
+    "LlmOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "llm",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "LlmOrigin",
+      "type": "object"
+    },
+    "NamedSourceMarker": {
+      "additionalProperties": false,
+      "description": "Parameter must come from a named source (e.g. a contact book entry).",
+      "properties": {
+        "kind": {
+          "const": "named_source",
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source"
+      ],
+      "title": "NamedSourceMarker",
+      "type": "object"
+    },
+    "ParamSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "discriminator": {
+            "mapping": {
+              "endorse": "#/$defs/EndorseMarker",
+              "free": "#/$defs/FreeMarker",
+              "ledger": "#/$defs/LedgerMarker",
+              "literal": "#/$defs/LiteralMarker",
+              "named_source": "#/$defs/NamedSourceMarker"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LiteralMarker"
+            },
+            {
+              "$ref": "#/$defs/NamedSourceMarker"
+            },
+            {
+              "$ref": "#/$defs/LedgerMarker"
+            },
+            {
+              "$ref": "#/$defs/EndorseMarker"
+            },
+            {
+              "$ref": "#/$defs/FreeMarker"
+            }
+          ],
+          "title": "Marker"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "iban",
+                "email",
+                "url_host",
+                "amount",
+                "identifier"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "kind": {
+          "default": "other",
+          "description": "`unit` and `kind` are ignored for a tool `DEFAULT_POLICY` knows: the reviewed row wins.",
+          "enum": [
+            "destination",
+            "payload",
+            "amount",
+            "identifier",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "marker"
+      ],
+      "title": "ParamSpec",
+      "type": "object"
+    },
+    "PromptPolicy": {
+      "additionalProperties": false,
+      "description": "Which prompts of one server the agent may see and get. Definitions are pinned at startup.",
+      "properties": {
+        "allow": {
+          "description": "Prompt names (exact).",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allow",
+          "type": "array"
+        }
+      },
+      "required": [
+        "allow"
+      ],
+      "title": "PromptPolicy",
+      "type": "object"
+    },
+    "ResourcePolicy": {
+      "additionalProperties": false,
+      "description": "Which resources of one server the agent may see and read; the rest stays hidden.",
+      "properties": {
+        "allow": {
+          "description": "URI prefixes, e.g. `file:///docs/` (end a directory with `/`: the match is a plain string\nprefix). A URI outside every prefix is neither listed nor readable, and a read of it is\nanswered without contacting the server.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allow",
+          "type": "array"
+        },
+        "readers": {
+          "default": [
+            "*"
+          ],
+          "description": "Who may read the content; `[\"user\"]` marks it secret.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Readers",
+          "type": "array"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "email": "#/$defs/EmailOrigin",
+                  "file": "#/$defs/FileOrigin",
+                  "ledger": "#/$defs/LedgerOrigin",
+                  "llm": "#/$defs/LlmOrigin",
+                  "tool": "#/$defs/ToolOrigin",
+                  "user": "#/$defs/UserOrigin",
+                  "web": "#/$defs/WebOrigin"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/UserOrigin"
+                },
+                {
+                  "$ref": "#/$defs/ToolOrigin"
+                },
+                {
+                  "$ref": "#/$defs/EmailOrigin"
+                },
+                {
+                  "$ref": "#/$defs/FileOrigin"
+                },
+                {
+                  "$ref": "#/$defs/WebOrigin"
+                },
+                {
+                  "$ref": "#/$defs/LedgerOrigin"
+                },
+                {
+                  "$ref": "#/$defs/LlmOrigin"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Origin of the content; none means `tool:resource:<server>`. Content is always untrusted.",
+          "title": "Origin"
+        }
+      },
+      "required": [
+        "allow"
+      ],
+      "title": "ResourcePolicy",
+      "type": "object"
+    },
+    "StdioServerSpec": {
+      "additionalProperties": false,
+      "description": "A server the proxy starts as a child process and speaks to over its stdin and stdout.",
+      "properties": {
+        "timeout_seconds": {
+          "default": 30.0,
+          "description": "How long one request to the server may take before the call is answered with an error.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourcePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None (the default): the server's resources are hidden and `resources/*` is not served."
+        },
+        "prompts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PromptPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None (the default): the server's prompts are hidden and `prompts/*` is not served."
+        },
+        "kind": {
+          "const": "stdio",
+          "default": "stdio",
+          "description": "The only form there was before `kind`: a spec without it is a stdio spec.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "command": {
+          "description": "Run in the config file's directory.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Command",
+          "type": "array"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "StdioServerSpec",
+      "type": "object"
+    },
+    "ToolOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "tool",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ToolOrigin",
+      "type": "object"
+    },
+    "ToolSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "effect": {
+          "enum": [
+            "read",
+            "write",
+            "irreversible"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which server runs the tool; required with several servers, else the only one.",
+          "title": "Server"
+        },
+        "remote_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server's name for the tool when the contract name differs. Reviewed policy rows and\nthe pinned manifest use the contract name; the parameters must be classified under it.",
+          "title": "Remote Name"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ParamSpec"
+          },
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        },
+        "readers": {
+          "default": [
+            "*"
+          ],
+          "description": "Who may read this tool's results; `[\"user\"]` marks them secret.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Readers",
+          "type": "array"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "email": "#/$defs/EmailOrigin",
+                  "file": "#/$defs/FileOrigin",
+                  "ledger": "#/$defs/LedgerOrigin",
+                  "llm": "#/$defs/LlmOrigin",
+                  "tool": "#/$defs/ToolOrigin",
+                  "user": "#/$defs/UserOrigin",
+                  "web": "#/$defs/WebOrigin"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/UserOrigin"
+                },
+                {
+                  "$ref": "#/$defs/ToolOrigin"
+                },
+                {
+                  "$ref": "#/$defs/EmailOrigin"
+                },
+                {
+                  "$ref": "#/$defs/FileOrigin"
+                },
+                {
+                  "$ref": "#/$defs/WebOrigin"
+                },
+                {
+                  "$ref": "#/$defs/LedgerOrigin"
+                },
+                {
+                  "$ref": "#/$defs/LlmOrigin"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Origin of the results; none means `tool:<name>`. Results are always untrusted.",
+          "title": "Origin"
+        },
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldSpec"
+          },
+          "default": {},
+          "description": "Per-field config of `structuredContent`, keyed by path (`iban`, `items.*.iban`; see\n`structured.py`). It applies only to paths the tool's pinned `outputSchema` declares; any\nother key the server sends gets the tool's readers and no unit. A pattern covers the paths\nbelow it too, and the most specific pattern that sets a value wins.",
+          "title": "Fields",
+          "type": "object"
+        },
+        "records": {
+          "default": false,
+          "description": "The tool's `structuredContent` is `{\"records\": [{\"record_id\", \"readers\", \"fields\": [{\"name\",\n\"text\", \"unit\"}]}]}`: each record becomes one record of the result with the server's\n`record_id`, so a value id is `<call_id>.<record_id>.<field>` (see `mcp_backend.py`).",
+          "title": "Records",
+          "type": "boolean"
+        },
+        "record_readers": {
+          "default": "config",
+          "description": "Whose readers a record gets. `config`: the tool's `readers`, whatever the server says.\n`narrow_by_server`: the join (intersection) of the tool's `readers` and the record's own,\nso a server can make a record more secret but never more public. Needs `records`.",
+          "enum": [
+            "config",
+            "narrow_by_server"
+          ],
+          "title": "Record Readers",
+          "type": "string"
+        }
+      },
+      "required": [
+        "effect"
+      ],
+      "title": "ToolSpec",
+      "type": "object"
+    },
+    "UserOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "user",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "UserOrigin",
+      "type": "object"
+    },
+    "WebOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "web",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "WebOrigin",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The NOTARY MCP proxy config: the servers to front and the user's contract for the session.",
+  "oneOf": [
+    {
+      "required": [
+        "server"
+      ]
+    },
+    {
+      "required": [
+        "servers"
+      ]
+    }
+  ],
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional pointer to `proxy-config.schema.json` for editors; the proxy ignores it.",
+      "title": "$Schema"
+    },
+    "server": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StdioServerSpec"
+            },
+            {
+              "$ref": "#/$defs/HttpServerSpec"
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The single form, `\"server\": {...}`: one server, named `default`.",
+      "title": "Server"
+    },
+    "servers": {
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/StdioServerSpec"
+          },
+          {
+            "$ref": "#/$defs/HttpServerSpec"
+          }
+        ]
+      },
+      "description": "The several-servers form, `\"servers\": {name: {...}}`. Give exactly one of the two.",
+      "title": "Servers",
+      "type": "object"
+    },
+    "user_intent": {
+      "title": "User Intent",
+      "type": "string"
+    },
+    "tools": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ToolSpec"
+      },
+      "title": "Tools",
+      "type": "object"
+    },
+    "budget": {
+      "$ref": "#/$defs/EffectBudget"
+    },
+    "egress_hosts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Egress Hosts",
+      "type": "array"
+    },
+    "authorized_irreversible": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Authorized Irreversible",
+      "type": "array"
+    },
+    "ledger": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/LedgerSpec"
+      },
+      "title": "Ledger",
+      "type": "array"
+    },
+    "approvals": {
+      "$ref": "#/$defs/ApprovalSettings",
+      "default": {
+        "elicitation": true
+      }
+    }
+  },
+  "required": [
+    "user_intent",
+    "tools",
+    "budget"
+  ],
+  "title": "ProxyConfig",
+  "type": "object"
+}
