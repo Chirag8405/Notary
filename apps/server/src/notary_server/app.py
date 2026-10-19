@@ -1,5 +1,6 @@
 """FastAPI application: REST for metadata, WebSocket for the typed event stream."""
 
+import ipaddress
 import json
 import os
 import secrets
@@ -44,7 +45,7 @@ from notary_server.hijacked import (
 )
 from notary_server.limits import PlaygroundLimits, RateLimitedError, RateLimiter
 from notary_server.log_redaction import attach_redaction
-from notary_server.mcp_runs import McpRunList, list_mcp_runs
+from notary_server.mcp_runs import McpApprovals, McpRunList, list_mcp_runs
 from notary_server.playground import (
     AttackRunResponse,
     LaneRunner,
@@ -65,6 +66,12 @@ from notary_world.golden import EVENT_ADAPTER
 from notary_world.loader import load_attacks
 
 EVENT_DELAY_SECONDS = 0.4
+WEB_ORIGINS = ["http://localhost:3000"]
+"""The pages allowed to call the server from a browser (CORS), and the only ones whose socket may
+approve an MCP escalation."""
+FORWARDING_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip")
+"""Set by a reverse proxy. A socket that carries one is not a local client, whatever address the
+proxy connects from."""
 
 BROKER_MODES: frozenset[RunMode] = frozenset({"cassette", "live"})
 """The run modes that escalate through the endorsement broker. `golden` never does."""
@@ -144,10 +151,47 @@ async def _send_events(
                 await run_in_threadpool(close)
 
 
+def is_loopback_host(host: str | None) -> bool:
+    """Whether a peer address is this machine (127.0.0.0/8, ::1, or either as an IPv4-mapped v6)."""
+    if host is None:
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return address.is_loopback
+
+
+def is_local_client(websocket: WebSocket) -> bool:
+    """Whether this socket may act on an MCP escalation: a loopback peer, no reverse proxy in
+    between, and (for a browser, which always sends one) an `Origin` that is the X-ray page.
+
+    The origin test matters because a loopback peer is also any web page the user has open: a
+    browser lets that page connect to `ws://localhost:8000`.
+    """
+    client = websocket.client
+    if client is None or not is_loopback_host(client.host):
+        return False
+    if any(name in websocket.headers for name in FORWARDING_HEADERS):
+        return False
+    origin = websocket.headers.get("origin")
+    return origin is None or origin in WEB_ORIGINS
+
+
 async def _receive_commands(
-    websocket: WebSocket, router: CommandRouter, request: RunRequest, progress: _Progress
+    websocket: WebSocket,
+    router: CommandRouter,
+    request: RunRequest,
+    progress: _Progress,
+    *,
+    blocking: bool = False,
 ) -> CommandRejected | None:
-    """Route client frames until one is rejected (returned) or the client disconnects (None)."""
+    """Route client frames until one is rejected (returned) or the client disconnects (None).
+
+    `blocking`: the handlers do I/O (an MCP control socket), so a command is dispatched in a worker
+    thread, one at a time, and the event loop is not held."""
     while True:
         message = await websocket.receive()
         if message["type"] == "websocket.disconnect":
@@ -157,7 +201,10 @@ async def _receive_commands(
             if not isinstance(raw, str):
                 raise CommandRejected(CLOSE_BAD_REQUEST, "invalid command")
             context = CommandContext(run_id=progress.run_id, lane=request.lane, owner=request.owner)
-            router.dispatch(raw, context)
+            if blocking:
+                await run_in_threadpool(router.dispatch, raw, context)
+            else:
+                router.dispatch(raw, context)
         except CommandRejected as rejected:
             return rejected
 
@@ -174,8 +221,11 @@ def create_app(
     broker: EndorsementBroker | None = None,
     limits: PlaygroundLimits | None = None,
     mcp_runs_dir: Path | None = None,
+    mcp_approvals: McpApprovals | None = None,
 ) -> FastAPI:
-    """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
+    """`mcp_approvals` (`NOTARY_MCP_APPROVALS=1`) lets the endorsement card approve or reject an MCP
+    proxy escalation; without it, or for a client that is not local, a command on an `mcp` socket
+    closes it `4422`. `limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
     want. `mcp_runs_dir` is the directory of the MCP proxy's audit chains
     (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404."""
@@ -191,7 +241,7 @@ def create_app(
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=WEB_ORIGINS,
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
@@ -330,11 +380,14 @@ def create_app(
             if request.mode in BROKER_MODES and broker is not None and progress.run_id is not None:
                 broker.cancel_run(progress.run_id, owner=request.owner)
 
-        # Nothing is paced for a chain that is read from disk; and no command is accepted on it
-        # yet: the router of an `mcp` socket has no handler, so every command is refused.
+        # Nothing is paced for a chain that is read from disk. An `mcp` socket has its own router:
+        # without a handler every command is refused (4422). The handler that forwards an approval
+        # to the proxy is registered only when approvals are enabled AND this client is local.
         reading_chain = request.mode == "mcp"
         delay = 0.0 if reading_chain else event_delay
         socket_router = CommandRouter() if reading_chain else command_router
+        if reading_chain and mcp_approvals is not None and is_local_client(websocket):
+            socket_router.register("endorsement_decision", mcp_approvals.handler())
 
         async with anyio.create_task_group() as group:
 
@@ -352,7 +405,9 @@ def create_app(
                 group.cancel_scope.cancel()
 
             async def receive() -> None:
-                rejected = await _receive_commands(websocket, socket_router, request, progress)
+                rejected = await _receive_commands(
+                    websocket, socket_router, request, progress, blocking=reading_chain
+                )
                 release_run()
                 if rejected is not None:
                     await websocket.close(code=rejected.code, reason=rejected.reason)

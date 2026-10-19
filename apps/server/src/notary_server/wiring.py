@@ -37,7 +37,7 @@ from notary_server.hijacked import (
 from notary_server.lanes import lane_hooks, stream_for_lane
 from notary_server.limits import Clock, PlaygroundLimits, RateLimiter
 from notary_server.llm import DEFAULT_MODEL, CassetteClient, CassetteMissError, LlmClient
-from notary_server.mcp_runs import McpRunsSource
+from notary_server.mcp_runs import McpApprovals, McpRunsSource
 from notary_server.playground import LaneRunner
 from notary_server.runner import ScenarioNotFoundError
 from notary_server.sources import (
@@ -53,6 +53,7 @@ from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 DEFAULT_ANCHOR_DB = ":memory:"
 DEFAULT_ENDORSEMENT_TIMEOUT_SECONDS = 300.0
 DEFAULT_ARENA_MAX_ROUNDS = 10
+DEFAULT_MCP_CONTROL_DIR = Path(".notary") / "mcp-control"
 MCP_POLL_SECONDS = 0.25
 """How long a followed MCP chain waits before it looks for new entries again."""
 LIVE_RUN_NOTE = "live run: a real model answered, so this run is not reproducible"
@@ -96,13 +97,22 @@ class Settings(NotaryModel):
     mcp_runs_dir: Path | None = None
     """The directory the MCP proxy writes its audit chains to (`NOTARY_MCP_RUNS_DIR`). Unset: mode
     `mcp` is not listed and `GET /mcp/runs` is 404. The server only reads it."""
+    mcp_approvals: bool = False
+    """Whether the endorsement card may approve or reject an MCP proxy escalation
+    (`NOTARY_MCP_APPROVALS=1`, exactly). Needs `mcp_runs_dir`. Off by default: the decision moves
+    real effects, so it is opt-in and only a local client is ever heard (see `create_app`)."""
+    mcp_control_dir: Path | None = None
+    """The directory the proxy's control sockets are in (`NOTARY_MCP_CONTROL_DIR`); a socket named
+    in a run's `control.json` outside it is refused. Unset: `.notary/mcp-control` of the server's
+    working directory, which is the proxy's default when both start from the repo root."""
 
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
         """Read `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS` and the
         limits of the playground (`NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`,
         `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
-        `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`) and `NOTARY_MCP_RUNS_DIR` (empty is unset).
+        `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`), `NOTARY_MCP_RUNS_DIR` (empty is unset),
+        `NOTARY_MCP_APPROVALS` (only `1` turns it on) and `NOTARY_MCP_CONTROL_DIR` (empty is unset).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -124,6 +134,10 @@ class Settings(NotaryModel):
         mcp_runs_dir = environ.get("NOTARY_MCP_RUNS_DIR")
         if mcp_runs_dir:
             values["mcp_runs_dir"] = Path(mcp_runs_dir)
+        values["mcp_approvals"] = environ.get("NOTARY_MCP_APPROVALS") == "1"
+        mcp_control_dir = environ.get("NOTARY_MCP_CONTROL_DIR")
+        if mcp_control_dir:
+            values["mcp_control_dir"] = Path(mcp_control_dir)
         for name, field, parse in _LIMIT_VARIABLES:
             raw = environ.get(name)
             if raw is not None:
@@ -349,6 +363,12 @@ def build_app(
         sources["mcp"] = McpRunsSource(
             settings.mcp_runs_dir, poll=lambda: time.sleep(MCP_POLL_SECONDS), anchors=anchors
         )
+    approvals: McpApprovals | None = None
+    if settings.mcp_runs_dir is not None and settings.mcp_approvals:
+        approvals = McpApprovals(
+            settings.mcp_runs_dir,
+            control_directory=settings.mcp_control_dir or DEFAULT_MCP_CONTROL_DIR,
+        )
     return create_app(
         event_delay=event_delay,
         sources=sources,
@@ -365,4 +385,5 @@ def build_app(
         ),
         limits=build_limits(settings, clock),
         mcp_runs_dir=settings.mcp_runs_dir,
+        mcp_approvals=approvals,
     )
