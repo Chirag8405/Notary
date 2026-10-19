@@ -289,13 +289,15 @@ class AgentEndpoint:
         self._close_input()
         self._stop_requested.set()
         with self._lock:
-            self._ended = True
+            self._ended = True  # no new request is accepted
+        # The worker has finished: its last answers are on the pipe; let the router deliver them
+        # to the replies that wait for them BEFORE the rest of the replies are ended.
+        self._output_write.close()
+        threads[1].join()
+        with self._lock:
             waiters = list(self._waiters.values())
             self._waiters.clear()
             stream, self._stream = self._stream, None
-        # The worker has finished: its last answers are on the pipe; let the router deliver them.
-        self._output_write.close()
-        threads[1].join()
         for waiter in waiters:
             waiter.events.put(None)
         if stream is not None:
