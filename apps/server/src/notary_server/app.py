@@ -223,12 +223,13 @@ def create_app(
     mcp_runs_dir: Path | None = None,
     mcp_approvals: McpApprovals | None = None,
 ) -> FastAPI:
-    """`mcp_approvals` (`NOTARY_MCP_APPROVALS=1`) lets the endorsement card approve or reject an MCP
-    proxy escalation; without it, or for a client that is not local, a command on an `mcp` socket
-    closes it `4422`. `limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
+    """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
     want. `mcp_runs_dir` is the directory of the MCP proxy's audit chains
-    (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404."""
+    (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404. `mcp_approvals`
+    (`NOTARY_MCP_APPROVALS=1`) lets the endorsement card approve or reject an MCP proxy
+    escalation; without it, or for a client that is not local, a command on an `mcp` socket
+    closes it `4422`."""
     attach_redaction()  # a session id in a request path must never reach a log
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router

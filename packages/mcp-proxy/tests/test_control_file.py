@@ -1,4 +1,4 @@
-"""`<run_id>.control.json`: where the proxy announces its control socket to the X-ray server (#262)."""
+"""`<run_id>.control.json`: how the proxy announces its control socket to the X-ray (#262)."""
 
 import json
 import re

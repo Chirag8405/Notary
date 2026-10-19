@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
+from test_mcp_runs import entries_of, run_events, until_closed
 
 from notary_core.models import (
     DecisionMade,
@@ -27,6 +28,7 @@ from notary_core.models import (
     Event,
 )
 from notary_mcp_proxy.audit_log import RunLog
+from notary_mcp_proxy.jsonrpc import JsonObject, as_object
 from notary_server.app import create_app, is_loopback_host
 from notary_server.commands import CommandContext, CommandRejected
 from notary_server.mcp_runs import (
@@ -39,7 +41,6 @@ from notary_server.mcp_runs import (
 )
 from notary_server.wiring import Settings, build_app
 from notary_world.golden import EVENT_ADAPTER
-from test_mcp_runs import entries_of, run_events
 
 RUN = "mcp-0123456789ab"
 LOCAL = ("127.0.0.1", 50000)
@@ -284,9 +285,7 @@ def serve_run(
     return TestClient(app, client=LOCAL), runs
 
 
-def send_decision(
-    client: TestClient, headers: dict[str, str] | None = None
-) -> WebSocketDisconnect:
+def send_decision(client: TestClient, headers: dict[str, str] | None = None) -> WebSocketDisconnect:
     """Watch the three events, send an approve and wait for the server to close the socket."""
     url = f"/ws/runs/{RUN}?lane=notary&mode=mcp"
     with client.websocket_connect(url, headers=dict(headers or {})) as ws:
@@ -427,10 +426,8 @@ def test_the_command_still_needs_the_socket_to_own_the_run(dirs: tuple[Path, Pat
         for _ in range(3):
             ws.receive_text()
         ws.send_text(frame("approve", run_id="mcp-ffffffffffff"))
-        with pytest.raises(WebSocketDisconnect) as closed:
-            while True:
-                ws.receive_text()
-    assert (closed.value.code, closed.value.reason) == (4409, "command is for another run")
+        closed = until_closed(ws)
+    assert (closed.code, closed.reason) == (4409, "command is for another run")
     assert fake.connects == []
 
 
@@ -449,7 +446,7 @@ class ProxyProcess:
         assert self._process.stderr is not None
         self._stdin = self._process.stdin
         self._lines: queue.Queue[bytes] = queue.Queue()
-        self._answers: dict[object, dict[str, object]] = {}
+        self._answers: dict[object, JsonObject] = {}
         stdout, stderr = self._process.stdout, self._process.stderr
         self._pumps = [
             threading.Thread(target=self._pump, args=(stdout,), daemon=True),
@@ -468,14 +465,15 @@ class ProxyProcess:
         self._stdin.write(json.dumps(message).encode("utf-8") + b"\n")
         self._stdin.flush()
 
-    def result(self, request_id: int) -> dict[str, object]:
+    def result(self, request_id: int) -> JsonObject:
         while request_id not in self._answers:
             line = self._lines.get(timeout=PATIENCE)
             assert line, "the proxy closed stdout before answering"
-            message = json.loads(line)
+            message = as_object(json.loads(line))
+            assert message is not None
             self._answers[message.get("id")] = message
-        answer = self._answers[request_id]["result"]
-        assert isinstance(answer, dict)
+        answer = as_object(self._answers[request_id].get("result"))
+        assert answer is not None
         return answer
 
     def finish(self) -> None:
