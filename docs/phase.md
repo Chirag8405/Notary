@@ -181,7 +181,7 @@ Names TBD. Directory ownership: one owner approves changes to their packages (la
 - [ ] Eval harness: `run_agentdojo` is still a stub (`NotImplementedError`); charts from the export do not exist
 - [ ] MCP proxy in front of a real MCP server (lane A): done: a proxy (`notary-mcp-proxy`, `.mcp.json` for Claude Code) in front of the toy bank server and several servers over stdio and Streamable HTTP, with an approval path for ESCALATE, a live X-ray stream, hooks, a config check, a README and a config JSON Schema ([README](../packages/mcp-proxy/README.md), [demo.md](demo.md#mcp-proxy-with-claude-code)); still to do: the clip and the live checks marked pending
 - [ ] AgentDojo banking and Slack runs (if allowed); results export JSON -> charts (lane B)
-- [ ] #240 Model-dependence eval: attack success per model and lane, 20+ rounds per cell with confidence intervals (first measurement of 3 Groq models is in [demo.md](demo.md); the full run needs several days of the 200,000 tokens per model per day Groq limit; left for later)
+- [x] #240 Model-dependence eval: attack success per model and lane, with confidence intervals. Measured 2026-10-19 for `gpt-oss-20b` and `gpt-oss-120b` at 10 rounds per cell (not 20+, and without `qwen3.8-27b`, which uses a whole day's Groq tokens in about 19 runs); the NOTARY lane was never hijacked, `gpt-oss-20b` was hijacked in 8 of 30 undefended runs. Table in [demo.md](demo.md). A 20-round, three-model run can follow.
 - [ ] Slide deck numbers updated from the export
 - Accept: `uv run` eval entry point writes results consumed by the charts; metrics per bucket as in [threat-model.md](threat-model.md#metrics)
 - Demo-able: step 6 numbers; optional proxy clip.
