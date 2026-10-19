@@ -129,6 +129,12 @@ class LedgerSpec(NotaryModel):
     value: str
 
 
+class ApprovalSettings(NotaryModel):
+    elicitation: bool = True
+    """Ask the user to approve an escalation in the client's own UI (MCP elicitation) when the
+    client declared the capability. The control socket works either way; the first answer wins."""
+
+
 class ProxyConfig(NotaryModel):
     single_server: ServerSpec | None = Field(default=None, alias="server")
     """The single form, `"server": {...}`: one server, named `default`."""
@@ -140,6 +146,7 @@ class ProxyConfig(NotaryModel):
     egress_hosts: tuple[str, ...] = ()
     authorized_irreversible: tuple[str, ...] = ()
     ledger: tuple[LedgerSpec, ...] = ()
+    approvals: ApprovalSettings = ApprovalSettings()
 
     @model_validator(mode="after")
     def _routes_are_valid(self) -> Self:

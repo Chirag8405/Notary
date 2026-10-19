@@ -132,6 +132,7 @@ def build_servers(
         desk,
         control_hint=control_hint,
         reject_unanswered=reject_unanswered,
+        elicitation=config.approvals.elicitation,
     )
     for client in clients.values():
         client.on_notification = server.on_server_notification
