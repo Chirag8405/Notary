@@ -89,6 +89,7 @@ cd apps/server && uv run --no-sync python scripts/model_eval.py --rounds 20 --ou
 - **NOTARY lane:** the attacker goal was not reached in any of the 60 runs (exit code 0). With 10 rounds a 0/10 cell still allows a rate of up to 28%, so read it as "no hijack observed", not as proof.
 - **The smaller model is hijackable:** `gpt-oss-20b` reached the attacker goal in 8 of 30 undefended runs and 10 of 30 classifier-lane runs; the NOTARY lane stopped all of them. The classifier lane did no better than undefended there (its 1/10 on `swapped_iban` against 0/10 undefended is within noise).
 - **Weaker coverage:** `gpt-oss-20b` made no tool call in 20 of 90 runs, so those rounds did not test the attack.
+- **Raw results:** `apps/server/results/model_eval/2026-10-19.json` (a `ModelEvalReport`: both models, 18 cells, merged from two runs that used different keys).
 - **Live results vary:** quote these numbers only with their date, models and round count. They are not a test.
 
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
