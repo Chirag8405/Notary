@@ -151,6 +151,27 @@ def test_use_nearest_is_rejected_with_a_fixed_reason_and_nothing_is_forwarded(
     assert fake.connects == []
 
 
+@pytest.mark.parametrize("choice", ["user_prompt", "pending", "approve ", "APPROVE", ""])
+def test_the_card_can_never_make_the_forwarder_send_another_op(
+    dirs: tuple[Path, Path], choice: str
+) -> None:
+    """The proxy's control socket also takes `user_prompt` (the user's own words, trusted). The
+    forwarder serves the card only: a decision outside `approve` / `reject` is not a command at
+    all (the model's `decision` is a closed set), so no frame can reach a control socket as a
+    `user_prompt`, and the line sent for the two real decisions is exactly their op."""
+    runs, control = dirs
+    announce(runs, str(control / "a.sock"))
+    fake = FakeControl()
+    with pytest.raises(ValueError):
+        command(choice)
+    assert handle(approvals(dirs, fake), command("approve")) is None
+    assert handle(approvals(dirs, fake), command("reject")) is None
+    fake.join()
+    sent = [json.loads(line) for line in fake.received]
+    assert [message["op"] for message in sent] == ["approve", "reject"]
+    assert all(set(message) == {"op", "endorsement_id"} for message in sent)
+
+
 def test_a_refusal_by_the_proxy_is_a_rejection_with_a_fixed_reason(dirs: tuple[Path, Path]) -> None:
     runs, control = dirs
     announce(runs, str(control / "a.sock"))
