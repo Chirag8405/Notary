@@ -17,6 +17,7 @@ from pydantic import Field
 
 from notary_core.audit import append
 from notary_core.canon import sha256_hex
+from notary_core.contract import assert_monotonic
 from notary_core.endorsement import remaining_approvals
 from notary_core.gateway import GatewayLabeler, ToolResult, ToolResultField, ValueStore
 from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
@@ -37,6 +38,7 @@ from notary_core.models import (
     LedgerEntry,
     NotaryModel,
     ResolvedValue,
+    RunStarted,
     SessionState,
     Sha256Hex,
     ToolCallProposal,
@@ -167,6 +169,8 @@ class Gateway:
         self._seen_calls: set[str] = set()
         self._escalations: dict[str, _Pending] = {}
         self._user_values = 0
+        self._opening: str | None = None
+        self._opening_failed = False
 
     @property
     def chain(self) -> tuple[AuditEntry, ...]:
@@ -207,7 +211,11 @@ class Gateway:
 
         The runner uses this for `run_started`, `oracle_updated` and `run_finished`. It still
         tries to append after a halt (a `run_finished` is worth logging), but never retries.
+        A deferred `run_started` (`defer_start`) is appended first, with the contract as it is
+        now, so no event can precede it; if that append fails nothing else is appended.
         """
+        if not self.ensure_started():
+            return False
         event = make(self._run_id, self._lane, len(self._chain))
         try:
             self._chain = self._audit_append(self._chain, event)
@@ -215,6 +223,61 @@ class Gateway:
             self._halted = self._halted or HALT_AUDIT
             return False
         return True
+
+    def defer_start(self, scenario: str) -> None:
+        """Hold `run_started` back until the chain is first needed (`ensure_started` or `emit`).
+
+        Until then the contract may still be replaced by `adopt_contract`. The chain must be
+        empty.
+        """
+        if self._chain:
+            raise ValueError("the run has started")
+        self._opening = scenario
+
+    def ensure_started(self) -> bool:
+        """Append the deferred `run_started` (once, with the contract now in force).
+
+        True when nothing is deferred or it was appended; False when that append failed (the
+        gateway is then halted and appends nothing else).
+        """
+        scenario = self._opening
+        if scenario is None:
+            return not self._opening_failed
+        self._opening = None
+        contract = self._contract
+        event = RunStarted(
+            type="run_started",
+            run_id=self._run_id,
+            lane=self._lane,
+            seq=len(self._chain),
+            scenario=scenario,
+            contract=contract,
+            classifier=None,
+        )
+        try:
+            self._chain = self._audit_append(self._chain, event)
+        except Exception:
+            self._halted = self._halted or HALT_AUDIT
+            self._opening_failed = True
+            return False
+        return True
+
+    def adopt_contract(self, contract: IntentContract) -> None:
+        """Replace the contract before the run starts; it may only narrow (I5).
+
+        Allowed only while the chain is empty: once `run_started` is in the chain the contract is
+        frozen. Raises `ValueError` after that and `ContractWideningError` when `contract` is wider
+        than the one in force (`widening_reasons`, which also requires the same `contract_id` and
+        `user_intent`). The pinned tools are untouched: a changed manifest hash is a widening.
+        """
+        if self._chain:
+            raise ValueError("the contract is frozen: the run has started")
+        assert_monotonic(self._contract, contract)
+        self._contract = contract
+
+    @property
+    def contract(self) -> IntentContract:
+        return self._contract
 
     def pin_session(self) -> tuple[ToolPin, ...]:
         """Pin every tool the backend reports now; calling it again re-pins."""

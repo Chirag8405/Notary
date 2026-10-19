@@ -52,11 +52,12 @@ from notary_mcp_proxy.control import (
     ControlServer,
     send,
 )
+from notary_mcp_proxy.dispatch import PROMPT_WAIT
 from notary_mcp_proxy.gateway import PREVIEW_LIMIT
 from notary_mcp_proxy.jsonrpc import JsonObject
 from notary_mcp_proxy.main import build_server, main
 from notary_mcp_proxy.prompt_hook import HOOK_TIMEOUT, forward_prompt, prompt_from
-from notary_mcp_proxy.server import ProxyServer
+from notary_mcp_proxy.server import COMPILING_PROMPT_WAIT, ProxyServer
 
 BANK = Path(__file__).resolve().parents[1] / "examples" / "bank"
 SRC = Path(__file__).resolve().parents[1] / "src" / "notary_mcp_proxy"
@@ -610,7 +611,8 @@ def test_the_hook_bounds_every_socket_call_in_time(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("notary_mcp_proxy.prompt_hook.send", fake_send)
     assert forward_prompt(payload(), Path("/x/c.sock")) == ("request.1", "")
     assert timeouts == [HOOK_TIMEOUT]
-    assert 0 < HOOK_TIMEOUT <= 10  # inside Claude Code's 30 s default for this hook
+    # past the proxy's worst case (queued wait + compile and appends), inside Claude Code's 30 s
+    assert PROMPT_WAIT + COMPILING_PROMPT_WAIT < HOOK_TIMEOUT < 30
 
 
 # -- the whole path through a real proxy -----------------------------------------------------------

@@ -11,7 +11,7 @@ Claude Code's semantics for this event (read from the 2.1.303 binary, see docs/d
 exit 2 ERASES the user's prompt; any other exit code shows stderr to the user and goes on. So this
 hook prints NOTHING on stdout, exits 0 on every path (a failed hook must not eat the user's prompt)
 and puts every diagnostic on stderr, never the prompt itself. It is bounded in time: the socket
-calls have a timeout and the proxy answers within a few seconds.
+calls have a timeout (`HOOK_TIMEOUT`) and the proxy answers within it.
 
 Only a prompt the user authored is forwarded. The `source` field says who wrote it: `user` (the
 interactive composer) and `sdk` (`claude -p`, the Agent SDK) are the user's; `system`,
@@ -34,8 +34,13 @@ USER_SOURCES = frozenset({"user", "sdk"})
 """`source` values that are the user's own words."""
 MAX_INPUT = 4 * 1024 * 1024
 """Bytes of hook input read; a payload that does not fit is skipped, not cut."""
-HOOK_TIMEOUT = 5.0
-"""Seconds for connecting to the socket and for the proxy's answer (it answers within 3 s)."""
+HOOK_TIMEOUT = 25.0
+"""Seconds for connecting to the socket and for the proxy's answer. The proxy answers within
+`PROMPT_WAIT` (3 s) when the worker is busy or the prompt is just stored; the first prompt of a run
+that compiles its contract (`--compile-url`) takes up to `COMPILE_TIMEOUT` (15 s) more, so at worst
+3 + (15 + 3) = 21 s. The hook waits longer than that, so it never gives up on a prompt the proxy
+then stores, and shorter than the 30 s after which Claude Code ends a hook. A hook that finds no
+proxy fails at once; the long wait is only paid while a proxy is working."""
 
 Sender = Callable[[Path, JsonObject], JsonObject]
 

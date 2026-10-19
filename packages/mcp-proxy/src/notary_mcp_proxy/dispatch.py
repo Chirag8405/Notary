@@ -90,7 +90,9 @@ class Target(Protocol):
 class PromptSubmitter(Protocol):
     """`Dispatcher.submit_user_prompt`: hand a prompt to the worker that owns the Gateway."""
 
-    def __call__(self, text: str, *, timeout: float = PROMPT_WAIT) -> str | None: ...
+    def __call__(
+        self, text: str, *, timeout: float = PROMPT_WAIT, run_timeout: float | None = None
+    ) -> str | None: ...
 
 
 class ClientAsker(Protocol):
@@ -292,12 +294,18 @@ class Dispatcher:
             raise ClientRejectedError(detail=f"{method}: code {code}")
         return as_object(pending.response.get("result")) or {}
 
-    def submit_user_prompt(self, text: str, *, timeout: float = PROMPT_WAIT) -> str | None:
+    def submit_user_prompt(
+        self, text: str, *, timeout: float = PROMPT_WAIT, run_timeout: float | None = None
+    ) -> str | None:
         """Queue the user's prompt for the worker and block the CALLING thread for its answer.
 
         Returns the id of the stored value, or None when it was not stored: the input has ended,
         the worker did not get to it within `timeout` (it is then withdrawn, so it can never be
         stored later), or the Gateway refused it. Never called on the worker thread.
+
+        Once the worker has started on the prompt it is waited for `run_timeout` seconds (default:
+        `timeout`). Storing is one append, except for the first prompt of a run that compiles a
+        contract, which takes up to the compile timeout first (`ProxyServer.submit_user_prompt`).
         """
         item = _Prompt(text)
         with self._state:
@@ -314,8 +322,8 @@ class Dispatcher:
                 return None
             running = item.state == "running"
         if running:
-            # The worker has started to store it: that is one append, so wait for the end of it.
-            self._wait(item.done, timeout)
+            # The worker has started on it: wait for the end of it.
+            self._wait(item.done, timeout if run_timeout is None else run_timeout)
         with self._state:
             return item.value_id if item.state == "done" else None
 
