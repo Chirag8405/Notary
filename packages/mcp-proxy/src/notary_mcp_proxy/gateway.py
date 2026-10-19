@@ -53,9 +53,9 @@ from notary_core.store import InMemoryValueStore
 from notary_mcp_proxy.backend import BackendResult, ToolBackend
 
 PREVIEW_LIMIT: int = 80
+"""Characters kept in `ValueLabeled.preview`."""
 USER_VALUE_PREFIX = "request"
 """Ids of the user's own words are `request.<n>` (the engine's single request is `v-request`)."""
-"""Characters kept in `ValueLabeled.preview`."""
 HALT_AUDIT = "audit append failed"
 ERR_EFFECT_NOT_LOGGED = "the effect ran but was not logged"
 ERR_RESULT_NOT_LOGGED = "the effect ran but a result value was not logged"
