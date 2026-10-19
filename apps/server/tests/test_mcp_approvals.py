@@ -173,6 +173,21 @@ def test_the_card_can_never_make_the_forwarder_send_another_op(
     assert all(set(message) == {"op", "endorsement_id"} for message in sent)
 
 
+@pytest.mark.parametrize("op", ["user_prompt", "pending", "approve ", "APPROVE", "", "use_nearest"])
+def test_forward_itself_refuses_any_op_but_approve_and_reject(
+    dirs: tuple[Path, Path], op: str
+) -> None:
+    """The guard is in `forward`, not only in the command model: a direct caller (a bug, a new
+    command) cannot make the server send `user_prompt` or anything else to a control socket."""
+    runs, control = dirs
+    announce(runs, str(control / "a.sock"))
+    fake = FakeControl()
+    with pytest.raises(CommandRejected) as refused:
+        approvals(dirs, fake).forward(RUN, "e1", op)
+    assert refused.value.reason == REASON_NOT_SUPPORTED
+    assert fake.connects == []
+
+
 def test_a_refusal_by_the_proxy_is_a_rejection_with_a_fixed_reason(dirs: tuple[Path, Path]) -> None:
     runs, control = dirs
     announce(runs, str(control / "a.sock"))

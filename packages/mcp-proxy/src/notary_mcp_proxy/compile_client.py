@@ -18,6 +18,7 @@ Whatever the server says is untrusted text: failures are reported with constant 
 that come from the answer are quoted before they reach stderr.
 """
 
+import contextlib
 import http.client
 import ipaddress
 import json
@@ -138,7 +139,11 @@ def post_json(target: CompileTarget, body: bytes, timeout: float) -> bytes:
                 if remaining <= 0:
                     raise CompileClientError("the compile server did not answer in time")
                 if sock is not None:
-                    sock.settimeout(remaining)
+                    # Once the answer says "close" the connection object closes its socket (the
+                    # response keeps the descriptor): then the timeout set before `getresponse`
+                    # stays, and the deadline above still ends a slow answer after one more read.
+                    with contextlib.suppress(OSError):
+                        sock.settimeout(remaining)
                 chunk = response.read(_CHUNK)
                 if not chunk:
                     return b"".join(chunks)

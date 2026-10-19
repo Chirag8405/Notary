@@ -64,6 +64,8 @@ MAX_LINE_BYTES = 4 * 1024 * 1024
 MAX_LISTED_RUNS = 100
 CONTROL_TIMEOUT_SECONDS = 5.0
 """How long a connect, a write or a read on a control socket may take."""
+FORWARDED_OPS = frozenset({"approve", "reject"})
+"""The only ops the server ever sends to a control socket."""
 REASON_NOT_SUPPORTED = "decision not supported on mcp runs"
 REASON_NOT_DELIVERED = "approval not delivered"
 REASON_NOT_ACCEPTED = "approval not accepted"
@@ -377,6 +379,10 @@ class McpApprovals:
         Raises `CommandRejected` when the socket is not acceptable or cannot be reached, or when
         the proxy does not accept the decision.
         """
+        if decision not in FORWARDED_OPS:
+            # The control socket also takes `user_prompt` (the user's own words, trusted): nothing
+            # but a card decision may ever be sent from here, whatever the caller passes.
+            raise CommandRejected(CLOSE_UNSUPPORTED_COMMAND, REASON_NOT_SUPPORTED)
         target = self.control_socket(run_id)
         if target is None:
             raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_DELIVERED)

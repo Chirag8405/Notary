@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import anyio
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BeforeValidator, ValidationError
@@ -45,6 +45,12 @@ from notary_server.hijacked import (
 )
 from notary_server.limits import PlaygroundLimits, RateLimitedError, RateLimiter
 from notary_server.log_redaction import attach_redaction
+from notary_server.mcp_compile import (
+    McpCompileError,
+    McpCompileRequest,
+    McpCompileResponse,
+    McpCompileService,
+)
 from notary_server.mcp_runs import McpApprovals, McpRunList, list_mcp_runs
 from notary_server.playground import (
     AttackRunResponse,
@@ -100,6 +106,7 @@ def _json_mode[M: NotaryModel](model: type[M]) -> Callable[[object], object]:
     return validate
 
 
+McpCompileBody = Annotated[McpCompileRequest, BeforeValidator(_json_mode(McpCompileRequest))]
 PoisonBody = Annotated[PoisonWorldCommand, BeforeValidator(_json_mode(PoisonWorldCommand))]
 ArenaBody = Annotated[ArenaStartCommand, BeforeValidator(_json_mode(ArenaStartCommand))]
 
@@ -164,6 +171,18 @@ def is_loopback_host(host: str | None) -> bool:
     return address.is_loopback
 
 
+def is_local_caller(request: Request) -> bool:
+    """Whether an HTTP request comes from a process on this machine and not from a web page: a
+    loopback peer, no reverse-proxy header and no `Origin` at all (a browser always sends one on a
+    POST, so even a page served from localhost cannot reach a route that asks for this)."""
+    client = request.client
+    if client is None or not is_loopback_host(client.host):
+        return False
+    if any(name in request.headers for name in FORWARDING_HEADERS):
+        return False
+    return "origin" not in request.headers
+
+
 def is_local_client(websocket: WebSocket) -> bool:
     """Whether this socket may act on an MCP escalation: a loopback peer, no reverse proxy in
     between, and (for a browser, which always sends one) an `Origin` that is the X-ray page.
@@ -222,6 +241,7 @@ def create_app(
     limits: PlaygroundLimits | None = None,
     mcp_runs_dir: Path | None = None,
     mcp_approvals: McpApprovals | None = None,
+    mcp_compile: McpCompileService | None = None,
 ) -> FastAPI:
     """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
@@ -229,7 +249,8 @@ def create_app(
     (`NOTARY_MCP_RUNS_DIR`); without it `GET /mcp/runs` answers 404. `mcp_approvals`
     (`NOTARY_MCP_APPROVALS=1`) lets the endorsement card approve or reject an MCP proxy
     escalation; without it, or for a client that is not local, a command on an `mcp` socket
-    closes it `4422`."""
+    closes it `4422`. `mcp_compile` (`NOTARY_MCP_COMPILE=1`) serves `POST /mcp/compile` to the MCP
+    proxy; without it the route answers 404, and to a caller that is not local, 403."""
     attach_redaction()  # a session id in a request path must never reach a log
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
@@ -270,6 +291,24 @@ def create_app(
         if mcp_runs_dir is None:
             raise HTTPException(status_code=404, detail="mcp runs are not enabled")
         return McpRunList(runs=list_mcp_runs(mcp_runs_dir))
+
+    def mcp_compile_caller(http: Request) -> None:
+        """Checked before the body is validated. Registered either way (see `mcp_runs`)."""
+        if mcp_compile is None:
+            raise HTTPException(status_code=404, detail="mcp compile is not enabled")
+        if not is_local_caller(http):
+            raise HTTPException(status_code=403, detail="local callers only")
+
+    @app.post("/mcp/compile", operation_id="compileMcpContract")
+    def compile_mcp_contract(
+        body: McpCompileBody, _caller: Annotated[None, Depends(mcp_compile_caller)]
+    ) -> McpCompileResponse:
+        assert mcp_compile is not None  # `mcp_compile_caller` answered 404 otherwise
+        return mcp_compile.compile(body)
+
+    @app.exception_handler(McpCompileError)
+    def mcp_compile_error(_request: Request, error: McpCompileError) -> JSONResponse:
+        return JSONResponse({"detail": error.detail}, status_code=error.status)
 
     @app.exception_handler(PlaygroundError)
     def playground_error(_request: Request, error: PlaygroundError) -> JSONResponse:

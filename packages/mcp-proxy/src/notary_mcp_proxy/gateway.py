@@ -244,17 +244,16 @@ class Gateway:
         if scenario is None:
             return not self._opening_failed
         self._opening = None
-        contract = self._contract
-        event = RunStarted(
-            type="run_started",
-            run_id=self._run_id,
-            lane=self._lane,
-            seq=len(self._chain),
-            scenario=scenario,
-            contract=contract,
-            classifier=None,
-        )
         try:
+            event = RunStarted(
+                type="run_started",
+                run_id=self._run_id,
+                lane=self._lane,
+                seq=len(self._chain),
+                scenario=scenario,
+                contract=self._contract,
+                classifier=None,
+            )
             self._chain = self._audit_append(self._chain, event)
         except Exception:
             self._halted = self._halted or HALT_AUDIT
