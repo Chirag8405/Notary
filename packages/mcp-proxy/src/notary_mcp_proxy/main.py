@@ -41,6 +41,7 @@ from notary_mcp_proxy.control import (
 )
 from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
+from notary_mcp_proxy.prompt_hook import MAX_INPUT, forward_prompt
 from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
 
@@ -211,6 +212,38 @@ def hook_main(argv: Sequence[str]) -> int:
         return _hook_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied")
 
 
+def prompt_hook_main(argv: Sequence[str]) -> int:
+    """`hook user-prompt-submit [--control PATH]`: hand the user's prompt to the proxy.
+
+    ALWAYS exits 0 and prints nothing on stdout. For this Claude Code event exit 2 erases the
+    user's prompt and stdout on exit 0 may reach the model, so a failure of any kind (no proxy
+    running, an unreachable socket, a refusal, a bug) is one line on stderr and the prompt goes
+    on, as untrusted as it was without the hook.
+    """
+    try:
+        parser = argparse.ArgumentParser(prog="notary-mcp-proxy hook user-prompt-submit")
+        parser.add_argument(
+            "--control", type=Path, help="the proxy's control socket (default: the only one found)"
+        )
+        args = parser.parse_args(argv)
+        control: Path | None = args.control
+        try:
+            raw = sys.stdin.buffer.read(MAX_INPUT + 1)
+            stdin_text = raw.decode("utf-8") if len(raw) <= MAX_INPUT else ""
+        except (OSError, ValueError):
+            stdin_text = ""
+        value_id, why = forward_prompt(stdin_text, control)
+        if value_id is None:
+            _log(f"hook user-prompt-submit: the prompt was not forwarded: {why}")
+        else:
+            _log(f"hook user-prompt-submit: the prompt is the trusted value {value_id}")
+    except SystemExit:
+        pass  # a usage error: argparse printed it to stderr; it must not exit 2 here
+    except Exception as failure:
+        _log(f"hook user-prompt-submit: failed ({type(failure).__name__}); the prompt goes on")
+    return 0
+
+
 def _load_config(path: Path) -> ProxyConfig | None:
     try:
         return ProxyConfig.model_validate_json(path.read_bytes())
@@ -345,7 +378,7 @@ def serve_main(argv: Sequence[str]) -> int:
                 reject_unanswered=control_path is None,
             )
             if desk is not None and control_path is not None:
-                control = ControlServer(desk, control_path)
+                control = ControlServer(desk, control_path, server.submit_user_prompt)
                 control.start()
                 if audit_dir is not None:
                     control_file = write_control_file(audit_dir, run_id, control.path)
@@ -423,10 +456,13 @@ def _report_head(run_id: str, log: RunLog, *, halted: str | None) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Subcommands `serve` (the default), `check`, `hook pre-tool-use`, `pending|approve|reject`."""
+    """Subcommands `serve` (the default), `check`, `hook pre-tool-use`, `hook user-prompt-submit`,
+    `pending|approve|reject`."""
     args_list = list(sys.argv[1:] if argv is None else argv)
     if args_list[:2] == ["hook", "pre-tool-use"]:
         return hook_main(args_list[2:])
+    if args_list[:2] == ["hook", "user-prompt-submit"]:
+        return prompt_hook_main(args_list[2:])
     if args_list[:1] in (["pending"], ["approve"], ["reject"]):
         return control_main(args_list[0], args_list[1:])
     if args_list[:1] == ["check"]:

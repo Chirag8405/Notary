@@ -42,6 +42,7 @@ from notary_mcp_proxy.dispatch import (
     ClientTimeoutError,
     ClientWithdrawnError,
     Dispatcher,
+    PromptSubmitter,
 )
 from notary_mcp_proxy.elicit import METHOD, approval_request, parse_answer, supports_form
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
@@ -219,6 +220,7 @@ class ProxyServer:
         self._elicitation = elicitation
         self._client_elicits = False
         self._ask: ClientAsker | None = None
+        self._submit_prompt: PromptSubmitter | None = None
         self._elicit_failures: dict[str, tuple[str, str]] = {}
         self._approved: list[str] = []
         self._rejected_ids: list[tuple[str, str]] = []
@@ -533,6 +535,30 @@ class ProxyServer:
     def route_client_requests(self, ask: ClientAsker) -> None:
         """Let a waiting call put its card to the user through the client (`ask_client`)."""
         self._ask = ask
+
+    def route_user_prompts(self, submit: PromptSubmitter) -> None:
+        """Let the control socket's thread hand a prompt to the Gateway's owner (`submit`)."""
+        self._submit_prompt = submit
+
+    def submit_user_prompt(self, text: str) -> str | None:
+        """Called on the control socket's thread: the id of the stored prompt, None when not stored.
+
+        Not stored when no `Dispatcher` routes the worker's queue yet (the Gateway may only be
+        touched by its owner, so this never applies the prompt itself), and for the reasons in
+        `Dispatcher.submit_user_prompt`.
+        """
+        submit = self._submit_prompt
+        return None if submit is None else submit(text)
+
+    def add_user_prompt(self, text: str) -> str | None:
+        """Store the prompt as a trusted user value. Only the thread that owns the Gateway."""
+        ref = self._gateway.add_user_value(text)
+        if ref is None:
+            diagnostic("user prompt: refused (the gateway is halted or the log failed)")
+            return None
+        # Never the text: stderr is not where the prompt belongs.
+        diagnostic(f"user prompt: stored as {ref.id} ({len(text)} characters, trusted)")
+        return ref.id
 
     def route_drift_checks(self, schedule: Callable[[], None]) -> None:
         """Queue drift checks with the Gateway's owner: `schedule` queues a `check_drift_now`."""

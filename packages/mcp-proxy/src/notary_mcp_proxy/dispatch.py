@@ -9,8 +9,9 @@ Threads:
   `notifications/cancelled` and hands responses to the proxy's own requests (`ask_client`) to the
   thread that waits for them.
 - ONE worker thread owns the Gateway. It takes work from a FIFO queue: tool calls in the order they
-  arrived (so the audit chain order is the arrival order) and drift checks. The Gateway is never
-  touched from any other thread.
+  arrived (so the audit chain order is the arrival order), drift checks and the user's prompts
+  (`submit_user_prompt`, called by the control socket's thread, which waits for the worker's answer
+  for a bounded time). The Gateway is never touched from any other thread.
 
 Cancellation: `notifications/cancelled` for a queued call removes it (nothing is proposed, no
 events, no response). For the running call it sets a flag (`cancelled`) that long waits check; the
@@ -26,6 +27,7 @@ Writes to the output are serialized, one message per line. A failed write (the a
 reported once on stderr and later writes are skipped; the loop ends when the input does.
 """
 
+import contextlib
 import json
 import threading
 from collections import deque
@@ -48,6 +50,10 @@ from notary_mcp_proxy.jsonrpc import (
 )
 
 CANCELLED = "notifications/cancelled"
+PROMPT_WAIT = 3.0
+"""Seconds the control thread waits for the worker to store a prompt. The worker may be busy (a
+tool call, a card waiting for the user); then the prompt is withdrawn and refused, never applied
+late: a prompt the hook was told failed must not appear in the run afterwards."""
 
 Wait = Callable[[threading.Event, float], bool]
 """How `ask_client` waits for an answer; tests replace it to avoid real time."""
@@ -73,6 +79,18 @@ class Target(Protocol):
     ) -> None: ...
 
     def route_client_requests(self, ask: "ClientAsker") -> None: ...
+
+    def route_user_prompts(self, submit: "PromptSubmitter") -> None: ...
+
+    def add_user_prompt(self, text: str) -> str | None:
+        """Store the user's prompt as a trusted value; the new value's id, None when refused."""
+        ...
+
+
+class PromptSubmitter(Protocol):
+    """`Dispatcher.submit_user_prompt`: hand a prompt to the worker that owns the Gateway."""
+
+    def __call__(self, text: str, *, timeout: float = PROMPT_WAIT) -> str | None: ...
 
 
 class ClientAsker(Protocol):
@@ -166,7 +184,17 @@ class _Drift:
     pass
 
 
-Work = _Call | _Drift
+@dataclass(eq=False)
+class _Prompt:
+    """A prompt on its way to the worker. `state` and `value_id` change under the state lock."""
+
+    text: str
+    done: threading.Event = field(default_factory=threading.Event)
+    state: Literal["queued", "running", "abandoned", "done"] = "queued"
+    value_id: str | None = None
+
+
+Work = _Call | _Drift | _Prompt
 Phase = Literal["running", "eof"]
 
 
@@ -208,6 +236,7 @@ class Dispatcher:
         server.route_drift_checks(self._queue_drift_check)
         server.route_cancellation(self.cancelled, self.input_ended.is_set)
         server.route_client_requests(self.ask_client)
+        server.route_user_prompts(self.submit_user_prompt)
 
     # -- public ----------------------------------------------------------------------------------
 
@@ -262,6 +291,33 @@ class Dispatcher:
             code = failure.get("code")
             raise ClientRejectedError(detail=f"{method}: code {code}")
         return as_object(pending.response.get("result")) or {}
+
+    def submit_user_prompt(self, text: str, *, timeout: float = PROMPT_WAIT) -> str | None:
+        """Queue the user's prompt for the worker and block the CALLING thread for its answer.
+
+        Returns the id of the stored value, or None when it was not stored: the input has ended,
+        the worker did not get to it within `timeout` (it is then withdrawn, so it can never be
+        stored later), or the Gateway refused it. Never called on the worker thread.
+        """
+        item = _Prompt(text)
+        with self._state:
+            if self._phase == "eof":
+                return None
+            self._queue.append(item)
+            self._state.notify_all()
+        self._wait(item.done, timeout)
+        with self._state:
+            if item.state == "queued":
+                item.state = "abandoned"
+                with contextlib.suppress(ValueError):
+                    self._queue.remove(item)
+                return None
+            running = item.state == "running"
+        if running:
+            # The worker has started to store it: that is one append, so wait for the end of it.
+            self._wait(item.done, timeout)
+        with self._state:
+            return item.value_id if item.state == "done" else None
 
     def _cancel_request(self, request_id: str, reason: str) -> None:
         self._write(
@@ -341,6 +397,7 @@ class Dispatcher:
     def _end_of_input(self) -> None:
         with self._state:
             self._phase = "eof"
+            dropped = [item for item in self._queue if isinstance(item, _Prompt)]
             self._queue.clear()
             waiting = list(self._pending.values())
             self._pending.clear()
@@ -348,6 +405,8 @@ class Dispatcher:
         for pending in waiting:
             pending.closed = True
             pending.done.set()
+        for prompt in dropped:
+            prompt.done.set()  # state stays "queued": its submitter answers "not stored"
         self.input_ended.set()
 
     def _queue_drift_check(self) -> None:
@@ -372,15 +431,29 @@ class Dispatcher:
                 if isinstance(item, _Call):
                     self._running = item.request_id
                     self._running_cancelled = False
-                else:
+                elif isinstance(item, _Drift):
                     self._drift_queued = False
+                else:
+                    item.state = "running"
             try:
                 if isinstance(item, _Call):
                     self._run_call(item)
-                else:
+                elif isinstance(item, _Drift):
                     self._server.check_drift_now()
+                else:
+                    self._run_prompt(item)
             except Exception as failure:
                 diagnostic(f"worker failed: {type(failure).__name__}")
+
+    def _run_prompt(self, item: _Prompt) -> None:
+        value_id: str | None = None
+        try:
+            value_id = self._server.add_user_prompt(item.text)
+        finally:
+            with self._state:
+                item.value_id = value_id
+                item.state = "done"
+            item.done.set()
 
     def _run_call(self, item: _Call) -> None:
         try:

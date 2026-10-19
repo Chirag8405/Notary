@@ -16,6 +16,7 @@ from typing import Annotated, Literal, Protocol, runtime_checkable
 from pydantic import Field
 
 from notary_core.audit import append
+from notary_core.canon import sha256_hex
 from notary_core.endorsement import remaining_approvals
 from notary_core.gateway import GatewayLabeler, ToolResult, ToolResultField, ValueStore
 from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
@@ -31,6 +32,7 @@ from notary_core.models import (
     EndorsementRequested,
     Event,
     IntentContract,
+    Label,
     Lane,
     LedgerEntry,
     NotaryModel,
@@ -38,6 +40,7 @@ from notary_core.models import (
     SessionState,
     Sha256Hex,
     ToolCallProposal,
+    UserOrigin,
     ValueLabeled,
     ValueRef,
 )
@@ -50,6 +53,8 @@ from notary_core.store import InMemoryValueStore
 from notary_mcp_proxy.backend import BackendResult, ToolBackend
 
 PREVIEW_LIMIT: int = 80
+USER_VALUE_PREFIX = "request"
+"""Ids of the user's own words are `request.<n>` (the engine's single request is `v-request`)."""
 """Characters kept in `ValueLabeled.preview`."""
 HALT_AUDIT = "audit append failed"
 ERR_EFFECT_NOT_LOGGED = "the effect ran but was not logged"
@@ -161,6 +166,7 @@ class Gateway:
         self._pins: dict[str, str] | None = None
         self._seen_calls: set[str] = set()
         self._escalations: dict[str, _Pending] = {}
+        self._user_values = 0
 
     @property
     def chain(self) -> tuple[AuditEntry, ...]:
@@ -303,6 +309,39 @@ class Gateway:
             return False
         self._store = self._store.with_values([value])
         return True
+
+    def add_user_value(self, text: str) -> ValueRef | None:
+        """Store the user's own words as a trusted value `request.<n>` (the n-th call is `.<n>`).
+
+        The label is the engine's request label: `UserOrigin`, integrity `trusted`, readers
+        `("*",)`. The `value_labeled` event is appended BEFORE the value joins the store, like every
+        other value (`_add_value`), so the log shows the value before anything can use it. The
+        resolver then labels an argument that equals the text, or is a span of it, `user` /
+        `trusted` (its rules 1 and 2); nothing else changes.
+
+        This is the ONLY way a trusted value joins the store at runtime. Nothing in the MCP surface
+        (a tool call, a result, a resource, a prompt) reaches it: only the control socket does,
+        through the worker thread that owns this Gateway. The caller decides what is "the user's
+        own words" and bounds their size. Returns None when the gateway is halted or the append
+        failed: nothing was stored.
+        """
+        if self._halted is not None:
+            return None
+        number = self._user_values + 1
+        ref = ValueRef(
+            id=f"{USER_VALUE_PREFIX}.{number}",
+            label=Label(
+                origin=UserOrigin(kind="user"),
+                integrity="trusted",
+                readers=("*",),
+                span_pointer=None,
+            ),
+            content_hash=sha256_hex(text),
+        )
+        if not self._add_value(ResolvedValue(ref=ref, unit=None, text=text)):
+            return None
+        self._user_values = number
+        return ref
 
     def label_content(
         self,
