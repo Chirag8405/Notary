@@ -2,10 +2,12 @@
 
 Threads:
 
-- the reader thread parses stdin. It answers `initialize`, `ping`, `tools/list`, unknown methods
-  and invalid messages itself, so a slow tool call (or, later, a call waiting for a human) never
-  blocks them. It queues every `tools/call`, applies `notifications/cancelled` and hands responses
-  to the proxy's own requests (`ask_client`) to the thread that waits for them.
+- the reader thread parses stdin. It answers `initialize`, `ping`, `tools/list`, `prompts/list`,
+  unknown methods and invalid messages itself, so a slow tool call (or, later, a call waiting for a
+  human) never blocks them. It queues every `tools/call` and, when they are configured, every
+  `resources/*` read or listing and `prompts/get` (they label into the Gateway), applies
+  `notifications/cancelled` and hands responses to the proxy's own requests (`ask_client`) to the
+  thread that waits for them.
 - ONE worker thread owns the Gateway. It takes work from a FIFO queue: tool calls in the order they
   arrived (so the audit chain order is the arrival order) and drift checks. The Gateway is never
   touched from any other thread.
@@ -46,7 +48,6 @@ from notary_mcp_proxy.jsonrpc import (
 )
 
 CANCELLED = "notifications/cancelled"
-CALL = "tools/call"
 
 Wait = Callable[[threading.Event, float], bool]
 """How `ask_client` waits for an answer; tests replace it to avoid real time."""
@@ -54,6 +55,10 @@ Wait = Callable[[threading.Event, float], bool]
 
 class Target(Protocol):
     """What the dispatcher needs from the proxy (`ProxyServer` implements it)."""
+
+    def queued(self, method: str) -> bool:
+        """Whether a request with this method goes to the worker (`handle_call`)."""
+        ...
 
     def handle_fast(self, message: JsonObject) -> JsonObject | None: ...
 
@@ -300,7 +305,7 @@ class Dispatcher:
             if method == CANCELLED:
                 self._cancel(as_object(message.get("params")) or {})
             return
-        elif method == CALL:
+        elif self._server.queued(method):
             with self._state:
                 self._queue.append(_Call(_key(message.get("id")), message))
                 self._state.notify_all()

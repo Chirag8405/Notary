@@ -41,6 +41,7 @@ CLIENT_INFO: JsonObject = {"name": "notary-mcp-proxy", "version": "0.0.0"}
 DEFAULT_TIMEOUT_SECONDS = 30.0
 CLOSE_GRACE_SECONDS = 5.0
 DETAIL_LIMIT = 200
+MAX_PAGES = 100
 
 Notify = Callable[[str, JsonObject], None]
 Clock = Callable[[], float]
@@ -137,20 +138,29 @@ class StdioClient:
 
     def list_tools(self) -> list[JsonObject]:
         """Every tool the server reports now, following pagination."""
-        tools: list[JsonObject] = []
+        return self.list_paged("tools/list", "tools")
+
+    def list_paged(self, method: str, key: str) -> list[JsonObject]:
+        """Every entry of a paginated listing (`tools/list`, `resources/list`, `prompts/list`...).
+
+        `key` is the result field that holds the page. A server that never stops paging is a
+        protocol error after `MAX_PAGES`.
+        """
+        entries: list[JsonObject] = []
         cursor: str | None = None
-        while True:
-            answer = self.request("tools/list", {} if cursor is None else {"cursor": cursor})
-            for tool in as_list(answer.get("tools")) or []:
-                entry = as_object(tool)
+        for _ in range(MAX_PAGES):
+            answer = self.request(method, {} if cursor is None else {"cursor": cursor})
+            for item in as_list(answer.get(key)) or []:
+                entry = as_object(item)
                 if entry is None:
                     raise ServerError(
-                        "the server broke the protocol", detail="tools/list: non-object tool"
+                        "the server broke the protocol", detail=f"{method}: non-object entry"
                     )
-                tools.append(entry)
+                entries.append(entry)
             cursor = as_str(answer.get("nextCursor"))
             if cursor is None:
-                return tools
+                return entries
+        raise ServerError("the server broke the protocol", detail=f"{method}: too many pages")
 
     def call_tool(self, name: str, arguments: JsonObject) -> JsonObject:
         return self.request("tools/call", {"name": name, "arguments": arguments})

@@ -17,7 +17,7 @@ from pydantic import Field
 
 from notary_core.audit import append
 from notary_core.endorsement import remaining_approvals
-from notary_core.gateway import GatewayLabeler, ToolResult, ValueStore
+from notary_core.gateway import GatewayLabeler, ToolResult, ToolResultField, ValueStore
 from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
 from notary_core.models import (
     AuditEntry,
@@ -303,6 +303,38 @@ class Gateway:
             return False
         self._store = self._store.with_values([value])
         return True
+
+    def label_content(
+        self,
+        source: str,
+        record_id: str,
+        fields: Sequence[ToolResultField],
+        readers: tuple[str, ...],
+    ) -> tuple[ValueRef, ...] | None:
+        """Label and log content that is not a tool result (a resource, a prompt).
+
+        There is no call and no decision: the read has no effect the monitor could judge. The
+        content is labeled exactly like a read tool's result (`source` is the labeling key, so the
+        origin comes from the labeling policy, else `ToolOrigin(source)`; always untrusted), every
+        `value_labeled` is appended BEFORE the value joins the store, and the refs are returned so
+        the caller can read the texts back from `store`. A later tool call that quotes the content
+        then carries its origin.
+
+        `record_id` must not repeat with other content (value ids are `<record_id>.<field>`; the
+        same id with other content raises). Returns None when the gateway is halted or an append
+        failed: nothing of the content may be handed on.
+        """
+        if self._halted is not None:
+            return None
+        values = self._labeler(
+            ToolResult(tool=source, record_id=record_id, fields=tuple(fields)), readers=readers
+        )
+        refs: list[ValueRef] = []
+        for value in values:
+            if not self._add_value(value):
+                return None
+            refs.append(value.ref)
+        return tuple(refs)
 
     def _decide(self, call: RawCall, proposal: ToolCallProposal) -> MediationOutcome:
         """Ask the monitor, append the decision FIRST, then act on it."""
