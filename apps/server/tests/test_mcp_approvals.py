@@ -17,6 +17,7 @@ from typing import IO
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 from test_mcp_runs import entries_of, run_events, until_closed
@@ -162,7 +163,7 @@ def test_the_card_can_never_make_the_forwarder_send_another_op(
     runs, control = dirs
     announce(runs, str(control / "a.sock"))
     fake = FakeControl()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         command(choice)
     assert handle(approvals(dirs, fake), command("approve")) is None
     assert handle(approvals(dirs, fake), command("reject")) is None
