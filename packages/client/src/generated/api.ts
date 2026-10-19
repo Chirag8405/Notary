@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp/compile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compile Mcp Contract */
+        post: operations["compileMcpContract"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mcp/runs": {
         parameters: {
             query?: never;
@@ -694,6 +711,19 @@ export interface components {
              */
             kind: "llm";
         };
+        /** McpCompileRequest */
+        McpCompileRequest: {
+            /** Manifests */
+            manifests: components["schemas"]["ToolManifest"][];
+            /** Request */
+            request: string;
+        };
+        /** McpCompileResponse */
+        McpCompileResponse: {
+            contract: components["schemas"]["IntentContract"];
+            /** Dropped */
+            dropped: string[];
+        };
         /** McpRunInfo */
         McpRunInfo: {
             /** Finished */
@@ -898,6 +928,19 @@ export interface components {
             /** Tool */
             tool: string;
         };
+        /**
+         * ToolManifest
+         * @description What an MCP server reports for one tool. The effect class is not part of it: a server
+         *     does not report one, and the monitor takes it from the contract and the policy table.
+         */
+        ToolManifest: {
+            /** Description */
+            description: string;
+            /** Input Schema */
+            input_schema: string;
+            /** Name */
+            name: string;
+        };
         /** ToolOrigin */
         ToolOrigin: {
             /**
@@ -1031,6 +1074,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    compileMcpContract: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCompileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCompileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
