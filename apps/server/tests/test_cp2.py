@@ -392,6 +392,7 @@ def test_live_mode_needs_a_key() -> None:
         "NOTARY_LIMIT_WINDOW",
         "NOTARY_MCP_RUNS_DIR",
         "NOTARY_MCP_APPROVALS",
+        "NOTARY_MCP_COMPILE",
         "NOTARY_MCP_CONTROL_DIR",
     }
     client = TestClient(build_app(settings, event_delay=0))

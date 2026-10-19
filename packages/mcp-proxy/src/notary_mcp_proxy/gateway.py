@@ -16,6 +16,8 @@ from typing import Annotated, Literal, Protocol, runtime_checkable
 from pydantic import Field
 
 from notary_core.audit import append
+from notary_core.canon import sha256_hex
+from notary_core.contract import assert_monotonic
 from notary_core.endorsement import remaining_approvals
 from notary_core.gateway import GatewayLabeler, ToolResult, ToolResultField, ValueStore
 from notary_core.ledger import LedgerClosureError, UserEndorsedAuthority, with_entry
@@ -31,13 +33,16 @@ from notary_core.models import (
     EndorsementRequested,
     Event,
     IntentContract,
+    Label,
     Lane,
     LedgerEntry,
     NotaryModel,
     ResolvedValue,
+    RunStarted,
     SessionState,
     Sha256Hex,
     ToolCallProposal,
+    UserOrigin,
     ValueLabeled,
     ValueRef,
 )
@@ -51,6 +56,8 @@ from notary_mcp_proxy.backend import BackendResult, ToolBackend
 
 PREVIEW_LIMIT: int = 80
 """Characters kept in `ValueLabeled.preview`."""
+USER_VALUE_PREFIX = "request"
+"""Ids of the user's own words are `request.<n>` (the engine's single request is `v-request`)."""
 HALT_AUDIT = "audit append failed"
 ERR_EFFECT_NOT_LOGGED = "the effect ran but was not logged"
 ERR_RESULT_NOT_LOGGED = "the effect ran but a result value was not logged"
@@ -161,6 +168,9 @@ class Gateway:
         self._pins: dict[str, str] | None = None
         self._seen_calls: set[str] = set()
         self._escalations: dict[str, _Pending] = {}
+        self._user_values = 0
+        self._opening: str | None = None
+        self._opening_failed = False
 
     @property
     def chain(self) -> tuple[AuditEntry, ...]:
@@ -201,7 +211,11 @@ class Gateway:
 
         The runner uses this for `run_started`, `oracle_updated` and `run_finished`. It still
         tries to append after a halt (a `run_finished` is worth logging), but never retries.
+        A deferred `run_started` (`defer_start`) is appended first, with the contract as it is
+        now, so no event can precede it; if that append fails nothing else is appended.
         """
+        if not self.ensure_started():
+            return False
         event = make(self._run_id, self._lane, len(self._chain))
         try:
             self._chain = self._audit_append(self._chain, event)
@@ -209,6 +223,60 @@ class Gateway:
             self._halted = self._halted or HALT_AUDIT
             return False
         return True
+
+    def defer_start(self, scenario: str) -> None:
+        """Hold `run_started` back until the chain is first needed (`ensure_started` or `emit`).
+
+        Until then the contract may still be replaced by `adopt_contract`. The chain must be
+        empty.
+        """
+        if self._chain:
+            raise ValueError("the run has started")
+        self._opening = scenario
+
+    def ensure_started(self) -> bool:
+        """Append the deferred `run_started` (once, with the contract now in force).
+
+        True when nothing is deferred or it was appended; False when that append failed (the
+        gateway is then halted and appends nothing else).
+        """
+        scenario = self._opening
+        if scenario is None:
+            return not self._opening_failed
+        self._opening = None
+        try:
+            event = RunStarted(
+                type="run_started",
+                run_id=self._run_id,
+                lane=self._lane,
+                seq=len(self._chain),
+                scenario=scenario,
+                contract=self._contract,
+                classifier=None,
+            )
+            self._chain = self._audit_append(self._chain, event)
+        except Exception:
+            self._halted = self._halted or HALT_AUDIT
+            self._opening_failed = True
+            return False
+        return True
+
+    def adopt_contract(self, contract: IntentContract) -> None:
+        """Replace the contract before the run starts; it may only narrow (I5).
+
+        Allowed only while the chain is empty: once `run_started` is in the chain the contract is
+        frozen. Raises `ValueError` after that and `ContractWideningError` when `contract` is wider
+        than the one in force (`widening_reasons`, which also requires the same `contract_id` and
+        `user_intent`). The pinned tools are untouched: a changed manifest hash is a widening.
+        """
+        if self._chain:
+            raise ValueError("the contract is frozen: the run has started")
+        assert_monotonic(self._contract, contract)
+        self._contract = contract
+
+    @property
+    def contract(self) -> IntentContract:
+        return self._contract
 
     def pin_session(self) -> tuple[ToolPin, ...]:
         """Pin every tool the backend reports now; calling it again re-pins."""
@@ -303,6 +371,39 @@ class Gateway:
             return False
         self._store = self._store.with_values([value])
         return True
+
+    def add_user_value(self, text: str) -> ValueRef | None:
+        """Store the user's own words as a trusted value `request.<n>` (the n-th call is `.<n>`).
+
+        The label is the engine's request label: `UserOrigin`, integrity `trusted`, readers
+        `("*",)`. The `value_labeled` event is appended BEFORE the value joins the store, like every
+        other value (`_add_value`), so the log shows the value before anything can use it. The
+        resolver then labels an argument that equals the text, or is a span of it, `user` /
+        `trusted` (its rules 1 and 2); nothing else changes.
+
+        This is the ONLY way a trusted value joins the store at runtime. Nothing in the MCP surface
+        (a tool call, a result, a resource, a prompt) reaches it: only the control socket does,
+        through the worker thread that owns this Gateway. The caller decides what is "the user's
+        own words" and bounds their size. Returns None when the gateway is halted or the append
+        failed: nothing was stored.
+        """
+        if self._halted is not None:
+            return None
+        number = self._user_values + 1
+        ref = ValueRef(
+            id=f"{USER_VALUE_PREFIX}.{number}",
+            label=Label(
+                origin=UserOrigin(kind="user"),
+                integrity="trusted",
+                readers=("*",),
+                span_pointer=None,
+            ),
+            content_hash=sha256_hex(text),
+        )
+        if not self._add_value(ResolvedValue(ref=ref, unit=None, text=text)):
+            return None
+        self._user_values = number
+        return ref
 
     def label_content(
         self,

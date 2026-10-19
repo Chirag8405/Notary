@@ -17,6 +17,7 @@ from typing import IO
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 from test_mcp_runs import entries_of, run_events, until_closed
@@ -148,6 +149,42 @@ def test_use_nearest_is_rejected_with_a_fixed_reason_and_nothing_is_forwarded(
     rejected = handle(approvals(dirs, fake), command("use_nearest"))
     assert rejected is not None
     assert (rejected.code, rejected.reason) == (4422, REASON_NOT_SUPPORTED)
+    assert fake.connects == []
+
+
+@pytest.mark.parametrize("choice", ["user_prompt", "pending", "approve ", "APPROVE", ""])
+def test_the_card_can_never_make_the_forwarder_send_another_op(
+    dirs: tuple[Path, Path], choice: str
+) -> None:
+    """The proxy's control socket also takes `user_prompt` (the user's own words, trusted). The
+    forwarder serves the card only: a decision outside `approve` / `reject` is not a command at
+    all (the model's `decision` is a closed set), so no frame can reach a control socket as a
+    `user_prompt`, and the line sent for the two real decisions is exactly their op."""
+    runs, control = dirs
+    announce(runs, str(control / "a.sock"))
+    fake = FakeControl()
+    with pytest.raises(ValidationError):
+        command(choice)
+    assert handle(approvals(dirs, fake), command("approve")) is None
+    assert handle(approvals(dirs, fake), command("reject")) is None
+    fake.join()
+    sent = [json.loads(line) for line in fake.received]
+    assert [message["op"] for message in sent] == ["approve", "reject"]
+    assert all(set(message) == {"op", "endorsement_id"} for message in sent)
+
+
+@pytest.mark.parametrize("op", ["user_prompt", "pending", "approve ", "APPROVE", "", "use_nearest"])
+def test_forward_itself_refuses_any_op_but_approve_and_reject(
+    dirs: tuple[Path, Path], op: str
+) -> None:
+    """The guard is in `forward`, not only in the command model: a direct caller (a bug, a new
+    command) cannot make the server send `user_prompt` or anything else to a control socket."""
+    runs, control = dirs
+    announce(runs, str(control / "a.sock"))
+    fake = FakeControl()
+    with pytest.raises(CommandRejected) as refused:
+        approvals(dirs, fake).forward(RUN, "e1", op)
+    assert refused.value.reason == REASON_NOT_SUPPORTED
     assert fake.connects == []
 
 

@@ -1,4 +1,5 @@
-"""The control socket: the channel on which the USER approves or rejects an escalated call.
+"""The control socket: the channel on which the USER approves or rejects an escalated call, and
+the channel on which the user's own prompt reaches the proxy.
 
 It is a Unix domain socket, never an MCP tool, prompt or resource, so the agent cannot reach it
 through the protocol. The directory is owned by the user with mode 0700 and the socket has mode
@@ -11,8 +12,15 @@ Protocol: one JSON object per line, one answer per line.
     {"op": "pending"}                                  -> {"pending": [{...}, ...]}
     {"op": "approve" | "reject", "endorsement_id": ..} -> {"ok": true} | {"ok": false, "error": ..}
 
+    {"op": "user_prompt", "prompt": ".."}              -> {"ok": true, "value_id": "request.<n>"}
+                                                          | {"ok": false, "error": ..}
+
 The server thread only records a choice on the `ApprovalDesk`. It never touches the Gateway: the
-worker thread that owns the Gateway applies the choice.
+worker thread that owns the Gateway applies the choice. A `user_prompt` is queued the same way
+(`PromptSink`, see `Dispatcher.submit_user_prompt`) and the worker stores it as a trusted value.
+The op is for the Claude Code `UserPromptSubmit` hook (`notary-mcp-proxy hook user-prompt-submit`);
+there is no MCP path to it, and the limit of the socket (the same user can reach it) is stated in
+docs/threat-model.md.
 """
 
 import contextlib
@@ -22,8 +30,13 @@ import socket
 import stat
 import struct
 import threading
+from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
+from pydantic import ValidationError
+
+from notary_core.models import NotaryModel
 from notary_mcp_proxy.approvals import ApprovalDesk, Choice, printable
 from notary_mcp_proxy.client import diagnostic
 from notary_mcp_proxy.jsonrpc import JsonObject, as_object, as_str
@@ -36,6 +49,22 @@ CONNECTION_TIMEOUT = 10.0
 CLIENT_TIMEOUT = 5.0
 ERR_UNKNOWN = "unknown or already decided endorsement"
 ERR_REQUEST = "bad request"
+MAX_PROMPT = 8192
+"""Longest prompt, in characters. The JSON line stays under `MAX_LINE` even when every character
+is escaped (6 bytes). A longer prompt is refused whole, never cut."""
+ERR_PROMPT = "bad prompt"
+ERR_PROMPT_REFUSED = "the proxy did not store the prompt"
+ERR_PROMPT_OFF = "this proxy does not take prompts"
+
+PromptSink = Callable[[str], str | None]
+"""Stores a prompt as a trusted user value and returns its id, or None when it was not stored."""
+
+
+class UserPromptRequest(NotaryModel):
+    """The `user_prompt` op: exactly these two keys, strict types."""
+
+    op: Literal["user_prompt"]
+    prompt: str
 
 
 class ControlError(Exception):
@@ -78,8 +107,9 @@ def _remove_stale(path: Path) -> None:
 
 
 class ControlServer:
-    def __init__(self, desk: ApprovalDesk, path: Path) -> None:
+    def __init__(self, desk: ApprovalDesk, path: Path, prompts: PromptSink | None = None) -> None:
         self._desk = desk
+        self._prompts = prompts
         self._path = path
         self._socket: socket.socket | None = None
         self._thread: threading.Thread | None = None
@@ -175,7 +205,33 @@ class ControlServer:
             if self._desk.decide(endorsement_id, choice):
                 return {"ok": True}
             return {"ok": False, "error": ERR_UNKNOWN}
+        if op == "user_prompt":
+            return self._user_prompt(request)
         return {"ok": False, "error": ERR_REQUEST}
+
+    def _user_prompt(self, request: JsonObject) -> JsonObject:
+        sink = self._prompts
+        if sink is None:
+            return {"ok": False, "error": ERR_PROMPT_OFF}
+        try:
+            prompt = UserPromptRequest.model_validate(request).prompt
+        except ValidationError:
+            return {"ok": False, "error": ERR_REQUEST}
+        if not prompt.strip() or len(prompt) > MAX_PROMPT or not encodable(prompt):
+            return {"ok": False, "error": ERR_PROMPT}
+        value_id = sink(prompt)
+        if value_id is None:
+            return {"ok": False, "error": ERR_PROMPT_REFUSED}
+        return {"ok": True, "value_id": value_id}
+
+
+def encodable(text: str) -> bool:
+    """Whether the text is valid Unicode (a lone surrogate from a JSON escape is not)."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _same_user(connection: socket.socket) -> bool:
@@ -199,7 +255,7 @@ def send(path: Path, message: JsonObject, *, timeout: float = CLIENT_TIMEOUT) ->
         try:
             client.connect(str(path))
             with client.makefile("rwb") as stream:
-                stream.write(json.dumps(message).encode("utf-8") + b"\n")
+                stream.write(json.dumps(message, ensure_ascii=False).encode("utf-8") + b"\n")
                 stream.flush()
                 line = stream.readline(MAX_LINE + 1)
         except OSError as failure:

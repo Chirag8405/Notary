@@ -18,11 +18,13 @@ from typing import IO, Literal
 
 from pydantic import JsonValue
 
+from notary_core.contract import ContractWideningError
 from notary_core.endorsement import ERR_BAD_APPROVAL_ROW, approval_entries, render_card
 from notary_core.models import (
     Decision,
     DecisionMade,
     DecisionUnit,
+    IntentContract,
     ResolvedValue,
     RunFinished,
     ValueLabeled,
@@ -30,18 +32,21 @@ from notary_core.models import (
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.approvals import Answer, ApprovalDesk, Pending, printable
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
+from notary_mcp_proxy.compile_client import COMPILE_TIMEOUT, PromptCompiler
 from notary_mcp_proxy.content import (
     IGNORED_NOTIFICATIONS,
     QUEUED,
     ContentProxy,
 )
 from notary_mcp_proxy.dispatch import (
+    PROMPT_WAIT,
     AskToken,
     ClientAsker,
     ClientRequestError,
     ClientTimeoutError,
     ClientWithdrawnError,
     Dispatcher,
+    PromptSubmitter,
 )
 from notary_mcp_proxy.elicit import METHOD, approval_request, parse_answer, supports_form
 from notary_mcp_proxy.gateway import Gateway, MediationOutcome, RawCall
@@ -81,6 +86,12 @@ INSTRUCTIONS = (
 )
 
 LIST_CHANGED = "notifications/tools/list_changed"
+
+COMPILING_PROMPT_WAIT = COMPILE_TIMEOUT + PROMPT_WAIT
+"""Seconds the control thread waits for the FIRST prompt once the worker has started on it, when
+that prompt compiles the contract: the compile (at most `COMPILE_TIMEOUT`) plus the appends. The
+hook waits longer than the worst case of the two waits (`PROMPT_WAIT` + this), see
+`prompt_hook.HOOK_TIMEOUT`."""
 
 ERR_REBUILD = "the tool result could not be rebuilt from its logged fields"
 
@@ -199,12 +210,18 @@ class ProxyServer:
         reject_unanswered: bool = False,
         elicitation: bool = True,
         content: ContentProxy | None = None,
+        prompt_compiler: PromptCompiler | None = None,
     ) -> None:
         """`desk` is where an escalated call waits for the user.
 
         With `elicitation`, a client that declared the capability is also asked in its own UI
         (needs a desk; the dispatcher routes the client requests). `content` serves the resources
         and prompts the config switches on; without it they are hidden (method not found).
+        With a `prompt_compiler` the Gateway's `run_started` is deferred (`Gateway.defer_start`)
+        and the first prompt may replace the contract by a narrower one before it is written;
+        the first thing that needs the chain instead (a tool call, a queued resource or prompt
+        request, a drift check, the end of input) starts the run with the config's contract, and
+        the run never compiles after that.
 
         Without a desk, `reject_unanswered` (`--control none`) rejects every escalation at once;
         otherwise the call is answered "escalated" and the endorsement stays pending for the
@@ -219,6 +236,8 @@ class ProxyServer:
         self._elicitation = elicitation
         self._client_elicits = False
         self._ask: ClientAsker | None = None
+        self._submit_prompt: PromptSubmitter | None = None
+        self._compiler = prompt_compiler
         self._elicit_failures: dict[str, tuple[str, str]] = {}
         self._approved: list[str] = []
         self._rejected_ids: list[tuple[str, str]] = []
@@ -263,7 +282,17 @@ class ProxyServer:
 
     def handle_call(self, message: JsonObject) -> JsonObject | None:
         """A queued method: label, decide, run. Only the thread that owns the Gateway calls this."""
+        self._begin_run()
         return self._respond(message)
+
+    def _begin_run(self) -> None:
+        """Start the run with the contract in force and close the window for compiling one.
+
+        Idempotent. Called by whatever needs the chain before a prompt did: after it the contract
+        is the config's and stays so (I5). On the Gateway's thread only.
+        """
+        self._compiler = None
+        self._gateway.ensure_started()
 
     def finish_run(self) -> None:
         """Append `run_finished` once the agent has closed the connection.
@@ -272,6 +301,7 @@ class ProxyServer:
         `Dispatcher` has joined its worker when `serve` returns). A halted gateway still tries (the
         append fails again when the log is what broke) and says so in the summary.
         """
+        self._begin_run()
         halted = self._gateway.halted
         outcome: Literal["completed", "error"] = "completed" if halted is None else "error"
         summary = (
@@ -534,6 +564,51 @@ class ProxyServer:
         """Let a waiting call put its card to the user through the client (`ask_client`)."""
         self._ask = ask
 
+    def route_user_prompts(self, submit: PromptSubmitter) -> None:
+        """Let the control socket's thread hand a prompt to the Gateway's owner (`submit`)."""
+        self._submit_prompt = submit
+
+    def submit_user_prompt(self, text: str) -> str | None:
+        """Called on the control socket's thread: the id of the stored prompt, None when not stored.
+
+        Not stored when no `Dispatcher` routes the worker's queue yet (the Gateway may only be
+        touched by its owner, so this never applies the prompt itself), and for the reasons in
+        `Dispatcher.submit_user_prompt`.
+        """
+        submit = self._submit_prompt
+        if submit is None:
+            return None
+        if self._compiler is None:
+            return submit(text)
+        return submit(text, run_timeout=COMPILING_PROMPT_WAIT)
+
+    def add_user_prompt(self, text: str) -> str | None:
+        """Store the prompt as a trusted user value. Only the thread that owns the Gateway.
+
+        The first prompt of a run with a `prompt_compiler`, if nothing has started the run yet,
+        is compiled first (a bounded request, `COMPILE_TIMEOUT`) and a narrower contract replaces
+        the config's before `run_started` is written. Every failure keeps the config contract.
+        """
+        compiler, self._compiler = self._compiler, None  # only the first prompt compiles
+        if compiler is not None and not self._gateway.chain and self._gateway.halted is None:
+            self._adopt(compiler.compile(text))
+        ref = self._gateway.add_user_value(text)
+        if ref is None:
+            diagnostic("user prompt: refused (the gateway is halted or the log failed)")
+            return None
+        # Never the text: stderr is not where the prompt belongs.
+        diagnostic(f"user prompt: stored as {ref.id} ({len(text)} characters, trusted)")
+        return ref.id
+
+    def _adopt(self, contract: IntentContract | None) -> None:
+        if contract is None:
+            return
+        try:
+            self._gateway.adopt_contract(contract)
+        except (ValueError, ContractWideningError) as failure:
+            # `narrow` already checked; this is the Gateway's own guard (a chain that started).
+            diagnostic(f"compile: kept the config contract: {type(failure).__name__}")
+
     def route_drift_checks(self, schedule: Callable[[], None]) -> None:
         """Queue drift checks with the Gateway's owner: `schedule` queues a `check_drift_now`."""
         self._schedule_drift = schedule
@@ -560,6 +635,8 @@ class ProxyServer:
 
     def check_drift_now(self) -> None:
         """Compare the pins with the server's tool list now and report on stderr."""
+        if self._compiler is not None:
+            self._begin_run()
         try:
             pins = self._gateway.check_drift()
         except ServerError as failure:

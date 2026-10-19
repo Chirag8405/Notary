@@ -21,6 +21,11 @@ from notary_mcp_proxy.approvals import ApprovalDesk, printable
 from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
 from notary_mcp_proxy.check import check_config, render_report
 from notary_mcp_proxy.client import ServerError, StdioClient
+from notary_mcp_proxy.compile_client import (
+    CompileClient,
+    CompileUrlError,
+    PromptCompiler,
+)
 from notary_mcp_proxy.config import (
     ProxyConfig,
     build_contract,
@@ -41,10 +46,12 @@ from notary_mcp_proxy.control import (
 )
 from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
+from notary_mcp_proxy.prompt_hook import MAX_INPUT, forward_prompt
 from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
 
 DEFAULT_APPROVAL_TIMEOUT = 120.0
+SCENARIO = "mcp-proxy"
 CONTROL_SUFFIX = ".control.json"
 """`<run_id>.control.json` next to the chain: where this run's control socket is (#262)."""
 
@@ -86,6 +93,7 @@ def build_server(
     desk: ApprovalDesk | None = None,
     control_hint: str = "",
     reject_unanswered: bool = False,
+    compile_client: CompileClient | None = None,
 ) -> ProxyServer:
     """`build_servers` for a config with one server."""
     (name,) = config.servers
@@ -97,6 +105,7 @@ def build_server(
         desk=desk,
         control_hint=control_hint,
         reject_unanswered=reject_unanswered,
+        compile_client=compile_client,
     )
 
 
@@ -109,11 +118,15 @@ def build_servers(
     desk: ApprovalDesk | None = None,
     control_hint: str = "",
     reject_unanswered: bool = False,
+    compile_client: CompileClient | None = None,
 ) -> ProxyServer:
     """Pin every server's tools, freeze one contract and wrap one Gateway around all of them.
 
     `audit_append` stores every audit entry; `durable_append(log)` makes each one durable before
     the Gateway goes on. `run_started` is appended here, so it is the first entry on disk.
+    With a `compile_client` (`--compile-url`) it is deferred instead: the contract is settled
+    before it is written, by the first prompt (compiled, and only if it narrows the config's) or
+    else by the first event of any kind (the config's). Either way it is the first entry.
     `desk` is where escalated calls wait for the user; without one, `reject_unanswered` rejects
     every escalation at once (`--control none`) and otherwise the endorsement stays pending.
 
@@ -144,17 +157,20 @@ def build_servers(
     )
     gateway.pin_session()
     content = ContentProxy(config, clients, gateway)  # pins the allowed prompts, or fails
-    gateway.emit(
-        lambda run, lane, seq: RunStarted(
-            type="run_started",
-            run_id=run,
-            lane=lane,
-            seq=seq,
-            scenario="mcp-proxy",
-            contract=contract,
-            classifier=None,
+    if compile_client is None:
+        gateway.emit(
+            lambda run, lane, seq: RunStarted(
+                type="run_started",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                scenario=SCENARIO,
+                contract=contract,
+                classifier=None,
+            )
         )
-    )
+    else:
+        gateway.defer_start(SCENARIO)
     server = ProxyServer(
         gateway,
         backend.pinned_definitions(),
@@ -163,6 +179,9 @@ def build_servers(
         reject_unanswered=reject_unanswered,
         elicitation=config.approvals.elicitation,
         content=content if content.resources or content.prompts else None,
+        prompt_compiler=(
+            None if compile_client is None else PromptCompiler(compile_client, contract, pinned)
+        ),
     )
     for client in clients.values():
         client.on_notification = server.on_server_notification
@@ -209,6 +228,38 @@ def hook_main(argv: Sequence[str]) -> int:
         return 2
     except Exception as error:
         return _hook_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied")
+
+
+def prompt_hook_main(argv: Sequence[str]) -> int:
+    """`hook user-prompt-submit [--control PATH]`: hand the user's prompt to the proxy.
+
+    ALWAYS exits 0 and prints nothing on stdout. For this Claude Code event exit 2 erases the
+    user's prompt and stdout on exit 0 may reach the model, so a failure of any kind (no proxy
+    running, an unreachable socket, a refusal, a bug) is one line on stderr and the prompt goes
+    on, as untrusted as it was without the hook.
+    """
+    try:
+        parser = argparse.ArgumentParser(prog="notary-mcp-proxy hook user-prompt-submit")
+        parser.add_argument(
+            "--control", type=Path, help="the proxy's control socket (default: the only one found)"
+        )
+        args = parser.parse_args(argv)
+        control: Path | None = args.control
+        try:
+            raw = sys.stdin.buffer.read(MAX_INPUT + 1)
+            stdin_text = raw.decode("utf-8") if len(raw) <= MAX_INPUT else ""
+        except (OSError, ValueError):
+            stdin_text = ""
+        value_id, why = forward_prompt(stdin_text, control)
+        if value_id is None:
+            _log(f"hook user-prompt-submit: the prompt was not forwarded: {why}")
+        else:
+            _log(f"hook user-prompt-submit: the prompt is the trusted value {value_id}")
+    except SystemExit:
+        pass  # a usage error: argparse printed it to stderr; it must not exit 2 here
+    except Exception as failure:
+        _log(f"hook user-prompt-submit: failed ({type(failure).__name__}); the prompt goes on")
+    return 0
 
 
 def _load_config(path: Path) -> ProxyConfig | None:
@@ -301,9 +352,28 @@ def serve_main(argv: Sequence[str]) -> int:
         default=DEFAULT_APPROVAL_TIMEOUT,
         help="seconds an escalated call waits for the user; no answer counts as a rejection",
     )
+    parser.add_argument(
+        "--compile-url",
+        metavar="URL",
+        help=(
+            "compile the contract from the user's FIRST prompt: POST it to this NOTARY server "
+            "route (http://127.0.0.1:PORT/mcp/compile, loopback only). The result is used only if "
+            "it is no wider than the config's contract; otherwise, or on any failure, the config's "
+            "is. Needs the user-prompt-submit hook. run_started is then written at the first event"
+        ),
+    )
     args = parser.parse_args(argv)
     config_path: Path = args.config
     audit_dir: Path | None = args.audit_dir
+    compile_url: str | None = args.compile_url
+    compile_client: CompileClient | None = None
+    if compile_url is not None:
+        if args.control == "none":
+            parser.error("--compile-url needs the control socket (the prompt arrives on it)")
+        try:
+            compile_client = CompileClient(compile_url)
+        except CompileUrlError as failure:
+            parser.error(str(failure))  # a usage error: exit 2 before anything starts
     control_arg: str | None = args.control
     timeout: float = args.approval_timeout
     if timeout <= 0:
@@ -343,9 +413,10 @@ def serve_main(argv: Sequence[str]) -> int:
                 desk=desk,
                 control_hint=hint,
                 reject_unanswered=control_path is None,
+                compile_client=compile_client,
             )
             if desk is not None and control_path is not None:
-                control = ControlServer(desk, control_path)
+                control = ControlServer(desk, control_path, server.submit_user_prompt)
                 control.start()
                 if audit_dir is not None:
                     control_file = write_control_file(audit_dir, run_id, control.path)
@@ -362,6 +433,11 @@ def serve_main(argv: Sequence[str]) -> int:
             for name, spec in config.servers.items()
         ]
         _log(f"run {run_id}: fronting {'; '.join(fronted)}")
+        if compile_client is not None:
+            _log(
+                f"run {run_id}: the contract is compiled from the first prompt when it narrows the "
+                "config's; run_started is written at the first event"
+            )
         if log is not None:
             _log(f"run {run_id}: audit chain {log.chain_path}")
         if control is not None:
@@ -423,10 +499,13 @@ def _report_head(run_id: str, log: RunLog, *, halted: str | None) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Subcommands `serve` (the default), `check`, `hook pre-tool-use`, `pending|approve|reject`."""
+    """Subcommands `serve` (the default), `check`, `hook pre-tool-use`, `hook user-prompt-submit`,
+    `pending|approve|reject`."""
     args_list = list(sys.argv[1:] if argv is None else argv)
     if args_list[:2] == ["hook", "pre-tool-use"]:
         return hook_main(args_list[2:])
+    if args_list[:2] == ["hook", "user-prompt-submit"]:
+        return prompt_hook_main(args_list[2:])
     if args_list[:1] in (["pending"], ["approve"], ["reject"]):
         return control_main(args_list[0], args_list[1:])
     if args_list[:1] == ["check"]:

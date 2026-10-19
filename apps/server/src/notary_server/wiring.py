@@ -37,6 +37,7 @@ from notary_server.hijacked import (
 from notary_server.lanes import lane_hooks, stream_for_lane
 from notary_server.limits import Clock, PlaygroundLimits, RateLimiter
 from notary_server.llm import DEFAULT_MODEL, CassetteClient, CassetteMissError, LlmClient
+from notary_server.mcp_compile import McpCompileService
 from notary_server.mcp_runs import McpApprovals, McpRunsSource
 from notary_server.playground import LaneRunner
 from notary_server.runner import ScenarioNotFoundError
@@ -101,6 +102,10 @@ class Settings(NotaryModel):
     """Whether the endorsement card may approve or reject an MCP proxy escalation
     (`NOTARY_MCP_APPROVALS=1`, exactly). Needs `mcp_runs_dir`. Off by default: the decision moves
     real effects, so it is opt-in and only a local client is ever heard (see `create_app`)."""
+    mcp_compile: bool = False
+    """Whether `POST /mcp/compile` compiles the MCP proxy's first prompt (`NOTARY_MCP_COMPILE=1`,
+    exactly). Off by default: the route spends model calls and only a local process may use it.
+    Needs `GROQ_API_KEY` (`live_available`); without it the route answers 503."""
     mcp_control_dir: Path | None = None
     """The directory the proxy's control sockets are in (`NOTARY_MCP_CONTROL_DIR`); a socket named
     in a run's `control.json` outside it is refused. Unset: `.notary/mcp-control` of the server's
@@ -112,7 +117,8 @@ class Settings(NotaryModel):
         limits of the playground (`NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`,
         `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
         `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`), `NOTARY_MCP_RUNS_DIR` (empty is unset),
-        `NOTARY_MCP_APPROVALS` (only `1` turns it on) and `NOTARY_MCP_CONTROL_DIR` (empty is unset).
+        `NOTARY_MCP_APPROVALS` and `NOTARY_MCP_COMPILE` (only `1` turns them on) and
+        `NOTARY_MCP_CONTROL_DIR` (empty is unset).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -135,6 +141,7 @@ class Settings(NotaryModel):
         if mcp_runs_dir:
             values["mcp_runs_dir"] = Path(mcp_runs_dir)
         values["mcp_approvals"] = environ.get("NOTARY_MCP_APPROVALS") == "1"
+        values["mcp_compile"] = environ.get("NOTARY_MCP_COMPILE") == "1"
         mcp_control_dir = environ.get("NOTARY_MCP_CONTROL_DIR")
         if mcp_control_dir:
             values["mcp_control_dir"] = Path(mcp_control_dir)
@@ -386,4 +393,9 @@ def build_app(
         limits=build_limits(settings, clock),
         mcp_runs_dir=settings.mcp_runs_dir,
         mcp_approvals=approvals,
+        mcp_compile=(
+            McpCompileService(available=settings.live_available, model=settings.live_model)
+            if settings.mcp_compile
+            else None
+        ),
     )
