@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schema/proxy-config.schema.json",
   "server": { "command": ["python3", "server.py"] },
   "user_intent": "Pay my December electricity bill from Acme Utilities.",
   "tools": {

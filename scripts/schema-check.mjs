@@ -23,6 +23,7 @@ const GENERATED = [
   "packages/client/src/generated",
   "packages/world/fixtures/streams",
   "packages/world/fixtures/commands",
+  "packages/mcp-proxy/schema",
 ];
 
 const STEPS = [
@@ -31,6 +32,7 @@ const STEPS = [
   ["uv", ["run", "--no-sync", "python", "apps/server/scripts/export_openapi.py"]],
   ["pnpm", ["--filter", "@notary/client", "run", "api:generate"]],
   ["uv", ["run", "--no-sync", "python", "packages/world/scripts/export_event_fixtures.py"]],
+  ["uv", ["run", "--no-sync", "python", "packages/mcp-proxy/scripts/generate_schema.py"]],
 ];
 
 function walk(path, out) {

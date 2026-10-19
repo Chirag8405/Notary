@@ -11,6 +11,10 @@
       "inputs": ["src/**/*.py", "scripts/**/*.py", "pyproject.toml"],
       "cache": false
     },
+    "@notary/mcp-proxy#schema:generate": {
+      "inputs": ["src/**/*.py", "scripts/**/*.py", "pyproject.toml"],
+      "cache": false
+    },
     "@notary/schema#schema:generate": {
       "dependsOn": ["@notary/core#schema:generate"],
       "inputs": ["json/**", "scripts/**", "package.json"],
