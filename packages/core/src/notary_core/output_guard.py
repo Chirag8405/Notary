@@ -35,6 +35,9 @@ SentenceSource = Literal["user", "ledger", "untrusted", "model"]
 _NEWLINE = re.compile(r"\r\n|\n|\r")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _HTTP_SCHEME = re.compile(r"http(?=s?://)", re.IGNORECASE)
+_SCHEME_TAIL = re.compile(r"://\S*")
+_NESTED_AUTHORITY = re.compile(r"(?<=:)//[^/?#]*")
+_INNER_DOT = re.compile(r"(?<=[A-Za-z0-9\-])\.(?=[A-Za-z]{2})")
 _SCHEME_PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://")
 _PHONE = re.compile(r"\+?\d[\d ().-]{7,}\d")
 _ACCOUNT = re.compile(r"[A-Z]{2}\d{2}[A-Z0-9 ]{10,30}|\b\d{8,}\b")
@@ -80,9 +83,13 @@ def defang(url: str) -> str:
     """Make a link unclickable: `http` becomes `hxxp` and every `.` of the authority `[.]`.
 
     The authority is everything after the scheme up to the first `/`, `?` or `#` (userinfo, host
-    and port); path, query and fragment are kept byte for byte. Total: never raises.
+    and port). Every further `http(s)://` in the rest (glued text such as `http://x.yhttp://x.y`
+    or a link in the query) gets the same treatment: `hxxp(s)://` and `[.]` in the authority that
+    follows its `//`. A dot followed by two letters in the path, query or
+    fragment becomes `[.]` too (a bare domain glued behind a link); the rest is kept byte for byte.
+    Total: never raises.
     """
-    head = "hxxp" + url[4:] if _HTTP_SCHEME.match(url) else url
+    head = _HTTP_SCHEME.sub("hxxp", url)
     scheme = _SCHEME_PREFIX.match(head)
     if scheme is not None:
         start = scheme.end()
@@ -95,7 +102,10 @@ def defang(url: str) -> str:
         if head[index] in "/?#":
             end = index
             break
-    return head[:start] + head[start:end].replace(".", "[.]") + head[end:]
+    # Start one character early so the lookbehind sees the `:` of a glued `://`.
+    glued = _NESTED_AUTHORITY.sub(lambda m: m.group().replace(".", "[.]"), head[max(end - 1, 0) :])
+    rest = _INNER_DOT.sub("[.]", glued[1:] if end > 0 else glued)
+    return head[:start] + head[start:end].replace(".", "[.]") + rest
 
 
 # --- guard_answer
@@ -142,12 +152,18 @@ def _defanged_text(
     limit = len(normalized)
     text = normalized
     replaced: list[str] = []
+    starts = sorted(u.start for u in urls)
     for url in sorted(
         (u for u in urls if u.host not in allowed), key=lambda u: u.start, reverse=True
     ):
         if url.end > limit:
             continue
-        text = text[: url.start] + defang(url.raw) + text[url.end :]
+        # A bare-domain match can stop at a glued `://` (`1234567.http://x.y` matches only
+        # `1234567.http`): defang the rest of the word too, up to the next URL.
+        bound = min([limit, *(b for b in starts if b > url.start)])
+        tail = _SCHEME_TAIL.match(text[:bound], url.end)
+        end = tail.end() if tail is not None else url.end
+        text = text[: url.start] + defang(text[url.start : end]) + text[end:]
         limit = url.start
         replaced.append(url.raw)
     # `defang` keeps paths byte for byte, so a link nested in another link's path (glued text such
