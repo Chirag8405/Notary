@@ -307,6 +307,11 @@ export const MCP_NOT_ENABLED =
   "MCP runs are not enabled on this server (start it with NOTARY_MCP_RUNS_DIR set to the proxy's audit directory).";
 export const MCP_UNKNOWN_RUN = "The server has no such MCP run. Refresh the list and choose again.";
 
+export const MCP_APPROVALS_OFF =
+  "This server does not take approvals for MCP runs from this page (start it with NOTARY_MCP_APPROVALS=1 and open the page on the same machine). Answer with notary-mcp-proxy approve|reject <id> instead.";
+export const MCP_APPROVAL_NOT_DELIVERED =
+  "The server could not hand your answer to the proxy (it may have finished, or the id is no longer open). Check with notary-mcp-proxy pending.";
+
 export const LIVE_UNAVAILABLE =
   "This mode is not available on the server (live needs an LLM API key).";
 
@@ -326,6 +331,10 @@ export function streamProblem(input: {
     // There is no cassette to fall back to for a run of the proxy.
     if (input.closeCode === 4501) return { text: MCP_NOT_ENABLED, offerCassette: false };
     if (input.closeCode === 4404) return { text: MCP_UNKNOWN_RUN, offerCassette: false };
+    if (input.closeCode === 4422) return { text: MCP_APPROVALS_OFF, offerCassette: false };
+    if (input.closeCode === 4409) {
+      return { text: MCP_APPROVAL_NOT_DELIVERED, offerCassette: false };
+    }
     return { text, offerCassette: false };
   }
   if (input.closeCode === 4501) {

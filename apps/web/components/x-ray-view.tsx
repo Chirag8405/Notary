@@ -243,21 +243,21 @@ function XRayRun({
           {following && view.endorsements.length > 0 ? (
             <Panel title="Awaiting the user">
               <p data-mcp-escalation>
-                {view.endorsements.length === 1
-                  ? "A call escalated and is not allowed to run."
-                  : `${view.endorsements.length} calls escalated and are not allowed to run.`}{" "}
-                The agent&apos;s own client answers for the user; approving from the X-ray is not
-                supported yet.
+                The proxy holds an escalated call until you answer. Confirm or Reject here (the
+                server must be started with NOTARY_MCP_APPROVALS=1 and this page opened on the same
+                machine), or run <code>notary-mcp-proxy approve|reject &lt;id&gt;</code>. The card
+                closes when the proxy&apos;s audit chain shows the outcome.
               </p>
             </Panel>
           ) : null}
-          {!following && runId !== null && view.endorsements.length > 0 ? (
+          {runId !== null && view.endorsements.length > 0 ? (
             <EndorsementPanel
               runId={runId}
               endorsements={view.endorsements}
               send={stream.send}
               events={stream.events}
               resolveFromEvents={mode !== "golden"}
+              allowNearest={!following}
               toolByCallId={toolByCallId}
               onResolvedChange={onResolvedChange}
               onRejectedChange={onRejectedChange}
