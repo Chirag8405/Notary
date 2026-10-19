@@ -33,7 +33,7 @@ from pydantic import JsonValue
 from notary_core.canon import sha256_hex
 from notary_core.gateway import ToolResultField
 from notary_mcp_proxy.backend import schema_text
-from notary_mcp_proxy.client import ServerError, StdioClient, diagnostic, quoted
+from notary_mcp_proxy.client import McpClient, ServerError, diagnostic, quoted
 from notary_mcp_proxy.config import (
     PUBLIC,
     PromptPolicy,
@@ -167,7 +167,7 @@ def _field(name: str, text: str) -> ToolResultField:
 
 class ContentProxy:
     def __init__(
-        self, config: ProxyConfig, clients: Mapping[str, StdioClient], gateway: Gateway
+        self, config: ProxyConfig, clients: Mapping[str, McpClient], gateway: Gateway
     ) -> None:
         """Pins the allowed prompts of every server now.
 

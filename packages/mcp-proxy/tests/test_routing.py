@@ -17,7 +17,7 @@ from notary_core.pinning import ToolManifest, manifest_hash
 from notary_mcp_proxy.backend import schema_text
 from notary_mcp_proxy.check import CheckReport
 from notary_mcp_proxy.client import StdioClient
-from notary_mcp_proxy.config import ProxyConfig
+from notary_mcp_proxy.config import ProxyConfig, StdioServerSpec
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object
 from notary_mcp_proxy.main import build_servers, main
 from notary_mcp_proxy.mcp_backend import ERR_EXITED
@@ -71,6 +71,7 @@ def start() -> Iterator[Start]:
         started = {
             name: StdioClient(spec.command, timeout_seconds=spec.timeout_seconds)
             for name, spec in config.servers.items()
+            if isinstance(spec, StdioServerSpec)
         }
         clients.extend(started.values())
         return build_servers(config, started, run_id="run-test")

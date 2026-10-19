@@ -19,11 +19,11 @@ from notary_mcp_proxy.backend import (
     schema_text,
 )
 from notary_mcp_proxy.client import (
+    McpClient,
     ServerError,
     ServerExitedError,
     ServerRejectedError,
     ServerTimeoutError,
-    StdioClient,
     diagnostic,
     quoted,
 )
@@ -390,7 +390,7 @@ def exposed_definition(tool: PinnedTool) -> JsonObject:
 class McpBackend:
     def __init__(
         self,
-        client: StdioClient,
+        client: McpClient,
         *,
         policy: PolicyTable,
         effects: Mapping[str, ToolEffect],

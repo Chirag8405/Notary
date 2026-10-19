@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -37,6 +38,8 @@ from notary_mcp_proxy.jsonrpc import (
 )
 
 PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_VERSIONS = frozenset({"2024-11-05", "2025-03-26", PROTOCOL_VERSION})
+"""Protocol versions the proxy speaks, on either side."""
 CLIENT_INFO: JsonObject = {"name": "notary-mcp-proxy", "version": "0.0.0"}
 DEFAULT_TIMEOUT_SECONDS = 30.0
 CLOSE_GRACE_SECONDS = 5.0
@@ -87,7 +90,79 @@ class ServerRejectedError(ServerError):
         super().__init__("the server answered with an error", detail=detail)
 
 
-class StdioClient:
+class McpClient(ABC):
+    """What the backend, the router and the content proxy need from a connection to a server.
+
+    `StdioClient` (a child process) and `HttpClient` (Streamable HTTP) implement it; listing and
+    calling are the same JSON-RPC requests on either.
+    """
+
+    timeout_seconds: float
+    """Per request; may be changed between requests."""
+    on_notification: Notify | None
+    """Called with each notification the server sends; must not call `request`."""
+
+    @property
+    @abstractmethod
+    def alive(self) -> bool:
+        """False once the server is gone for good (there is no restart)."""
+
+    @abstractmethod
+    def initialize(self) -> JsonObject:
+        """The handshake; returns the server's `initialize` result."""
+
+    @abstractmethod
+    def request(self, method: str, params: JsonObject) -> JsonObject:
+        """One request, one answer; raises ServerError (or its timeout / exited subclasses)."""
+
+    @abstractmethod
+    def close(self) -> None: ...
+
+    def list_tools(self) -> list[JsonObject]:
+        """Every tool the server reports now, following pagination."""
+        return self.list_paged("tools/list", "tools")
+
+    def list_paged(self, method: str, key: str) -> list[JsonObject]:
+        """Every entry of a paginated listing (`tools/list`, `resources/list`, `prompts/list`...).
+
+        `key` is the result field that holds the page. A server that never stops paging is a
+        protocol error after `MAX_PAGES`.
+        """
+        entries: list[JsonObject] = []
+        cursor: str | None = None
+        for _ in range(MAX_PAGES):
+            answer = self.request(method, {} if cursor is None else {"cursor": cursor})
+            for item in as_list(answer.get(key)) or []:
+                entry = as_object(item)
+                if entry is None:
+                    raise ServerError(
+                        "the server broke the protocol", detail=f"{method}: non-object entry"
+                    )
+                entries.append(entry)
+            cursor = as_str(answer.get("nextCursor"))
+            if cursor is None:
+                return entries
+        raise ServerError("the server broke the protocol", detail=f"{method}: too many pages")
+
+    def call_tool(self, name: str, arguments: JsonObject) -> JsonObject:
+        return self.request("tools/call", {"name": name, "arguments": arguments})
+
+    def _answer(self, method: str, message: JsonObject) -> JsonObject:
+        """The `result` object of an answer, or the labeled error for a JSON-RPC error."""
+        failure = as_object(message.get("error"))
+        if failure is not None:
+            raise ServerRejectedError(
+                detail=f"{method}: {quoted(as_str(failure.get('message')) or '')}"
+            )
+        answer = as_object(message.get("result"))
+        if answer is None:
+            raise ServerError(
+                "the server broke the protocol", detail=f"{method}: result is not an object"
+            )
+        return answer
+
+
+class StdioClient(McpClient):
     def __init__(
         self,
         command: Sequence[str],
@@ -136,35 +211,6 @@ class StdioClient:
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         return answer
 
-    def list_tools(self) -> list[JsonObject]:
-        """Every tool the server reports now, following pagination."""
-        return self.list_paged("tools/list", "tools")
-
-    def list_paged(self, method: str, key: str) -> list[JsonObject]:
-        """Every entry of a paginated listing (`tools/list`, `resources/list`, `prompts/list`...).
-
-        `key` is the result field that holds the page. A server that never stops paging is a
-        protocol error after `MAX_PAGES`.
-        """
-        entries: list[JsonObject] = []
-        cursor: str | None = None
-        for _ in range(MAX_PAGES):
-            answer = self.request(method, {} if cursor is None else {"cursor": cursor})
-            for item in as_list(answer.get(key)) or []:
-                entry = as_object(item)
-                if entry is None:
-                    raise ServerError(
-                        "the server broke the protocol", detail=f"{method}: non-object entry"
-                    )
-                entries.append(entry)
-            cursor = as_str(answer.get("nextCursor"))
-            if cursor is None:
-                return entries
-        raise ServerError("the server broke the protocol", detail=f"{method}: too many pages")
-
-    def call_tool(self, name: str, arguments: JsonObject) -> JsonObject:
-        return self.request("tools/call", {"name": name, "arguments": arguments})
-
     def request(self, method: str, params: JsonObject) -> JsonObject:
         """One request, one answer; raises ServerError (or its timeout / exited subclasses)."""
         with self._request_lock:
@@ -189,19 +235,6 @@ class StdioClient:
                 if isinstance(answered, bool) or answered != request_id:
                     continue  # a late answer to an earlier, timed-out request
                 return self._answer(method, message)
-
-    def _answer(self, method: str, message: JsonObject) -> JsonObject:
-        failure = as_object(message.get("error"))
-        if failure is not None:
-            raise ServerRejectedError(
-                detail=f"{method}: {quoted(as_str(failure.get('message')) or '')}"
-            )
-        answer = as_object(message.get("result"))
-        if answer is None:
-            raise ServerError(
-                "the server broke the protocol", detail=f"{method}: result is not an object"
-            )
-        return answer
 
     def _cancel(self, request_id: int) -> None:
         # If the server is gone or not reading, the timeout is reported anyway.

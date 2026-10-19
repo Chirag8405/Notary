@@ -20,7 +20,7 @@ from notary_core.resolver import ArgumentResolver
 from notary_mcp_proxy.approvals import ApprovalDesk, printable
 from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
 from notary_mcp_proxy.check import check_config, render_report
-from notary_mcp_proxy.client import ServerError, StdioClient
+from notary_mcp_proxy.client import McpClient, ServerError, StdioClient
 from notary_mcp_proxy.compile_client import (
     CompileClient,
     CompileUrlError,
@@ -28,10 +28,13 @@ from notary_mcp_proxy.compile_client import (
 )
 from notary_mcp_proxy.config import (
     ProxyConfig,
+    ServerSpec,
+    StdioServerSpec,
     build_contract,
     build_labeling,
     build_ledger,
     build_policy,
+    resolve_headers,
     tool_fields,
     tool_readers,
 )
@@ -46,6 +49,7 @@ from notary_mcp_proxy.control import (
 )
 from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
+from notary_mcp_proxy.http_client import HttpClient
 from notary_mcp_proxy.prompt_hook import MAX_INPUT, forward_prompt
 from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
@@ -86,7 +90,7 @@ def write_control_file(directory: Path, run_id: str, socket_path: Path) -> Path:
 
 def build_server(
     config: ProxyConfig,
-    client: StdioClient,
+    client: McpClient,
     *,
     run_id: str,
     audit_append: AuditAppend = append,
@@ -111,7 +115,7 @@ def build_server(
 
 def build_servers(
     config: ProxyConfig,
-    clients: Mapping[str, StdioClient],
+    clients: Mapping[str, McpClient],
     *,
     run_id: str,
     audit_append: AuditAppend = append,
@@ -280,7 +284,7 @@ def check_main(argv: Sequence[str]) -> int:
     config = _load_config(config_path)
     if config is None:
         return 2
-    clients: dict[str, StdioClient] = {}
+    clients: dict[str, McpClient] = {}
     try:
         clients = _start_clients(config, config_path)
         for client in clients.values():
@@ -310,23 +314,43 @@ def check_main(argv: Sequence[str]) -> int:
     return 0 if report.ok else 1
 
 
-def _start_clients(config: ProxyConfig, config_path: Path) -> dict[str, StdioClient]:
-    """Start every server (in the config file's directory); on a failure stop the ones started."""
-    started: dict[str, StdioClient] = {}
+def _start_clients(
+    config: ProxyConfig, config_path: Path, env: Mapping[str, str] | None = None
+) -> dict[str, McpClient]:
+    """Connect to every server; on a failure stop the ones started.
+
+    A stdio server is started in the config file's directory. An HTTP server's header values
+    are resolved from `env` (default: the process environment) here, so a missing variable fails
+    startup; no connection is made until `initialize`.
+    """
+    started: dict[str, McpClient] = {}
+    variables = os.environ if env is None else env
     try:
         for name, spec in config.servers.items():
-            started[name] = StdioClient(
-                spec.command,
-                cwd=config_path.resolve().parent,
-                timeout_seconds=spec.timeout_seconds,
-            )
+            if isinstance(spec, StdioServerSpec):
+                started[name] = StdioClient(
+                    spec.command,
+                    cwd=config_path.resolve().parent,
+                    timeout_seconds=spec.timeout_seconds,
+                )
+            else:
+                started[name] = HttpClient(
+                    spec.url,
+                    headers=resolve_headers(name, spec, variables),
+                    timeout_seconds=spec.timeout_seconds,
+                )
     except BaseException:
         _close_all(started)
         raise
     return started
 
 
-def _close_all(clients: Mapping[str, StdioClient]) -> None:
+def _describe(spec: ServerSpec) -> str:
+    """For the log: the command, or the URL (never the headers)."""
+    return " ".join(spec.command) if isinstance(spec, StdioServerSpec) else spec.url
+
+
+def _close_all(clients: Mapping[str, McpClient]) -> None:
     for client in clients.values():
         client.close()
 
@@ -398,7 +422,7 @@ def serve_main(argv: Sequence[str]) -> int:
     )
     control: ControlServer | None = None
     control_file: Path | None = None
-    clients: dict[str, StdioClient] = {}
+    clients: dict[str, McpClient] = {}
     log: RunLog | None = None
     try:
         try:
@@ -429,7 +453,7 @@ def serve_main(argv: Sequence[str]) -> int:
             _log(f"startup failed: NOTARY halted: {server.gateway.halted}")
             return 2
         fronted = [
-            " ".join(spec.command) if not config.multi else f"{name}: {' '.join(spec.command)}"
+            _describe(spec) if not config.multi else f"{name}: {_describe(spec)}"
             for name, spec in config.servers.items()
         ]
         _log(f"run {run_id}: fronting {'; '.join(fronted)}")

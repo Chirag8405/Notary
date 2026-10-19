@@ -28,7 +28,7 @@ from notary_core.models import (
     ValueLabeled,
 )
 from notary_mcp_proxy.client import StdioClient
-from notary_mcp_proxy.config import ProxyConfig
+from notary_mcp_proxy.config import ProxyConfig, StdioServerSpec
 from notary_mcp_proxy.gateway import Gateway
 from notary_mcp_proxy.jsonrpc import (
     METHOD_NOT_FOUND,
@@ -164,7 +164,11 @@ def start(tmp_path: Path) -> Iterator[Start]:
         if len(specs) > 1:  # several servers: every tool names its server
             extra.setdefault("tools", {"pay_bill": {**PAY_SPEC, "server": next(iter(specs))}})
         config = _config(specs, **extra)
-        started = {name: StdioClient(spec.command) for name, spec in config.servers.items()}
+        started = {
+            name: StdioClient(spec.command)
+            for name, spec in config.servers.items()
+            if isinstance(spec, StdioServerSpec)
+        }
         clients.extend(started.values())
         return build_servers(config, started, run_id="run-test", audit_append=audit_append)
 

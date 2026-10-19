@@ -17,7 +17,7 @@ from stdio_session import StdioSession, proxy_command, request, tool_call
 
 from notary_core.models import CallProposed, DecisionMade, EffectExecuted, ValueLabeled
 from notary_mcp_proxy.client import StdioClient, quoted
-from notary_mcp_proxy.config import ProxyConfig, ServerSpec
+from notary_mcp_proxy.config import ProxyConfig, StdioServerSpec
 from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object
 from notary_mcp_proxy.main import build_server
 from notary_mcp_proxy.mcp_backend import (
@@ -131,11 +131,11 @@ def _effects(proxy: ProxyServer) -> list[str]:
 
 
 def test_timeout_default_and_validation() -> None:
-    assert ServerSpec(command=("x",)).timeout_seconds == 30.0
-    assert ServerSpec(command=("x",), timeout_seconds=1.5).timeout_seconds == 1.5
+    assert StdioServerSpec(command=("x",)).timeout_seconds == 30.0
+    assert StdioServerSpec(command=("x",), timeout_seconds=1.5).timeout_seconds == 1.5
     for bad in (0, -1):
         with pytest.raises(ValidationError):
-            ServerSpec(command=("x",), timeout_seconds=bad)
+            StdioServerSpec(command=("x",), timeout_seconds=bad)
     with pytest.raises(ValueError, match="positive"):
         StdioClient(["x"], timeout_seconds=0)
 
