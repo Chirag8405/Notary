@@ -17,6 +17,11 @@ export interface EndorsementCardProps {
   toolName?: string;
   /** A message to show when the last attempt failed. */
   error?: string | null;
+  /**
+   * Whether "use the nearest known value" may be offered (default true). False for a run that has
+   * no such path, such as one of the MCP proxy: the button is not shown at all.
+   */
+  allowNearest?: boolean;
 }
 
 const BUTTON =
@@ -102,6 +107,7 @@ export function EndorsementCard({
   onDecide,
   toolName,
   error,
+  allowNearest = true,
 }: EndorsementCardProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -113,6 +119,7 @@ export function EndorsementCard({
   const stateText = STATE_TEXT[state];
   // Offered only when the ledger has a value to propose for every parameter on the card.
   const canUseNearest =
+    allowNearest &&
     endorsement.card.rows.length > 0 &&
     endorsement.card.rows.every((row) => row.nearest_ledger_value !== null);
 

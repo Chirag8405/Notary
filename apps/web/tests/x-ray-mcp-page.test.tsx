@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { XRayView } from "@/components/x-ray-view";
-import { CHAIN_BROKEN } from "@/lib/x-ray-state";
+import { CHAIN_BROKEN, MCP_APPROVALS_OFF, MCP_APPROVAL_NOT_DELIVERED } from "@/lib/x-ray-state";
 
 import { stubRest } from "./fake-run";
 import type { McpRunBody } from "./fake-run";
@@ -149,15 +149,44 @@ describe("x-ray mode mcp", () => {
     });
   });
 
-  it("does not offer approval for an escalation, which the server would refuse [I6]", async () => {
+  it("shows the escalation's card; Confirm sends the approve command and use_nearest is not offered [I4]", async () => {
     const page = open(RUNS, RUN);
     const socket = await socketOpened(page);
     act(() => {
-      socket.push(...proxyRun(RUN));
+      socket.push(...proxyRun(RUN).slice(0, 9));
     });
-    await screen.findByText(/A call escalated and is not allowed to run/);
-    expect(screen.queryByRole("button", { name: /approve|confirm|reject/i })).toBeNull();
+    await screen.findByText(/The proxy holds an escalated call until you answer/);
+    expect(screen.queryByRole("button", { name: "Use nearest known value" })).toBeNull();
     expect(socket.sent).toEqual([]);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    expect(socket.sent).toHaveLength(1);
+    expect(JSON.parse(must(socket.sent[0], "command"))).toMatchObject({
+      type: "endorsement_decision",
+      run_id: RUN,
+      decision: "approve",
+    });
+    // the card is not closed by the click
+    expect(document.querySelector("[data-endorsement-id]")?.getAttribute("data-state")).toBe(
+      "sending",
+    );
+  });
+
+  it("explains a refusal of the decision: 4422 (off, or not local) and 4409 (not delivered) [I4]", async () => {
+    const page = open(RUNS, RUN);
+    const socket = await socketOpened(page);
+    act(() => {
+      socket.push(...proxyRun(RUN).slice(0, 9));
+      socket.closeWith(4422, "command not supported on this socket");
+    });
+    expect((await screen.findByRole("alert")).textContent).toBe(MCP_APPROVALS_OFF);
+    cleanup();
+    const again = open(RUNS, RUN);
+    const second = await socketOpened(again);
+    act(() => {
+      second.push(...proxyRun(RUN).slice(0, 9));
+      second.closeWith(4409, "approval not delivered");
+    });
+    expect((await screen.findByRole("alert")).textContent).toBe(MCP_APPROVAL_NOT_DELIVERED);
   });
 
   it("says the chain failed verification when the server closes 4503 [I6]", async () => {

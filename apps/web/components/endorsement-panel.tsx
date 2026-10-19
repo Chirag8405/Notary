@@ -29,6 +29,8 @@ export interface EndorsementPanelProps {
   onResolvedChange?: (resolved: ReadonlySet<string>) => void;
   /** Called, never during render, when the set of cards the user rejected changes. */
   onRejectedChange?: (rejected: ReadonlySet<string>) => void;
+  /** False for an MCP proxy run, which has no "nearest known value" path (default true). */
+  allowNearest?: boolean;
 }
 
 interface Click {
@@ -66,6 +68,7 @@ export function EndorsementPanel({
   toolByCallId,
   onResolvedChange,
   onRejectedChange,
+  allowNearest = true,
 }: EndorsementPanelProps) {
   const [clicks, setClicks] = useState<ReadonlyMap<string, Click>>(() => new Map());
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(() => new Map());
@@ -147,6 +150,7 @@ export function EndorsementPanel({
             }
             state={state}
             error={errors.get(id) ?? null}
+            allowNearest={allowNearest}
             onDecide={(decision) => {
               decide(id, decision);
             }}

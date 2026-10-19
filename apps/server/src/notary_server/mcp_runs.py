@@ -19,10 +19,16 @@ there, which is a second copy of the anchor kept outside the directory; a later 
 run must then reach the same head at the same length. It does not detect a file cut short.
 
 A run id is `mcp-<12 hex>` (the proxy's format) and is checked before it is used in any path.
+
+`McpApprovals` is the one thing here that talks to the proxy: it forwards an approve or reject from
+the endorsement card to the run's control socket (see its docstring). It never resolves a card; the
+card closes only when the chain says so.
 """
 
+import json
 import os
 import re
+import socket
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated
@@ -30,19 +36,41 @@ from typing import Annotated
 from pydantic import Field, ValidationError
 
 from notary_core.audit import GENESIS_HASH, entry_hash
-from notary_core.models import AuditEntry, Event, NotaryModel, Sha256Hex
+from notary_core.models import (
+    AuditEntry,
+    Command,
+    EndorsementDecisionCommand,
+    Event,
+    NotaryModel,
+    Sha256Hex,
+)
 from notary_server.anchors import AnchorStore
+from notary_server.commands import (
+    CLOSE_COMMAND_CONFLICT,
+    CLOSE_UNSUPPORTED_COMMAND,
+    CommandContext,
+    CommandHandler,
+    CommandRejected,
+)
 from notary_server.sources import RunRequest, RunUnavailableError
 
 CLOSE_CHAIN_BROKEN = 4503
 RUN_ID = re.compile(r"mcp-[0-9a-f]{12}")
 CHAIN_SUFFIX = ".chain.jsonl"
 ANCHOR_SUFFIX = ".anchor.json"
+CONTROL_SUFFIX = ".control.json"
 MAX_LINE_BYTES = 4 * 1024 * 1024
 """A line longer than this is not an audit entry: the writer's lines are far smaller."""
 MAX_LISTED_RUNS = 100
+CONTROL_TIMEOUT_SECONDS = 5.0
+"""How long a connect, a write or a read on a control socket may take."""
+REASON_NOT_SUPPORTED = "decision not supported on mcp runs"
+REASON_NOT_DELIVERED = "approval not delivered"
+REASON_NOT_ACCEPTED = "approval not accepted"
 _CHUNK_BYTES = 64 * 1024
 _MAX_ANCHOR_BYTES = 4096
+_MAX_CONTROL_FILE_BYTES = 4096
+_MAX_CONTROL_REPLY_BYTES = 65536
 
 
 class McpRunInfo(NotaryModel):
@@ -244,3 +272,130 @@ class McpRunsSource:
             raise _ChainBrokenError
         if stored is None or stored.length < length:
             self._anchors.record(run_id, entry.hash, length)
+
+
+# -- approvals -------------------------------------------------------------------------------------
+
+
+class _ControlFile(NotaryModel):
+    """The proxy's `<run_id>.control.json`, read here without importing the proxy."""
+
+    socket: Annotated[str, Field(min_length=1, max_length=4096)]
+
+
+class _ControlReply(NotaryModel):
+    ok: bool
+    error: str | None = None
+
+
+def _unix_connect(path: Path) -> socket.socket:
+    """Connect to a Unix socket with a bounded wait. The caller closes it."""
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        connection.settimeout(CONTROL_TIMEOUT_SECONDS)
+        connection.connect(str(path))
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+class McpApprovals:
+    """Forwards the card's approve or reject of an MCP proxy run to that run's control socket.
+
+    The proxy announces the socket in `DIR/<run_id>.control.json` (`{"socket": "<abs path>"}`, next
+    to the chain). Nothing in that file is trusted: the run id is checked against `mcp-<12 hex>`
+    before it is a path, the file must be a regular file (no link) of the audit directory, and the
+    socket path in it must be absolute and, once links are resolved, lie inside `control_directory`
+    (the directory the proxy's `--control` sockets live in). Anything else is refused and nothing
+    is connected to.
+
+    `forward` blocks on a socket, so the app runs the handler off the event loop. It only forwards
+    `approve` and `reject` and never resolves a card or reports success to the page: a card closes
+    when the chain shows the proxy's second `decision_made` or a block. `use_nearest` is refused,
+    the proxy has no such path. A refusal by the proxy (`ok: false`: unknown or already decided id)
+    or an unreachable socket is a `CommandRejected` with a fixed reason; the proxy's own text is
+    never relayed.
+
+    Whether approvals are on at all, and whether the client is on this machine, is decided before
+    this handler is registered on a socket (`create_app`).
+    """
+
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        control_directory: Path,
+        connect: Callable[[Path], socket.socket] = _unix_connect,
+    ) -> None:
+        self._directory = directory
+        self._control_directory = control_directory
+        self._connect = connect
+
+    def handler(self) -> CommandHandler:
+        """For `CommandRouter.register("endorsement_decision", ...)`."""
+
+        def handle(command: Command, context: CommandContext) -> None:
+            if not isinstance(command, EndorsementDecisionCommand):
+                raise CommandRejected(
+                    CLOSE_UNSUPPORTED_COMMAND, "command not supported on this socket"
+                )
+            if command.decision == "use_nearest":
+                raise CommandRejected(CLOSE_UNSUPPORTED_COMMAND, REASON_NOT_SUPPORTED)
+            self.forward(command.run_id, command.endorsement_id, command.decision)
+
+        return handle
+
+    def control_socket(self, run_id: str) -> Path | None:
+        """The validated control socket of a run, or None when it is missing or not acceptable."""
+        if RUN_ID.fullmatch(run_id) is None:
+            return None
+        path = _inside(self._directory, run_id + CONTROL_SUFFIX)
+        if path is None:
+            return None
+        try:
+            with path.open("rb") as handle:
+                raw = handle.read(_MAX_CONTROL_FILE_BYTES + 1)
+        except OSError:
+            return None
+        if len(raw) > _MAX_CONTROL_FILE_BYTES:
+            return None
+        try:
+            announced = _ControlFile.model_validate_json(raw).socket
+        except ValidationError:
+            return None
+        if "\0" in announced or not os.path.isabs(announced):
+            return None
+        resolved = Path(os.path.realpath(announced))
+        if not resolved.is_relative_to(self._control_directory.resolve()):
+            return None
+        return resolved
+
+    def forward(self, run_id: str, endorsement_id: str, decision: str) -> None:
+        """Send `approve` or `reject` to the run's control socket (blocking).
+
+        Raises `CommandRejected` when the socket is not acceptable or cannot be reached, or when
+        the proxy does not accept the decision.
+        """
+        target = self.control_socket(run_id)
+        if target is None:
+            raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_DELIVERED)
+        message = {"op": decision, "endorsement_id": endorsement_id}
+        try:
+            connection = self._connect(target)
+            try:
+                connection.settimeout(CONTROL_TIMEOUT_SECONDS)
+                with connection.makefile("rwb") as stream:
+                    stream.write(json.dumps(message).encode("utf-8") + b"\n")
+                    stream.flush()
+                    line = stream.readline(_MAX_CONTROL_REPLY_BYTES + 1)
+            finally:
+                connection.close()
+        except OSError:
+            raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_DELIVERED) from None
+        try:
+            reply = _ControlReply.model_validate_json(line)
+        except ValidationError:
+            raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_DELIVERED) from None
+        if not reply.ok:
+            raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_ACCEPTED)

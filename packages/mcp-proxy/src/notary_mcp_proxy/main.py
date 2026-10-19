@@ -5,6 +5,7 @@ stdout carries only MCP messages; diagnostics go to stderr.
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from collections.abc import Mapping, Sequence
@@ -43,10 +44,36 @@ from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
 
 DEFAULT_APPROVAL_TIMEOUT = 120.0
+CONTROL_SUFFIX = ".control.json"
+"""`<run_id>.control.json` next to the chain: where this run's control socket is (#262)."""
 
 
 def _log(text: str) -> None:
     print(f"notary-mcp-proxy: {text}", file=sys.stderr, flush=True)
+
+
+def write_control_file(directory: Path, run_id: str, socket_path: Path) -> Path:
+    """Announce the control socket as `directory/<run_id>.control.json` (`{"socket": "<abs>"}`).
+
+    The file is private (mode 0600) and replaced atomically, so a reader never sees half of it.
+    The X-ray server reads it to forward an approval from the endorsement card; it validates the
+    path again before it connects.
+    """
+    target = directory / f"{run_id}{CONTROL_SUFFIX}"
+    staging = directory / f"{run_id}{CONTROL_SUFFIX}.tmp"
+    body = json.dumps({"socket": str(socket_path.resolve())}).encode("utf-8")
+    descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        staging.unlink(missing_ok=True)
+        raise
+    os.chmod(staging, 0o600)
+    os.replace(staging, target)
+    return target
 
 
 def build_server(
@@ -289,6 +316,7 @@ def serve_main(argv: Sequence[str]) -> int:
         )
     )
     control: ControlServer | None = None
+    control_file: Path | None = None
     clients: dict[str, StdioClient] = {}
     log: RunLog | None = None
     try:
@@ -308,6 +336,8 @@ def serve_main(argv: Sequence[str]) -> int:
             if desk is not None and control_path is not None:
                 control = ControlServer(desk, control_path)
                 control.start()
+                if audit_dir is not None:
+                    control_file = write_control_file(audit_dir, run_id, control.path)
         except (ServerError, OSError, ValueError, AuditWriteError, ControlError) as failure:
             # Every server must start and match the config, or the contract would not cover it.
             detail = failure.detail if isinstance(failure, ServerError) else str(failure)
@@ -332,6 +362,8 @@ def serve_main(argv: Sequence[str]) -> int:
         if log is not None:
             _report_head(run_id, log, halted=server.gateway.halted)
     finally:
+        if control_file is not None:
+            control_file.unlink(missing_ok=True)
         if control is not None:
             control.close()
         _close_all(clients)
