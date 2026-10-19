@@ -30,6 +30,11 @@ from notary_core.models import (
 from notary_core.pinning import PinReport
 from notary_mcp_proxy.approvals import Answer, ApprovalDesk, Pending, printable
 from notary_mcp_proxy.client import PROTOCOL_VERSION, ServerError, diagnostic, quoted
+from notary_mcp_proxy.content import (
+    IGNORED_NOTIFICATIONS,
+    QUEUED,
+    ContentProxy,
+)
 from notary_mcp_proxy.dispatch import (
     AskToken,
     ClientAsker,
@@ -193,11 +198,13 @@ class ProxyServer:
         control_hint: str = "",
         reject_unanswered: bool = False,
         elicitation: bool = True,
+        content: ContentProxy | None = None,
     ) -> None:
         """`desk` is where an escalated call waits for the user.
 
         With `elicitation`, a client that declared the capability is also asked in its own UI
-        (needs a desk; the dispatcher routes the client requests).
+        (needs a desk; the dispatcher routes the client requests). `content` serves the resources
+        and prompts the config switches on; without it they are hidden (method not found).
 
         Without a desk, `reject_unanswered` (`--control none`) rejects every escalation at once;
         otherwise the call is answered "escalated" and the endorsement stays pending for the
@@ -205,6 +212,7 @@ class ProxyServer:
         with each card (how the user answers it, e.g. the CLI line).
         """
         self._gateway = gateway
+        self._content = content
         self._desk = desk
         self._control_hint = control_hint
         self._reject_unanswered = reject_unanswered
@@ -232,22 +240,29 @@ class ProxyServer:
         One thread does everything here (the in-process tests, scripts). The `Dispatcher` instead
         calls `handle_fast` on the reader thread and `handle_call` on its single worker thread.
         """
-        if is_call(message):
+        if self.queued(as_str(message.get("method")) or ""):
             return self.handle_call(message)
         return self.handle_fast(message)
+
+    def queued(self, method: str) -> bool:
+        """`tools/call`, and the resource and prompt requests that touch the Gateway or a server
+        (only when configured: hidden ones are answered at once with method-not-found)."""
+        if method == "tools/call":
+            return True
+        return method in QUEUED and self._content is not None and self._content.serves(method)
 
     def handle_fast(self, message: JsonObject) -> JsonObject | None:
         """`initialize`, `ping`, `tools/list`, unknown methods and invalid messages.
 
-        Safe on the reader thread while a call runs: it never touches the Gateway.
-        A `tools/call` is not answered here (`handle_call` does that).
+        Safe on the reader thread while a call runs: it never touches the Gateway (`prompts/list`
+        shows the pinned definitions). A queued method is not answered here (`handle_call` does).
         """
-        if is_call(message):
-            return error(message.get("id"), INTERNAL_ERROR, "tools/call is not a fast method")
+        if self.queued(as_str(message.get("method")) or ""):
+            return error(message.get("id"), INTERNAL_ERROR, "this method is not a fast method")
         return self._respond(message)
 
     def handle_call(self, message: JsonObject) -> JsonObject | None:
-        """A `tools/call`: label, decide, run. Only the thread that owns the Gateway calls this."""
+        """A queued method: label, decide, run. Only the thread that owns the Gateway calls this."""
         return self._respond(message)
 
     def finish_run(self) -> None:
@@ -306,6 +321,9 @@ class ProxyServer:
                 return result(request_id, {})
             if method == "tools/list":
                 return result(request_id, {"tools": list(self._tools)})
+            content = self._content
+            if content is not None and content.serves(method):
+                return content.handle(request_id, method, params)
             if method == "tools/call":
                 name = as_str(params.get("name"))
                 if name is None:
@@ -326,7 +344,10 @@ class ProxyServer:
         self._client_elicits = supports_form(params.get("capabilities"))
         return {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {
+                "tools": {"listChanged": False},
+                **({} if self._content is None else self._content.capabilities()),
+            },
             "serverInfo": SERVER_INFO,
             "instructions": INSTRUCTIONS,
         }
@@ -485,6 +506,10 @@ class ProxyServer:
         already waiting and runs on its worker (`route_drift_checks`); without one (in-process
         tests) a small thread of its own runs it. Requests are coalesced either way.
         """
+        if method in IGNORED_NOTIFICATIONS:
+            # Not forwarded: the agent's view of resources and prompts stays the pinned one.
+            diagnostic(f"{method}: ignored (resources and prompts are not re-listed)")
+            return
         if method != LIST_CHANGED:
             return
         schedule = self._schedule_drift
@@ -650,10 +675,6 @@ def _records_object(call_id: str, values: Sequence[ResolvedValue]) -> JsonObject
         if isinstance(fields, list):
             fields.append({"name": name, "text": value.text, "unit": value.unit})
     return {"records": list(records.values())}
-
-
-def is_call(message: JsonObject) -> bool:
-    return as_str(message.get("method")) == "tools/call"
 
 
 def serve(server: ProxyServer, reader: IO[bytes], writer: IO[bytes]) -> None:

@@ -34,6 +34,9 @@ FindingCode = Literal[
     "SERVER_TOOL_NOT_EXPOSED",
     "TOOL_NAME_COLLISION",
     "RENAMED_TOOL_UNREVIEWED",
+    "PROMPT_MISSING",
+    "RESOURCES_EXPOSED",
+    "PROMPTS_EXPOSED",
 ]
 SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
 
@@ -194,21 +197,72 @@ def _routing_findings(config: ProxyConfig, collisions: Sequence[str]) -> list[Fi
     return found
 
 
+def _content_findings(config: ProxyConfig, prompts: Mapping[str, Sequence[str]]) -> list[Finding]:
+    """The resources and prompts the config switches on; an allowed prompt must exist."""
+    found: list[Finding] = []
+    for server, spec in sorted(config.servers.items()):
+        where = f"server {server}: " if config.multi else ""
+        if spec.resources is not None:
+            found.append(
+                Finding(
+                    severity="info",
+                    code="RESOURCES_EXPOSED",
+                    tool=None,
+                    param=None,
+                    detail=(
+                        f"{where}resources under {', '.join(spec.resources.allow)} are listed and "
+                        "readable; their content is labeled and logged, always untrusted, "
+                        f"readers {', '.join(spec.resources.readers)}"
+                    ),
+                )
+            )
+        if spec.prompts is None:
+            continue
+        found.append(
+            Finding(
+                severity="info",
+                code="PROMPTS_EXPOSED",
+                tool=None,
+                param=None,
+                detail=(
+                    f"{where}prompts {', '.join(spec.prompts.allow)} are listed and gettable; "
+                    "their definitions are pinned at startup and their messages are labeled"
+                ),
+            )
+        )
+        reported = set(prompts.get(server, ()))
+        found.extend(
+            Finding(
+                severity="error",
+                code="PROMPT_MISSING",
+                tool=None,
+                param=None,
+                detail=f"{where}the config allows prompt `{name}`; the server does not report it",
+            )
+            for name in spec.prompts.allow
+            if name not in reported
+        )
+    return found
+
+
 def check_config(
     config: ProxyConfig,
     manifests: Sequence[ToolManifest],
     schemas: Mapping[str, JsonObject],
     collisions: Sequence[str] = (),
+    prompts: Mapping[str, Sequence[str]] | None = None,
 ) -> CheckReport:
     """What the config exposes and every problem with it.
 
     `manifests` and `schemas` (tool -> `inputSchema`) are keyed by CONTRACT name; `collisions`
-    are the texts from `RoutingBackend.collisions`.
+    are the texts from `RoutingBackend.collisions`; `prompts` is server name -> the prompt names
+    it reports (only servers with a `prompts` section are looked at).
     """
     policy = build_policy(config)
     servers = {tool: name for tool, (name, _) in routes(config).items()} if config.multi else {}
     by_name = {manifest.name: manifest for manifest in manifests}
     findings: list[Finding] = _routing_findings(config, collisions)
+    findings.extend(_content_findings(config, prompts or {}))
     rows: list[ToolRow] = []
     present: list[str] = []
     for tool, spec in sorted(config.tools.items()):

@@ -8,6 +8,7 @@ The config stands in for the Intent Compiler: the user writes the contract by ha
 hashes are not written; they are pinned from what the server reports at startup.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Annotated, Literal, Self
@@ -47,6 +48,57 @@ PUBLIC: tuple[str, ...] = ("*",)
 RecordReaders = Literal["config", "narrow_by_server"]
 DEFAULT_SERVER = "default"
 """Name of the one server of the single `server` form."""
+_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:[^\s]*")
+"""A URI prefix starts with a scheme and holds no whitespace."""
+RESOURCE_SOURCE = "resource:"
+PROMPT_SOURCE = "prompt:"
+"""Prefixes of the synthetic labeling sources `resource:<server>` / `prompt:<server>`: the tool name
+the labeler sees for content that is not a tool result. No contract tool may use them."""
+
+
+def resource_source(server: str) -> str:
+    return f"{RESOURCE_SOURCE}{server}"
+
+
+def prompt_source(server: str) -> str:
+    return f"{PROMPT_SOURCE}{server}"
+
+
+class ResourcePolicy(NotaryModel):
+    """Which resources of one server the agent may see and read; the rest stays hidden."""
+
+    allow: Annotated[tuple[str, ...], Field(min_length=1)]
+    """URI prefixes, e.g. `file:///docs/` (end a directory with `/`: the match is a plain string
+    prefix). A URI outside every prefix is neither listed nor readable, and a read of it is
+    answered without contacting the server."""
+    readers: tuple[str, ...] = PUBLIC
+    """Who may read the content; `["user"]` marks it secret."""
+    origin: Origin | None = None
+    """Origin of the content; none means `tool:resource:<server>`. Content is always untrusted."""
+
+    @field_validator("allow")
+    @classmethod
+    def _prefixes_are_uris(cls, allow: tuple[str, ...]) -> tuple[str, ...]:
+        for prefix in allow:
+            if _SCHEME.fullmatch(prefix) is None:
+                raise ValueError(f"resource prefix {prefix!r} is not a URI prefix")
+        if len(set(allow)) != len(allow):
+            raise ValueError("a resource prefix is listed twice")
+        return allow
+
+
+class PromptPolicy(NotaryModel):
+    """Which prompts of one server the agent may see and get. Definitions are pinned at startup."""
+
+    allow: Annotated[tuple[str, ...], Field(min_length=1)]
+    """Prompt names (exact)."""
+
+    @field_validator("allow")
+    @classmethod
+    def _names_are_unique(cls, allow: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not name for name in allow) or len(set(allow)) != len(allow):
+            raise ValueError("prompt names must be non-empty and unique")
+        return allow
 
 
 class ServerSpec(NotaryModel):
@@ -54,6 +106,10 @@ class ServerSpec(NotaryModel):
     """Run in the config file's directory."""
     timeout_seconds: Annotated[float, Field(gt=0)] = 30.0
     """How long one request to the server may take before the call is answered with an error."""
+    resources: ResourcePolicy | None = None
+    """None (the default): the server's resources are hidden and `resources/*` is not served."""
+    prompts: PromptPolicy | None = None
+    """None (the default): the server's prompts are hidden and `prompts/*` is not served."""
 
 
 class ParamSpec(NotaryModel):
@@ -169,6 +225,37 @@ class ProxyConfig(NotaryModel):
             seen[route] = tool
         return self
 
+    @model_validator(mode="after")
+    def _content_is_unambiguous(self) -> Self:
+        """A URI or prompt name must belong to exactly one server, and tools may not shadow the
+        synthetic sources."""
+        for tool in sorted(self.tools):
+            if tool.startswith((RESOURCE_SOURCE, PROMPT_SOURCE)):
+                raise ValueError(
+                    f"tool {tool!r}: names starting with {RESOURCE_SOURCE!r} or "
+                    f"{PROMPT_SOURCE!r} are reserved for resources and prompts"
+                )
+        prefixes: list[tuple[str, str]] = []
+        names: dict[str, str] = {}
+        for server, spec in sorted(self.servers.items()):
+            if spec.resources is not None:
+                prefixes.extend((server, prefix) for prefix in spec.resources.allow)
+            if spec.prompts is not None:
+                for name in spec.prompts.allow:
+                    if name in names:
+                        raise ValueError(
+                            f"prompt {name!r} is allowed on servers {names[name]!r} and {server!r}"
+                        )
+                    names[name] = server
+        for index, (server, prefix) in enumerate(prefixes):
+            for other, longer in prefixes[index + 1 :]:
+                if other != server and (longer.startswith(prefix) or prefix.startswith(longer)):
+                    raise ValueError(
+                        f"resource prefixes {prefix!r} (server {server!r}) and {longer!r} "
+                        f"(server {other!r}) overlap"
+                    )
+        return self
+
     @property
     def servers(self) -> dict[str, ServerSpec]:
         """Name -> spec for either form."""
@@ -265,12 +352,17 @@ def build_ledger(config: ProxyConfig) -> tuple[LedgerEntry, ...]:
 
 
 def build_labeling(config: ProxyConfig) -> LabelingPolicy:
-    origins = tuple(
+    origins = [
         ToolOriginRule(tool=tool, origin=spec.origin)
         for tool, spec in sorted(config.tools.items())
         if spec.origin is not None
+    ]
+    origins.extend(
+        ToolOriginRule(tool=resource_source(server), origin=spec.resources.origin)
+        for server, spec in sorted(config.servers.items())
+        if spec.resources is not None and spec.resources.origin is not None
     )
-    return LabelingPolicy(origins=origins, stamps=())
+    return LabelingPolicy(origins=tuple(origins), stamps=())
 
 
 def tool_readers(config: ProxyConfig) -> Mapping[str, tuple[str, ...]]:

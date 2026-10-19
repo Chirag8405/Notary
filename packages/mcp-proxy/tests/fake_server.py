@@ -11,6 +11,13 @@ Behaviors: `hang` never answers that call or any later request (it keeps reading
 `rpc_error` answers a JSON-RPC error whose message is `evil`; `late` holds its answer back and
 sends it just before the answer to the next request (a late answer, with no sleeping).
 
+Resources and prompts: `resources` (`{uri: [contents...]}`, answers `resources/read`),
+`resource_list` and `resource_templates` (the entries of `resources/list` and
+`resources/templates/list`), `prompts` (the `prompts/list` entries), `after_prompt_lists`
+(`{"3": [...]}` replaces the prompt list from the 3rd `prompts/list` on, a rug pull),
+`prompt_results` (`{name: result}` for `prompts/get`), `capabilities` (what `initialize` declares;
+default tools only) and `notify_on_read` (a method sent as a notification before a read answers).
+
 `notify_fifo` (a path made with `os.mkfifo`) makes the server write one line to it when a call
 arrives, before it acts on the call; the write blocks until the test has opened the FIFO for
 reading, so the test learns that the call reached the server without polling or sleeping.
@@ -27,6 +34,7 @@ script_path = Path(sys.argv[1])
 script = json.loads(script_path.read_text())
 log_path = script_path.with_name(script_path.name + ".calls.jsonl")
 lists_seen = 0
+prompt_lists_seen = 0
 hung = False
 held: list[dict[str, object]] = []
 swapped: list[list[object]] = []
@@ -46,6 +54,15 @@ def current_tools() -> list[object]:
         if lists_seen >= int(start):
             tools = replacement["tools"]
     return tools
+
+
+def current_prompts() -> list[object]:
+    prompts = script.get("prompts", [])
+    replacements = sorted(script.get("after_prompt_lists", {}).items(), key=lambda i: int(i[0]))
+    for start, replacement in replacements:
+        if prompt_lists_seen >= int(start):
+            prompts = replacement
+    return prompts
 
 
 def send(message: dict[str, object]) -> None:
@@ -110,7 +127,7 @@ for line in sys.stdin:
             message["id"],
             {
                 "protocolVersion": message["params"]["protocolVersion"],
-                "capabilities": {"tools": {}},
+                "capabilities": script.get("capabilities", {"tools": {}}),
                 "serverInfo": {"name": "fake", "version": "0"},
             },
         )
@@ -129,5 +146,30 @@ for line in sys.stdin:
             }
         )
         call(params["name"], message["id"])
+    elif method == "resources/list":
+        log({"method": method})
+        reply(message["id"], {"resources": script.get("resource_list", [])})
+    elif method == "resources/templates/list":
+        log({"method": method})
+        reply(message["id"], {"resourceTemplates": script.get("resource_templates", [])})
+    elif method == "resources/read":
+        uri = message["params"]["uri"]
+        log({"method": method, "uri": uri})
+        notify = script.get("notify_on_read")
+        if notify is not None:
+            send({"method": notify})
+        contents = script.get("resources", {}).get(uri)
+        if contents is None:
+            send({"id": message["id"], "error": {"code": -32002, "message": "evil: no such"}})
+        else:
+            reply(message["id"], {"contents": contents})
+    elif method == "prompts/list":
+        prompt_lists_seen += 1
+        log({"method": method})
+        reply(message["id"], {"prompts": current_prompts()})
+    elif method == "prompts/get":
+        params = message["params"]
+        log({"method": method, "name": params["name"], "arguments": params.get("arguments")})
+        reply(message["id"], script.get("prompt_results", {}).get(params["name"], {"messages": []}))
     else:
         reply(message["id"], {})

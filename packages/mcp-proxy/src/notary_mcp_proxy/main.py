@@ -30,6 +30,7 @@ from notary_mcp_proxy.config import (
     tool_fields,
     tool_readers,
 )
+from notary_mcp_proxy.content import ContentProxy, prompt_definition
 from notary_mcp_proxy.control import (
     ControlError,
     ControlServer,
@@ -142,6 +143,7 @@ def build_servers(
         audit_append=audit_append,
     )
     gateway.pin_session()
+    content = ContentProxy(config, clients, gateway)  # pins the allowed prompts, or fails
     gateway.emit(
         lambda run, lane, seq: RunStarted(
             type="run_started",
@@ -160,6 +162,7 @@ def build_servers(
         control_hint=control_hint,
         reject_unanswered=reject_unanswered,
         elicitation=config.approvals.elicitation,
+        content=content if content.resources or content.prompts else None,
     )
     for client in clients.values():
         client.on_notification = server.on_server_notification
@@ -235,13 +238,21 @@ def check_main(argv: Sequence[str]) -> int:
         manifests = backend.list_tools()
         schemas = {tool.name: tool.input_schema for tool in backend.pinned_definitions()}
         collisions = backend.collisions()
+        prompts = {
+            name: [
+                str(prompt_definition(raw)["name"])
+                for raw in clients[name].list_paged("prompts/list", "prompts")
+            ]
+            for name, spec in config.servers.items()
+            if spec.prompts is not None
+        }
     except (ServerError, OSError) as failure:
         detail = failure.detail if isinstance(failure, ServerError) else str(failure)
         _log(f"a server failed to start or list its tools: {type(failure).__name__}: {detail}")
         return 2
     finally:
         _close_all(clients)
-    report = check_config(config, manifests, schemas, collisions)
+    report = check_config(config, manifests, schemas, collisions, prompts)
     print(report.model_dump_json(indent=2) if args.json else render_report(report), end="")
     if args.json:
         print()
