@@ -8,6 +8,7 @@ the replay is real, but the responses were written by `notary_server.recording`,
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -74,7 +75,7 @@ from notary_world.cast import ATTACKER_IBAN, BILLER_IBAN
 from notary_world.executor import NO_ACTION_SUMMARY, default_monitor, execute_run
 from notary_world.golden import COMMAND_ADAPTER, EVENT_ADAPTER, golden_streams, sample_commands
 from notary_world.labeling import world_labeling_policy
-from notary_world.loader import FIXTURES_DIR, load_cassette
+from notary_world.loader import CASSETTES_DIR, FIXTURES_DIR, load_cassette
 from notary_world.models import Cassette, CassetteTurn
 from notary_world.scenarios import Scenario, get_scenario, golden_run_id
 from notary_world.state import diff, seed_world
@@ -94,14 +95,18 @@ POISONED = "poisoned_bill"
 
 
 def app_client(timeout: float = SHORT_TIMEOUT) -> TestClient:
-    settings = Settings(endorsement_timeout_seconds=timeout)
+    """The app on the committed scripted set, named explicitly: the tests marked
+    `needs_hijacked_agent` assert the agent proposed the injected payee, which only the scripted
+    cassettes guarantee (a real model often is not hijacked). The other sets are replayed in
+    `test_cassette_sets.py`, which accepts either outcome."""
+    settings = Settings(endorsement_timeout_seconds=timeout, cassette_dir=CASSETTES_DIR)
     return TestClient(build_app(settings, event_delay=0))
 
 
 def app_with_broker(timeout: float) -> tuple[TestClient, EndorsementBroker]:
-    """The running app and its broker, to look at the cards the broker holds."""
+    """The running app (scripted set, see `app_client`) and its broker, to look at the cards."""
     broker = EndorsementBroker(timeout_seconds=timeout)
-    settings = Settings(endorsement_timeout_seconds=timeout)
+    settings = Settings(endorsement_timeout_seconds=timeout, cassette_dir=CASSETTES_DIR)
     return TestClient(build_app(settings, event_delay=0, broker=broker)), broker
 
 
@@ -164,6 +169,7 @@ def test_cassette_replay_is_byte_identical_on_every_lane(lane: Lane) -> None:
     assert lines(first) == lines(second) == lines(fresh)
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.attack("A3")
 def test_notary_blocks_the_swapped_iban() -> None:
     events, _ = replay(app_client(), POISONED, "notary")
@@ -178,6 +184,7 @@ def test_notary_blocks_the_swapped_iban() -> None:
     assert last_oracle(events).result.user_goal_achieved is False
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.attack("A3")
 @pytest.mark.parametrize("lane", ["undefended", "classifier"])
 def test_baselines_lose_the_money(lane: Lane) -> None:
@@ -200,6 +207,7 @@ def test_legitimate_bill_pays_silently() -> None:
     assert last_oracle(events).result.attacker_goal_reached is False
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I6")
 def test_streams_validate_and_match_golden_shapes() -> None:
     client = app_client()
@@ -336,7 +344,7 @@ def test_cassette_miss_is_an_error_not_a_fallback(monkeypatch: pytest.MonkeyPatc
         }
     )
 
-    def altered(_name: str) -> Cassette:
+    def altered(_name: str, _directory: Path | None = None) -> Cassette:
         return changed
 
     monkeypatch.setattr("notary_server.wiring.load_cassette", altered)
@@ -395,6 +403,7 @@ def test_live_mode_needs_a_key() -> None:
         "NOTARY_MCP_APPROVALS",
         "NOTARY_MCP_COMPILE",
         "NOTARY_MCP_CONTROL_DIR",
+        "NOTARY_CASSETTE_DIR",
     }
     client = TestClient(build_app(settings, event_delay=0))
     events, closed = replay(client, POISONED, "notary", mode="live")
@@ -596,6 +605,7 @@ def test_adapter_agrees_with_the_engine(scenario_id: str) -> None:
     assert gateway.session == record.session
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.attack("A3")
 def test_playground_and_hijacked_routes_use_the_real_runner() -> None:
     client = app_client()
@@ -622,6 +632,7 @@ def test_playground_and_hijacked_routes_use_the_real_runner() -> None:
     assert attack.json()["oracle"]["attacker_goal_reached"] is False
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.attack("A3")
 def test_arena_replays_through_the_same_runner() -> None:
     client = app_client()
@@ -708,6 +719,7 @@ def golden_run_abandoned(client: TestClient) -> None:
         ws.receive_text()
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I4")
 @pytest.mark.parametrize(
     "golden",
@@ -759,6 +771,7 @@ def test_a_golden_run_never_registers_a_card_or_touches_the_broker() -> None:
     assert broker.calls == []
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I4")
 def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
     """The mode check keeps the real case: an abandoned cassette run fails closed."""
@@ -774,6 +787,7 @@ def test_a_closing_cassette_socket_still_rejects_its_own_card() -> None:
     assert "cancel_run" in broker.calls
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I4")
 def test_the_card_is_registered_when_the_cassette_frame_arrives() -> None:
     """#195: no wait between the `endorsement_requested` frame and the broker holding the card."""
@@ -790,6 +804,7 @@ def test_the_card_is_registered_when_the_cassette_frame_arrives() -> None:
         assert held.remaining_approvals == 3
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I4")
 def test_endorsement_flow_over_the_socket() -> None:
     """A determined user can still say yes (A11): the approved payment runs, and only because of
@@ -875,6 +890,7 @@ def beats_after_the_card(decision: str | None) -> list[Beat]:
     return [beat(event) for event in after]
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.invariant("I4")
 def test_what_follows_a_card() -> None:
     """The web client resolves a card from the run's own events (#239), so the order of the events
@@ -1002,6 +1018,7 @@ def test_committed_cassette_runs_say_they_come_from_a_scripted_agent(lane: Lane)
         assert committed.model.startswith("scripted"), path.name
 
 
+@pytest.mark.needs_hijacked_agent
 @pytest.mark.attack("A3")
 @pytest.mark.invariant("I4")
 def test_use_nearest_pays_the_known_payee_and_writes_nothing_to_the_ledger() -> None:

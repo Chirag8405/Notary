@@ -223,7 +223,7 @@ Playground endpoints (synchronous REST, `notary_server.playground`; CORS allows 
 
 #### Environment
 
-- Environment access is limited to `Settings.from_env`: `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS`, `NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`, `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`, `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`, `NOTARY_MCP_RUNS_DIR`, `NOTARY_MCP_APPROVALS`, `NOTARY_MCP_COMPILE`, `NOTARY_MCP_CONTROL_DIR`, and whether `GROQ_API_KEY` is set, never its value.
+- Environment access is limited to `Settings.from_env`: `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS`, `NOTARY_HIJACKED_IDLE_TTL`, `NOTARY_HIJACKED_MAX_AGE`, `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`, `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`, `NOTARY_MCP_RUNS_DIR`, `NOTARY_MCP_APPROVALS`, `NOTARY_MCP_COMPILE`, `NOTARY_MCP_CONTROL_DIR`, `NOTARY_CASSETTE_DIR`, and whether `GROQ_API_KEY` is set, never its value.
 - The anchor of a run restarts when a new run starts under the same (golden) run id.
 
 ### MCP proxy runs

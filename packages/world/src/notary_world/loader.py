@@ -31,8 +31,15 @@ def load_attacks(directory: Path | None = None) -> tuple[AttackCase, ...]:
     return tuple(f.case for f in load_attack_fixtures(directory))
 
 
-def load_cassette(name: str) -> Cassette:
-    target = FIXTURES_DIR / "cassettes" / f"{name}.json"
+CASSETTES_DIR = FIXTURES_DIR / "cassettes"
+"""The committed (scripted) cassette set."""
+REAL_CASSETTES_DIR = FIXTURES_DIR / "cassettes-real"
+"""Where a real-model cassette set goes once the owner records and commits it (#308)."""
+
+
+def load_cassette(name: str, directory: Path | None = None) -> Cassette:
+    """`<directory>/<name>.json`; the committed scripted set when no directory is given."""
+    target = (directory or CASSETTES_DIR) / f"{name}.json"
     return Cassette.model_validate_json(target.read_text(encoding="utf-8"))
 
 
