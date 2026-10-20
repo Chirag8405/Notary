@@ -173,6 +173,46 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
 
 _SPECS_BY_NAME: dict[str, ToolSpec] = {spec.name: spec for spec in TOOL_SPECS}
 
+_WRITE_HINTS: Mapping[str, tuple[bool, bool]] = MappingProxyType(
+    {
+        # tool: (idempotent, open_world). Every non-read tool needs a row; `tool_annotations`
+        # raises on a tool without one, so a new write tool cannot ship without its hints.
+        "add_contact": (False, False),  # appends a new contact entry on every call
+        "create_event": (False, True),  # appends an event and invites the attendee
+        "delete_email": (True, False),  # a repeat finds nothing to delete and changes nothing
+        "pay_bill": (False, True),  # every call moves money out of the account
+        "post_slack": (False, True),  # every call posts another message
+        "send_email": (False, True),  # every call sends another mail
+        "send_money": (False, True),  # every call moves money out of the account
+    }
+)
+
+
+def tool_annotations(spec: ToolSpec) -> dict[str, bool]:
+    """The four MCP annotation hints of a tool, all explicit booleans.
+
+    Derived from the tool's effect class so they cannot drift from the policy table:
+    `readOnlyHint` is `effect == "read"`, `destructiveHint` is `effect == "irreversible"` (a
+    reversible write only adds data; a read changes nothing). A read tool is idempotent and
+    closed-world (it reads the local world). `idempotentHint` and `openWorldHint` of a non-read
+    tool come from `_WRITE_HINTS`. The hints are not part of the world's manifest hash.
+    """
+    if spec.effect == "read":
+        return {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        }
+    idempotent, open_world = _WRITE_HINTS[spec.name]
+    return {
+        "readOnlyHint": False,
+        "destructiveHint": spec.effect == "irreversible",
+        "idempotentHint": idempotent,
+        "openWorldHint": open_world,
+    }
+
+
 TOOLS_MISSING_FROM_POLICY: tuple[str, ...] = tuple(
     sorted(spec.name for spec in TOOL_SPECS if spec.name not in DEFAULT_POLICY)
 )
