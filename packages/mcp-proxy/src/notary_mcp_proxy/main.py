@@ -24,6 +24,13 @@ from notary_core.monitor import decide
 from notary_core.resolver import ArgumentResolver
 from notary_mcp_proxy.approvals import ApprovalDesk, printable
 from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
+from notary_mcp_proxy.auth_throttle import (
+    DEFAULT_LOCKOUT_SECONDS,
+    DEFAULT_MAX_FAILURES,
+    MAX_FAILURES_LIMIT,
+    MAX_LOCKOUT_SECONDS,
+    validate_throttle,
+)
 from notary_mcp_proxy.check import check_config, render_report
 from notary_mcp_proxy.client import McpClient, ServerError, StdioClient
 from notary_mcp_proxy.compile_client import (
@@ -440,20 +447,58 @@ def serve_main(argv: Sequence[str]) -> int:
         help="with --http: allow a HOST that is not loopback (anything that reaches the port can "
         "try the token; put TLS in front of it)",
     )
+    parser.add_argument(
+        "--auth-max-failures",
+        type=int,
+        default=DEFAULT_MAX_FAILURES,
+        metavar="N",
+        help=(
+            "with --http: wrong tokens from one address that lock it out (default "
+            f"{DEFAULT_MAX_FAILURES}, 1 to {MAX_FAILURES_LIMIT})"
+        ),
+    )
+    parser.add_argument(
+        "--auth-lockout-seconds",
+        type=float,
+        default=DEFAULT_LOCKOUT_SECONDS,
+        metavar="S",
+        help=(
+            "with --http: how long a locked-out address gets 429 for every request, and the "
+            f"window the failures must fall in (default {DEFAULT_LOCKOUT_SECONDS:g}, above 0 "
+            f"to {MAX_LOCKOUT_SECONDS:g}). The throttle cannot be turned off"
+        ),
+    )
+    parser.add_argument(
+        "--tls-terminated",
+        action="store_true",
+        help="with --http: a TLS reverse proxy fronts a non-loopback bind (silences the "
+        "plain-HTTP warning; the proxy cannot check it)",
+    )
     args = parser.parse_args(argv)
     config_path: Path = args.config
     audit_dir: Path | None = args.audit_dir
     compile_url: str | None = args.compile_url
     endpoint: AgentEndpoint | None = None
     if args.http is None:
-        if args.token_file is not None or args.allow_origin or args.allow_remote_bind:
-            parser.error("--token-file, --allow-origin and --allow-remote-bind need --http")
+        if (
+            args.token_file is not None
+            or args.allow_origin
+            or args.allow_remote_bind
+            or args.tls_terminated
+            or args.auth_max_failures != DEFAULT_MAX_FAILURES
+            or args.auth_lockout_seconds != DEFAULT_LOCKOUT_SECONDS
+        ):
+            parser.error(
+                "--token-file, --allow-origin, --allow-remote-bind, --tls-terminated, "
+                "--auth-max-failures and --auth-lockout-seconds need --http"
+            )
     else:
         if args.token_file is None:
             parser.error(
                 "--http needs --token-file (the proxy does not serve HTTP without a token)"
             )
         try:
+            validate_throttle(args.auth_max_failures, args.auth_lockout_seconds)
             host, port = parse_bind(args.http, allow_remote=args.allow_remote_bind)
             settings = HttpSettings(
                 token=read_token_file(str(args.token_file)),
@@ -461,8 +506,11 @@ def serve_main(argv: Sequence[str]) -> int:
                 port=port,
                 allowed_origins=frozenset(args.allow_origin),
                 allow_remote=args.allow_remote_bind,
+                auth_max_failures=args.auth_max_failures,
+                auth_lockout_seconds=args.auth_lockout_seconds,
+                tls_terminated=args.tls_terminated,
             )
-        except (BindError, TokenFileError) as failure:
+        except (BindError, TokenFileError, ValueError) as failure:
             parser.error(str(failure))  # a usage error: exit 2 before anything starts
         try:
             endpoint = AgentEndpoint(settings)

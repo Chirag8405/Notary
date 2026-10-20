@@ -104,11 +104,24 @@ def test_usage_errors_exit_2_before_anything_starts(
         ["--config", config, "--allow-origin", "http://x"],
         ["--config", config, "--http", "0.0.0.0:0", "--token-file", token],
         ["--config", config, "--http", "nonsense", "--token-file", token],
+        ["--config", config, "--auth-max-failures", "3"],  # no --http
+        ["--config", config, "--tls-terminated"],  # no --http
     ]
     for argv in cases:
         with pytest.raises(SystemExit) as raised:
             main(argv)
         assert raised.value.code == 2, argv
+    for flag, value in (
+        ("--auth-max-failures", "0"),
+        ("--auth-max-failures", "100000"),
+        ("--auth-lockout-seconds", "0"),
+        ("--auth-lockout-seconds", "-5"),
+        ("--auth-lockout-seconds", "nan"),
+        ("--auth-lockout-seconds", "1e9"),
+    ):
+        with pytest.raises(SystemExit) as raised:
+            main(["--config", config, "--http", "127.0.0.1:0", "--token-file", token, flag, value])
+        assert raised.value.code == 2, (flag, value)
     loose = _token_file(tmp_path, mode=0o644)
     with pytest.raises(SystemExit) as raised:
         main(["--config", config, "--http", "127.0.0.1:0", "--token-file", str(loose)])
