@@ -1,0 +1,43 @@
+name: Setup toolchain
+description: Install the Node and Python toolchains and the locked dependencies.
+
+inputs:
+  node:
+    description: Install Node, pnpm and the pnpm dependencies.
+    default: "true"
+  python:
+    description: Install Python, uv and the uv workspace.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+      if: inputs.node == 'true'
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      if: inputs.node == 'true'
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      if: inputs.python == 'true'
+      with:
+        enable-cache: true
+        python-version: "3.12"
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      if: inputs.node == 'true'
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: turbo-${{ runner.os }}-${{ github.job }}-
+
+    - run: pnpm install --frozen-lockfile
+      if: inputs.node == 'true'
+      shell: bash
+
+    - run: uv sync --frozen
+      if: inputs.python == 'true'
+      shell: bash
