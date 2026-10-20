@@ -5,10 +5,13 @@ an event the backend sets, that a card is open from `desk.wait_for_open`, and th
 from the serving thread ending.
 """
 
+import hmac
 import http.client
+import inspect
 import json
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,8 +21,9 @@ from proxy_builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 
 from notary_core.models import DecisionMade, EffectExecuted, RunFinished
-from notary_mcp_proxy import BackendResult
+from notary_mcp_proxy import BackendResult, http_server
 from notary_mcp_proxy.approvals import ApprovalDesk
+from notary_mcp_proxy.auth_throttle import AuthThrottle
 from notary_mcp_proxy.client import StdioClient
 from notary_mcp_proxy.config import ProxyConfig
 from notary_mcp_proxy.control import ControlServer, send
@@ -127,12 +131,15 @@ class Rig:
         origins: frozenset[str] = frozenset(),
         control: ControlServer | None = None,
         desk: ApprovalDesk | None = None,
+        settings: HttpSettings | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.server = server
         self.control = control
         self.desk = desk
         self.endpoint = AgentEndpoint(
-            HttpSettings(token=TOKEN.encode(), port=0, allowed_origins=origins)
+            settings or HttpSettings(token=TOKEN.encode(), port=0, allowed_origins=origins),
+            clock=clock,
         )
         self.host, self.port = self.endpoint.address
         self.thread = threading.Thread(target=self.endpoint.serve, args=(server,), daemon=True)
@@ -250,6 +257,8 @@ def make(tmp_path: Path) -> Iterator[Make]:
         backend: RecordingBackend | None = None,
         origins: frozenset[str] = frozenset(),
         control: bool = False,
+        settings: HttpSettings | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> Rig:
         used = backend or RecordingBackend()
         gateway = make_gateway(used)
@@ -259,7 +268,14 @@ def make(tmp_path: Path) -> Iterator[Make]:
         if control:
             socket_control = ControlServer(desk, tmp_path / "c" / "p.sock")
             socket_control.start()
-        rig = Rig(server, origins=origins, control=socket_control, desk=desk)
+        rig = Rig(
+            server,
+            origins=origins,
+            control=socket_control,
+            desk=desk,
+            settings=settings,
+            clock=clock,
+        )
         rigs.append(rig)
         return rig
 
@@ -290,6 +306,194 @@ def test_a_wrong_or_malformed_token_is_401(make: Make, header: str) -> None:
     rig = make()
     reply = rig.post(initialize_message(), token=None, headers={"Authorization": header})
     assert reply.status == 401
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+WRONG = "wrong-wrong-wrong-wrong"
+
+
+def _throttled(make: Make, clock: FakeClock, failures: int, seconds: float) -> Rig:
+    settings = HttpSettings(
+        token=TOKEN.encode(), port=0, auth_max_failures=failures, auth_lockout_seconds=seconds
+    )
+    return make(settings=settings, clock=clock)
+
+
+def test_the_token_is_compared_in_constant_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[bytes, bytes]] = []
+    real = hmac.compare_digest
+
+    def spy(a: bytes, b: bytes) -> bool:
+        seen.append((a, b))
+        return real(a, b)
+
+    monkeypatch.setattr(hmac, "compare_digest", spy)
+    endpoint = AgentEndpoint(HttpSettings(token=TOKEN.encode(), port=0))
+    try:
+        assert endpoint.gate(_host(endpoint), None, f"Bearer {WRONG}", "a") == 401
+    finally:
+        endpoint.close()
+    assert seen == [(WRONG.encode(), TOKEN.encode())]
+
+
+def test_n_wrong_tokens_lock_the_address_out_with_429_and_retry_after(
+    make: Make, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = FakeClock()
+    rig = _throttled(make, clock, 3, 30.0)
+    for _ in range(3):
+        assert rig.post(initialize_message(), token=WRONG).status == 401
+    reply = rig.post(initialize_message(), token=WRONG)
+    assert reply.status == 429
+    assert reply.headers["retry-after"] == "30"
+    assert reply.error_code() == -32600
+    clock.now += 12.5
+    again = rig.post(initialize_message(), token=WRONG)
+    assert again.status == 429
+    assert again.headers["retry-after"] == "18"
+    assert WRONG not in capsys.readouterr().err
+
+
+def test_the_correct_token_during_the_lockout_is_refused_until_it_ends(make: Make) -> None:
+    clock = FakeClock()
+    rig = _throttled(make, clock, 2, 10.0)
+    for _ in range(2):
+        assert rig.post(initialize_message(), token=WRONG).status == 401
+    assert rig.post(initialize_message(), token=TOKEN).status == 429
+    clock.now += 9.0
+    assert rig.post(initialize_message(), token=TOKEN).status == 429
+    assert rig.server.gateway.chain == ()
+    clock.now += 1.0  # the refused requests did not extend the lockout
+    assert rig.start()
+
+
+def test_no_token_counts_as_a_failure(make: Make) -> None:
+    rig = _throttled(make, FakeClock(), 2, 10.0)
+    assert rig.post(initialize_message(), token=None).status == 401
+    assert rig.post(initialize_message(), token=None).status == 401
+    assert rig.post(initialize_message(), token=None).status == 429
+
+
+def _host(endpoint: AgentEndpoint) -> str:
+    return f"127.0.0.1:{endpoint.address[1]}"
+
+
+def _endpoint(clock: FakeClock, failures: int = 2) -> AgentEndpoint:
+    return AgentEndpoint(
+        HttpSettings(token=TOKEN.encode(), port=0, auth_max_failures=failures), clock=clock
+    )
+
+
+def test_a_success_resets_the_failure_count() -> None:
+    endpoint = _endpoint(FakeClock())
+    try:
+        bad, good = f"Bearer {WRONG}", f"Bearer {TOKEN}"
+        assert endpoint.gate(_host(endpoint), None, bad, "a") == 401
+        assert endpoint.gate(_host(endpoint), None, good, "a") == 0
+        assert endpoint.gate(_host(endpoint), None, bad, "a") == 401
+        assert endpoint.gate(_host(endpoint), None, good, "a") == 0
+    finally:
+        endpoint.close()
+
+
+def test_failures_outside_the_window_do_not_add_up() -> None:
+    clock = FakeClock()
+    endpoint = _endpoint(clock)
+    try:
+        bad = f"Bearer {WRONG}"
+        assert endpoint.gate(_host(endpoint), None, bad, "a") == 401
+        clock.now += 61.0
+        assert endpoint.gate(_host(endpoint), None, bad, "a") == 401
+        assert endpoint.gate(_host(endpoint), None, f"Bearer {TOKEN}", "a") == 0
+    finally:
+        endpoint.close()
+
+
+def test_the_throttle_is_per_address_and_never_reads_x_forwarded_for() -> None:
+    endpoint = _endpoint(FakeClock())
+    try:
+        bad = f"Bearer {WRONG}"
+        assert endpoint.gate(_host(endpoint), None, bad, "10.0.0.1") == 401
+        assert endpoint.gate(_host(endpoint), None, bad, "10.0.0.1") == 401
+        assert endpoint.gate(_host(endpoint), None, bad, "10.0.0.1") == 429
+        assert endpoint.retry_after("10.0.0.1") == 60
+        assert endpoint.retry_after("10.0.0.2") == 0
+        assert endpoint.gate(_host(endpoint), None, f"Bearer {TOKEN}", "10.0.0.2") == 0
+    finally:
+        endpoint.close()
+    assert 'get("X-Forwarded' not in inspect.getsource(http_server)
+
+
+def test_the_table_is_capped_and_evicts_the_oldest_address() -> None:
+    clock = FakeClock()
+    throttle = AuthThrottle(clock, max_failures=1, lockout_seconds=60.0, max_entries=3)
+    for address in ("a", "b", "c", "d"):
+        throttle.failed(address)
+    assert throttle.size() == 3
+    assert throttle.retry_after("a") == 0  # evicted: the oldest went first
+    assert throttle.retry_after("d") == 60
+    clock.now += 61.0
+    throttle.failed("e")
+    throttle.failed("f")
+    assert throttle.size() <= 3
+
+
+@pytest.mark.parametrize(
+    ("failures", "seconds"),
+    [
+        (0, 60.0),
+        (-1, 60.0),
+        (5, 0.0),
+        (5, -1.0),
+        (5, float("inf")),
+        (5, float("nan")),
+        (5, 1e9),
+        (10**6, 60.0),
+    ],
+)
+def test_a_throttle_that_would_be_off_or_absurd_is_refused(failures: int, seconds: float) -> None:
+    with pytest.raises(ValueError, match="must"):
+        AuthThrottle(FakeClock(), max_failures=failures, lockout_seconds=seconds)
+    with pytest.raises(ValueError, match="must"):
+        AgentEndpoint(
+            HttpSettings(
+                token=TOKEN.encode(),
+                port=0,
+                auth_max_failures=failures,
+                auth_lockout_seconds=seconds,
+            )
+        )
+
+
+def test_a_non_loopback_bind_warns_unless_tls_is_declared(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for tls, warns in ((False, True), (True, False)):
+        endpoint = AgentEndpoint(
+            HttpSettings(
+                token=TOKEN.encode(),
+                host="0.0.0.0",  # test: the warning is about exactly this bind
+                port=0,
+                allow_remote=True,
+                tls_terminated=tls,
+            )
+        )
+        endpoint.close()
+        err = capsys.readouterr().err
+        assert ("WARNING" in err and "not loopback" in err) is warns
+        assert TOKEN not in err
+
+
+def test_a_loopback_bind_does_not_warn(capsys: pytest.CaptureFixture[str]) -> None:
+    AgentEndpoint(HttpSettings(token=TOKEN.encode(), port=0)).close()
+    assert "WARNING" not in capsys.readouterr().err
 
 
 def test_a_token_that_is_a_prefix_or_an_extension_is_refused(make: Make) -> None:

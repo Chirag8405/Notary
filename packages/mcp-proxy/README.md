@@ -120,7 +120,8 @@ the bank that way.
 ```
 notary-mcp-proxy [serve] --config CONFIG [--audit-dir DIR] [--control PATH|none]
                  [--approval-timeout SECONDS] [--compile-url URL]
-                 [--http HOST:PORT --token-file PATH [--allow-origin ORIGIN]... [--allow-remote-bind]]
+                 [--http HOST:PORT --token-file PATH [--allow-origin ORIGIN]... [--allow-remote-bind]
+                  [--tls-terminated] [--auth-max-failures N] [--auth-lockout-seconds S]]
 notary-mcp-proxy check --config CONFIG [--json]
 notary-mcp-proxy pending | approve ID | reject ID [--control PATH]
 notary-mcp-proxy hook pre-tool-use --policy PATH
@@ -130,17 +131,20 @@ notary-mcp-proxy hook user-prompt-submit [--control PATH]
 No subcommand means `serve`. `python -m notary_mcp_proxy` is the same program. In stdio mode, stdout
 carries only MCP messages; every diagnostic goes to stderr.
 
-| Option                  | Meaning                                                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `--config`              | the proxy config (JSON), below                                                                                   |
-| `--audit-dir DIR`       | write the audit chain and its anchor here; without it the chain is in memory only                                |
-| `--control PATH`        | control socket for approvals (default `.notary/mcp-control/<run>.sock`); `none` rejects every escalation at once |
-| `--approval-timeout S`  | how long an escalated call waits (default 120); no answer is a rejection                                         |
-| `--compile-url URL`     | compile the contract from the first prompt, below                                                                |
-| `--http HOST:PORT`      | serve the agent over Streamable HTTP at `http://HOST:PORT/mcp` instead of stdio                                  |
-| `--token-file PATH`     | with `--http`: the bearer token file (mode 0600, 16 to 4096 visible ASCII characters)                            |
-| `--allow-origin ORIGIN` | with `--http`: accept this `Origin` (repeatable); by default a request with an `Origin` is refused               |
-| `--allow-remote-bind`   | with `--http`: allow a non-loopback `HOST`                                                                       |
+| Option                     | Meaning                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `--config`                 | the proxy config (JSON), below                                                                                   |
+| `--audit-dir DIR`          | write the audit chain and its anchor here; without it the chain is in memory only                                |
+| `--control PATH`           | control socket for approvals (default `.notary/mcp-control/<run>.sock`); `none` rejects every escalation at once |
+| `--approval-timeout S`     | how long an escalated call waits (default 120); no answer is a rejection                                         |
+| `--compile-url URL`        | compile the contract from the first prompt, below                                                                |
+| `--http HOST:PORT`         | serve the agent over Streamable HTTP at `http://HOST:PORT/mcp` instead of stdio                                  |
+| `--token-file PATH`        | with `--http`: the bearer token file (mode 0600, 16 to 4096 visible ASCII characters)                            |
+| `--allow-origin ORIGIN`    | with `--http`: accept this `Origin` (repeatable); by default a request with an `Origin` is refused               |
+| `--allow-remote-bind`      | with `--http`: allow a non-loopback `HOST` (prints a plain-HTTP warning on stderr unless `--tls-terminated`)     |
+| `--tls-terminated`         | with `--http`: say that a TLS reverse proxy fronts a non-loopback bind (silences the warning; not checked)       |
+| `--auth-max-failures N`    | with `--http`: wrong tokens from one address that lock it out (default 5, 1 to 1000)                             |
+| `--auth-lockout-seconds S` | with `--http`: lockout length and failure window (default 60, above 0 to 86400); the throttle cannot be off      |
 
 Exit codes of `serve`: `0` after a clean end, `2` when it could not start (a server, the audit directory,
 the control socket, the HTTP listener). An invalid config makes `serve` print the validation error as a
@@ -270,11 +274,69 @@ claude mcp add --transport http notary-bank http://127.0.0.1:8765/mcp \
     --header "Authorization: Bearer $(cat .notary/mcp-token)"
 ```
 
+**Keep it on loopback.** `127.0.0.1` is the default and the only address this quick start uses: the
+token is a static secret and the endpoint speaks plain HTTP. For another machine, keep the proxy on
+loopback and put a TLS reverse proxy in front (below).
+
 Every request needs the bearer token. The listener refuses a non-loopback address unless you pass
 `--allow-remote-bind` (then put TLS and a firewall in front), checks the `Host` header, refuses any
 `Origin` not listed with `--allow-origin`, and allows one session per run (`DELETE /mcp` ends it and the
 run). Verdicts, audit chain and approvals are the same as over stdio. Details: docs/demo.md,
 "Streamable HTTP".
+
+**Failed tokens are throttled per source address.** After 5 wrong (or missing) tokens within 60 s an
+address is locked out for 60 s: every request from it gets `429` with `Retry-After`, **including one
+with the correct token** (so a guess cannot be confirmed during the lockout, and refused requests do not
+extend it). A correct token resets the count. Tune with `--auth-max-failures` and
+`--auth-lockout-seconds`; they are validated and the throttle cannot be turned off. The tradeoff: anyone
+who shares the address with you (another local process, or every client behind one reverse proxy) can lock
+you out by sending wrong tokens. The table holds at most 4096 addresses (expired ones, then the oldest, go
+first). The token is never logged.
+
+### TLS reverse proxy
+
+The proxy does not terminate TLS. To reach it from another machine, keep `--http 127.0.0.1:8765` and let a
+reverse proxy own the public port and the certificate. It must forward the `Authorization` header (both
+do by default) and not rewrite `Host` to something other than what it sends on; the proxy checks `Host`
+against loopback and its port, so send `Host: 127.0.0.1:8765` upstream.
+
+Caddy (automatic certificate):
+
+```
+notary.example.com {
+    reverse_proxy 127.0.0.1:8765 {
+        header_up Host 127.0.0.1:8765
+        flush_interval -1          # do not buffer the SSE streams
+    }
+}
+```
+
+nginx:
+
+```
+server {
+    listen 443 ssl;
+    server_name notary.example.com;
+    ssl_certificate     /etc/ssl/notary/fullchain.pem;
+    ssl_certificate_key /etc/ssl/notary/privkey.pem;
+    location /mcp {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host 127.0.0.1:8765;
+        proxy_set_header Authorization $http_authorization;
+        proxy_http_version 1.1;
+        proxy_buffering off;        # SSE
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Then register `https://notary.example.com/mcp` with the same bearer token. Two things to know. First, the
+throttle then sees only the reverse proxy's address (`127.0.0.1`): the proxy does **not** trust
+`X-Forwarded-For` (any client could forge it), so all remote clients share one counter and one attacker
+can lock out everyone. Rate-limit per client at the reverse proxy as well (`limit_req` in nginx, a rate
+limit plugin in Caddy) and restrict who can reach it. Second, binding the proxy itself to a non-loopback
+address (`--allow-remote-bind`) prints a plain-HTTP warning on stderr; `--tls-terminated` silences it
+only if you have put TLS in front for real.
 
 ## Pinning and rug pulls
 

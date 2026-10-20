@@ -11,7 +11,10 @@ reads and writes newline-delimited JSON as it does on stdin and stdout and stays
 
 Security (this is a network-facing surface; threat-model.md):
 
-- it binds to loopback by default and refuses another address unless `allow_remote_bind` is given;
+- it binds to loopback by default and refuses another address unless `allow_remote_bind` is given
+  (and then warns on stderr unless `tls_terminated` says a TLS proxy fronts it);
+- wrong tokens are throttled per peer address (`auth_throttle.py`): after N the address is locked
+  out with 429 and `Retry-After`, even for the right token; `X-Forwarded-For` is not trusted;
 - every request needs `Authorization: Bearer <token>`, compared in constant time; the token is
   read from a file that only its owner may access, is never logged and is not accepted from the
   command line;
@@ -44,6 +47,7 @@ import secrets
 import socket
 import stat
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -52,6 +56,12 @@ from typing import IO, ClassVar, override
 
 from pydantic import JsonValue
 
+from notary_mcp_proxy.auth_throttle import (
+    DEFAULT_LOCKOUT_SECONDS,
+    DEFAULT_MAX_FAILURES,
+    AuthThrottle,
+    validate_throttle,
+)
 from notary_mcp_proxy.client import SUPPORTED_VERSIONS, diagnostic
 from notary_mcp_proxy.dispatch import CANCELLED, Dispatcher
 from notary_mcp_proxy.hosts import is_loopback_host
@@ -147,6 +157,12 @@ class HttpSettings:
     """Exact `Origin` values that are accepted (e.g. `http://localhost:3000`). A request with no
     `Origin` header (a command-line or desktop client) is always fine."""
     allow_remote: bool = False
+    auth_max_failures: int = DEFAULT_MAX_FAILURES
+    """Wrong tokens from one address that lock it out (`auth_throttle.py`)."""
+    auth_lockout_seconds: float = DEFAULT_LOCKOUT_SECONDS
+    """How long the address is locked out, and the window the failures must fall in."""
+    tls_terminated: bool = False
+    """The operator says a TLS reverse proxy fronts a non-loopback bind (silences the warning)."""
 
 
 class _Waiter:
@@ -190,12 +206,22 @@ class AgentEndpoint:
     """The listening socket and the bridge to a `Dispatcher`. Create it, then call `serve`."""
 
     def __init__(
-        self, settings: HttpSettings, *, keepalive_seconds: float = KEEPALIVE_SECONDS
+        self,
+        settings: HttpSettings,
+        *,
+        keepalive_seconds: float = KEEPALIVE_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not settings.allow_remote and not is_loopback_host(settings.host):
             raise BindError("the host is not loopback and allow_remote is not set")
         if len(settings.token) < MIN_TOKEN_CHARS:
             raise ValueError("the token is too short")
+        validate_throttle(settings.auth_max_failures, settings.auth_lockout_seconds)
+        self._throttle = AuthThrottle(
+            clock,
+            max_failures=settings.auth_max_failures,
+            lockout_seconds=settings.auth_lockout_seconds,
+        )
         self._settings = settings
         self._keepalive = keepalive_seconds
         self._lock = threading.Lock()
@@ -221,6 +247,13 @@ class AgentEndpoint:
             self._close_pipes()
             raise
         self._loopback = is_loopback_host(settings.host)
+        if not self._loopback and not settings.tls_terminated:
+            diagnostic(
+                f"WARNING: listening on {settings.host}, which is not loopback, over plain HTTP: "
+                "the bearer token and every tool result cross the network in clear text. Put a "
+                "TLS reverse proxy in front and bind the proxy to 127.0.0.1 (README, "
+                '"TLS reverse proxy"); pass --tls-terminated to silence this if one already is'
+            )
 
     # -- public ----------------------------------------------------------------------------------
 
@@ -368,18 +401,35 @@ class AgentEndpoint:
             f"[{name}]:{port}" for name in names if ":" in name
         )
 
-    def gate(self, host: str | None, origin: str | None, authorization: str | None) -> int:
-        """0 when the request may go on, else the HTTP status that refuses it."""
+    def retry_after(self, client: str) -> int:
+        """Seconds until `client` may try again after too many wrong tokens (0: not locked)."""
+        return self._throttle.retry_after(client)
+
+    def gate(
+        self,
+        host: str | None,
+        origin: str | None,
+        authorization: str | None,
+        client: str = "",
+    ) -> int:
+        """0 when the request may go on, else the HTTP status that refuses it (429: locked out).
+
+        `client` is the peer address of the connection; `X-Forwarded-For` is never read."""
         if self._loopback and (host is None or host.lower() not in self._allowed_hosts()):
             return 403
         if origin is not None and origin not in self._settings.allowed_origins:
             return 403
+        if self._throttle.retry_after(client):
+            return 429  # locked out: even the right token is refused until the lockout ends
         scheme, _, presented = (authorization or "").partition(" ")
         if scheme.lower() != "bearer" or not presented:
+            self._throttle.failed(client)
             return 401
         # Constant time in the content (only a wrong length is noticed sooner).
         if not hmac.compare_digest(presented.strip().encode("utf-8"), self._settings.token):
+            self._throttle.failed(client)
             return 401
+        self._throttle.succeeded(client)
         return 0
 
     def open_session(self) -> str | None:
@@ -483,6 +533,9 @@ class _Handler(BaseHTTPRequestHandler):
         """A fixed JSON-RPC error body; the connection closes (the body may be unread)."""
         self.close_connection = True
         headers = {"WWW-Authenticate": 'Bearer realm="notary"'} if status == 401 else {}
+        if status == 429:
+            wait = self.endpoint.retry_after(self.client_address[0])
+            headers["Retry-After"] = str(max(1, wait))
         body = json.dumps(error(None, code, message)).encode("utf-8")
         diagnostic(f"http: refused a request: {status} {message}")
         self._reply(status, body, headers)
@@ -512,13 +565,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._refuse(404, INVALID_REQUEST, "not found")
             return False
         refused = self.endpoint.gate(
-            self.headers.get("Host"), self.headers.get("Origin"), self.headers.get("Authorization")
+            self.headers.get("Host"),
+            self.headers.get("Origin"),
+            self.headers.get("Authorization"),
+            self.client_address[0],
         )
         if refused == 403:
             self._refuse(403, INVALID_REQUEST, "forbidden")
             return False
         if refused == 401:
             self._refuse(401, INVALID_REQUEST, "unauthorized")
+            return False
+        if refused == 429:
+            self._refuse(429, INVALID_REQUEST, "too many failed attempts; try again later")
             return False
         version = self.headers.get(VERSION_HEADER)
         if version is not None and version not in SUPPORTED_VERSIONS:
