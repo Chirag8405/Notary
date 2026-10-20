@@ -98,6 +98,16 @@ def _run(stdin: str, policy: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_an_internal_error_is_a_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+    def explode(_event: JsonObject, _policy: GuardPolicy) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("notary_mcp_proxy.guard.decide_hook", explode)
+    out = json.loads(run_hook(json.dumps(_event("Read")), POLICY_TEXT))
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "RuntimeError" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
 def test_subprocess_answers_on_stdout() -> None:
     allowed = _run(json.dumps(_event("mcp__notary-bank__read_inbox")), GUARD)
     assert (allowed.returncode, allowed.stdout, allowed.stderr) == (0, "", "")

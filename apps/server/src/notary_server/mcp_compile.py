@@ -101,6 +101,7 @@ class McpCompileService:
             )
         except CompileError:
             raise McpCompileError(422, DETAIL_NOT_COMPILED) from None
+        # fail closed: a model failure is a 502, no contract
         except Exception as failure:
             LOG.warning("mcp compile: the model call failed (%s)", type(failure).__name__)
             raise McpCompileError(502, DETAIL_MODEL_FAILED) from None

@@ -330,3 +330,30 @@ def test_server_text_in_a_log_line_is_one_quoted_line() -> None:
     assert "\n" not in line
     assert "\r" not in line
     assert len(line) < 300
+
+
+def test_an_internal_error_while_mediating_a_call_runs_nothing(
+    start: Start, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    proxy = start({})
+
+    def explode(*_args: object, **_kwargs: object) -> JsonObject:
+        raise RuntimeError("boom " + INJECTION)
+
+    monkeypatch.setattr(ProxyServer, "_call", explode)
+    answer = proxy.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "lookup", "arguments": {}},
+        }
+    )
+    assert answer is not None
+    assert "result" not in answer
+    failure = as_object(answer["error"])
+    assert failure is not None
+    assert failure["code"] == -32603
+    assert INJECTION not in json.dumps(answer)  # the exception text goes to stderr only
+    assert _effects(proxy) == []
+    assert "internal error in tools/call" in capsys.readouterr().err

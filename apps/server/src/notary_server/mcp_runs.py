@@ -296,6 +296,7 @@ def _unix_connect(path: Path) -> socket.socket:
     try:
         connection.settimeout(CONTROL_TIMEOUT_SECONDS)
         connection.connect(str(path))
+    # cleanup only, then re-raise
     except BaseException:
         connection.close()
         raise

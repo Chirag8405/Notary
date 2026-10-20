@@ -285,6 +285,7 @@ class StdioClient(McpClient):
             return
         try:
             handler(method, as_object(message.get("params")) or {})
+        # a failing notification handler must not kill the reader; it decides nothing
         except Exception as failure:
             diagnostic(f"notification handler failed: {type(failure).__name__}")
 

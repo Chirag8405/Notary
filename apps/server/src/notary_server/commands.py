@@ -26,7 +26,7 @@ class CommandContext(NotaryModel):
     never sends: a handler that owns state per run keys it by this, not by the run id (#201)."""
 
 
-class CommandRejected(Exception):  # noqa: N818
+class CommandRejected(Exception):  # noqa: N818 - the name is used across the server and its tests
     """The command is refused; the socket closes with `code` and `reason`.
 
     The reason is a fixed phrase and never contains any part of the client's frame.

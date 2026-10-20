@@ -94,6 +94,7 @@ def write_control_file(directory: Path, run_id: str, socket_path: Path) -> Path:
             handle.write(body)
             handle.flush()
             os.fsync(handle.fileno())
+    # cleanup only, then re-raise
     except BaseException:
         staging.unlink(missing_ok=True)
         raise
@@ -244,6 +245,7 @@ def hook_main(argv: Sequence[str]) -> int:
         print(output)
         print(hook_reason(output), file=sys.stderr, flush=True)
         return 2
+    # fail closed: exit 2 blocks the tool
     except Exception as error:
         return _hook_deny(f"NOTARY guard: internal error ({type(error).__name__}); denied")
 
@@ -275,6 +277,7 @@ def prompt_hook_main(argv: Sequence[str]) -> int:
             _log(f"hook user-prompt-submit: the prompt is the trusted value {value_id}")
     except SystemExit:
         pass  # a usage error: argparse printed it to stderr; it must not exit 2 here
+    # must exit 0 whatever happens; a prompt that is not forwarded is never a trusted value
     except Exception as failure:
         _log(f"hook user-prompt-submit: failed ({type(failure).__name__}); the prompt goes on")
     return 0
@@ -353,6 +356,7 @@ def _start_clients(
                     headers=resolve_headers(name, spec, variables),
                     timeout_seconds=spec.timeout_seconds,
                 )
+    # cleanup only, then re-raise
     except BaseException:
         _close_all(started)
         raise

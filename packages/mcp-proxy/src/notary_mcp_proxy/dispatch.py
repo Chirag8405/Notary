@@ -450,6 +450,7 @@ class Dispatcher:
                     self._server.check_drift_now()
                 else:
                     self._run_prompt(item)
+            # keep the worker alive; handle_call turns its own errors into JSON-RPC errors
             except Exception as failure:
                 diagnostic(f"worker failed: {type(failure).__name__}")
 
