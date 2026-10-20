@@ -1,0 +1,19 @@
+# The first owner on each line has worked most on that path. A second owner is listed so every
+# path has a reviewer who is not its main author. The last matching pattern wins.
+*                           @Chirag8405
+
+/packages/core/             @chaitanyakelkar27 @jaykerkar0405
+/packages/world/            @chaitanyakelkar27 @jaykerkar0405
+/packages/mcp-proxy/        @Chirag8405 @jaykerkar0405
+/packages/cli/              @Chirag8405 @jaykerkar0405
+/packages/eval/             @Chirag8405 @jaykerkar0405
+/packages/schema/           @Chirag8405 @jaykerkar0405
+/packages/client/           @Chirag8405 @jaykerkar0405
+/packages/ui/               @chaitanyakelkar27 @jaykerkar0405
+/packages/config-eslint/    @Chirag8405 @jaykerkar0405
+/apps/server/               @Chirag8405 @jaykerkar0405
+/apps/web/                  @chaitanyakelkar27 @Chirag8405
+/scripts/                   @Chirag8405 @jaykerkar0405
+/.github/                   @Chirag8405 @jaykerkar0405
+/docs/                      @Chirag8405 @jaykerkar0405
+/CLAUDE.md                  @Chirag8405 @jaykerkar0405
