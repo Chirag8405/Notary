@@ -2,6 +2,7 @@
   "name": "@notary/eval",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "notary_eval: AgentDojo harness and results export for charts",
   "scripts": {
     "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",

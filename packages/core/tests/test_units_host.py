@@ -160,8 +160,7 @@ def test_empty_and_no_match_invalid(raw: str) -> None:
 def test_registrable_domain_edges() -> None:
     assert registrable_domain("co.uk") == "co.uk"
     assert registrable_domain("example.co.uk") == "example.co.uk"
-    # documented gap: com.sg is not in the embedded suffix list
-    assert registrable_domain("shop.example.com.sg") == "com.sg"
+    assert registrable_domain("shop.example.com.sg") == "example.com.sg"
 
 
 @pytest.mark.attack("A8")

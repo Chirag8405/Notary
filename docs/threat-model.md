@@ -173,6 +173,7 @@ With `serve --http` (docs/demo.md, "Streamable HTTP") the proxy listens on a TCP
 - An attacker can steer among trusted values; effect budgets bound the damage.
 - Correct labels and the sensitive-parameter table are the trusted base, and are hand-authored.
 - Covert channels are mitigated, not closed (A5, A12).
+- The egress allowlist compares a URL's host, then its registrable domain from an embedded Public Suffix List snapshot (2026-10-17, ICANN and private sections; `units/host.py`), so an entry for one tenant (`alice.github.io`) does not admit another and an entry for a shared suffix (`github.io`) admits only that exact host. A suffix added to the list after the snapshot is treated as an ordinary domain until the snapshot is refreshed (docs/decisions.md). Allowlist the tenant host, not a parent you do not control (A5).
 - Text-to-text harms are surfaced, not prevented (A13).
 - Novel high-risk actions always cost a click (A14).
 - Novelty claim: corroborated authority, confidentiality axis, pinning, Output Guard and fuzzing added to an origin check; not the origin check itself.

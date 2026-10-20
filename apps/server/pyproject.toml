@@ -3,6 +3,7 @@ name = "notary-server"
 version = "0.0.0"
 description = "NOTARY server: FastAPI REST + WebSocket event stream, agent runner, world host"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
 dependencies = [
   "notary-core",
   "notary-world",

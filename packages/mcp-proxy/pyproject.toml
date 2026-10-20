@@ -3,6 +3,7 @@ name = "notary-mcp-proxy"
 version = "0.0.0"
 description = "MCP gateway wrapping core (tool pinning, labeling)"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
 dependencies = ["notary-core"]
 
 [build-system]

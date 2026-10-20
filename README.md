@@ -107,3 +107,7 @@ Work happens on a branch (`p<phase>/<slug>`), one pull request per issue, never 
 ## Prior art
 
 The closest prior work is ROPE, which checks the origin of sensitive arguments against the user, named sources and user records. NOTARY does not claim novelty on origin checks. It adds corroboration against a user-controlled ledger, confidentiality tracking, and a model-independent test mode ("Hijacked Mode") in which a person submits raw tool calls and the monitor still holds. Details are in the threat model.
+
+## License
+
+NOTARY is released under the [MIT License](LICENSE). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to contribute.

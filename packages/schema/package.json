@@ -2,6 +2,7 @@
   "name": "@notary/schema",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Committed JSON Schemas from notary_core plus GENERATED TS types and Zod validators",
   "exports": {

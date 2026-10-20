@@ -2,6 +2,7 @@
   "name": "@notary/config-eslint",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Shared ESLint flat configs",
   "exports": {
