@@ -105,11 +105,11 @@ Approve the `notary-bank` server when asked, then send:
 
 You should see three verdicts:
 
-| Call | Verdict | What the agent gets |
-| --- | --- | --- |
-| `read_inbox` | ALLOW | the inbox, as labeled text |
+| Call                                   | Verdict                                  | What the agent gets                                                     |
+| -------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
+| `read_inbox`                           | ALLOW                                    | the inbox, as labeled text                                              |
 | `pay_bill` to `DE00ATTACKER0000000001` | BLOCK, `corroboration: LEDGER_NOT_FOUND` | `NOTARY blocked pay_bill; it did not run.` The bank never saw the call. |
-| `pay_bill` to `DE00ACME00000000000001` | ALLOW | `paid 142.5 EUR to DE00ACME00000000000001` |
+| `pay_bill` to `DE00ACME00000000000001` | ALLOW                                    | `paid 142.5 EUR to DE00ACME00000000000001`                              |
 
 Without a model, the same three calls (and the escalation below) can be sent as raw JSON-RPC to
 `uv run --no-sync notary-mcp-proxy --config ...`; `packages/mcp-proxy/tests/test_mcp_proxy.py` drives
@@ -130,17 +130,17 @@ notary-mcp-proxy hook user-prompt-submit [--control PATH]
 No subcommand means `serve`. `python -m notary_mcp_proxy` is the same program. In stdio mode, stdout
 carries only MCP messages; every diagnostic goes to stderr.
 
-| Option | Meaning |
-| --- | --- |
-| `--config` | the proxy config (JSON), below |
-| `--audit-dir DIR` | write the audit chain and its anchor here; without it the chain is in memory only |
-| `--control PATH` | control socket for approvals (default `.notary/mcp-control/<run>.sock`); `none` rejects every escalation at once |
-| `--approval-timeout S` | how long an escalated call waits (default 120); no answer is a rejection |
-| `--compile-url URL` | compile the contract from the first prompt, below |
-| `--http HOST:PORT` | serve the agent over Streamable HTTP at `http://HOST:PORT/mcp` instead of stdio |
-| `--token-file PATH` | with `--http`: the bearer token file (mode 0600, 16 to 4096 visible ASCII characters) |
-| `--allow-origin ORIGIN` | with `--http`: accept this `Origin` (repeatable); by default a request with an `Origin` is refused |
-| `--allow-remote-bind` | with `--http`: allow a non-loopback `HOST` |
+| Option                  | Meaning                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `--config`              | the proxy config (JSON), below                                                                                   |
+| `--audit-dir DIR`       | write the audit chain and its anchor here; without it the chain is in memory only                                |
+| `--control PATH`        | control socket for approvals (default `.notary/mcp-control/<run>.sock`); `none` rejects every escalation at once |
+| `--approval-timeout S`  | how long an escalated call waits (default 120); no answer is a rejection                                         |
+| `--compile-url URL`     | compile the contract from the first prompt, below                                                                |
+| `--http HOST:PORT`      | serve the agent over Streamable HTTP at `http://HOST:PORT/mcp` instead of stdio                                  |
+| `--token-file PATH`     | with `--http`: the bearer token file (mode 0600, 16 to 4096 visible ASCII characters)                            |
+| `--allow-origin ORIGIN` | with `--http`: accept this `Origin` (repeatable); by default a request with an `Origin` is refused               |
+| `--allow-remote-bind`   | with `--http`: allow a non-loopback `HOST`                                                                       |
 
 Exit codes of `serve`: `0` after a clean end, `2` when it could not start (a server, the audit directory,
 the control socket, the HTTP listener). An invalid config makes `serve` print the validation error as a
@@ -170,25 +170,37 @@ is an error):
       }
     }
   },
-  "budget": { "max_effects": 3, "max_spend_cents": 20000, "max_egress_bytes": 0,
-              "max_call_amount_cents": 20000, "max_approvals": 2 },
+  "budget": {
+    "max_effects": 3,
+    "max_spend_cents": 20000,
+    "max_egress_bytes": 0,
+    "max_call_amount_cents": 20000,
+    "max_approvals": 2
+  },
   "authorized_irreversible": ["pay_bill"],
-  "ledger": [{ "ledger": "payees", "key": "Acme Utilities", "unit": "iban", "value": "DE00ACME00000000000001" }]
+  "ledger": [
+    {
+      "ledger": "payees",
+      "key": "Acme Utilities",
+      "unit": "iban",
+      "value": "DE00ACME00000000000001"
+    }
+  ]
 }
 ```
 
 Run `check` after every change: it lists what the proxy will enforce and warns about gaps.
 
-| Key | Meaning |
-| --- | --- |
-| `server` or `servers` | exactly one of the two: one server (named `default`) or a map name -> server spec |
-| `user_intent` | the user's request, recorded in the contract |
-| `tools` | name -> tool spec; only these tools are listed to the agent |
-| `budget` | `max_effects`, `max_spend_cents`, `max_egress_bytes`, `max_call_amount_cents`, `max_approvals` (all required) |
-| `egress_hosts` | hosts a payload may be sent to |
-| `authorized_irreversible` | irreversible tools the user authorizes; an irreversible tool not listed is always blocked |
-| `ledger` | user-authored entries (`ledger`, `key`, `unit`, `value`): values the user vouches for, e.g. a payee's IBAN |
-| `approvals` | `{"elicitation": false}` turns off asking in the client's UI |
+| Key                       | Meaning                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `server` or `servers`     | exactly one of the two: one server (named `default`) or a map name -> server spec                             |
+| `user_intent`             | the user's request, recorded in the contract                                                                  |
+| `tools`                   | name -> tool spec; only these tools are listed to the agent                                                   |
+| `budget`                  | `max_effects`, `max_spend_cents`, `max_egress_bytes`, `max_call_amount_cents`, `max_approvals` (all required) |
+| `egress_hosts`            | hosts a payload may be sent to                                                                                |
+| `authorized_irreversible` | irreversible tools the user authorizes; an irreversible tool not listed is always blocked                     |
+| `ledger`                  | user-authored entries (`ledger`, `key`, `unit`, `value`): values the user vouches for, e.g. a payee's IBAN    |
+| `approvals`               | `{"elicitation": false}` turns off asking in the client's UI                                                  |
 
 A server spec is `{"command": [...]}` (a child process, started in the config file's directory; the
 form without `kind` is the same as `"kind": "stdio"`) or `{"kind": "http", "url": ..., "headers": {...}}`. Both take
@@ -196,16 +208,16 @@ form without `kind` is the same as `"kind": "stdio"`) or `{"kind": "http", "url"
 
 A tool spec:
 
-| Key | Meaning |
-| --- | --- |
-| `effect` | `read` (no side effect and no outbound channel), `write` or `irreversible` |
-| `server` | which server runs it; required with `servers` |
-| `remote_name` | the server's name for the tool when the contract name differs |
-| `params` | name -> `{"marker": ..., "unit": ..., "kind": ...}` |
-| `readers` | who may read the results (`["*"]` default; `["user"]` marks them secret) |
-| `origin` | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}` |
-| `fields` | per-path config for `structuredContent`: `readers`, `unit` |
-| `records`, `record_readers` | the `records` result shape of the attack-library world server |
+| Key                         | Meaning                                                                                   |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `effect`                    | `read` (no side effect and no outbound channel), `write` or `irreversible`                |
+| `server`                    | which server runs it; required with `servers`                                             |
+| `remote_name`               | the server's name for the tool when the contract name differs                             |
+| `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                       |
+| `readers`                   | who may read the results (`["*"]` default; `["user"]` marks them secret)                  |
+| `origin`                    | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}` |
+| `fields`                    | per-path config for `structuredContent`: `readers`, `unit`                                |
+| `records`, `record_readers` | the `records` result shape of the attack-library world server                             |
 
 Markers say what a parameter may be: `{"kind": "ledger", "ledger": "payees"}` (must be a ledger entry),
 `{"kind": "literal", "value": ...}`, `{"kind": "named_source", "source": ...}`, `{"kind": "endorse"}`
@@ -390,16 +402,16 @@ The proxy sends nothing over the network. The NOTARY server reads the audit dire
 
 ## Timeouts and limits
 
-| What | Value |
-| --- | --- |
-| request to a server | `timeout_seconds` per server, default 30; the call is answered with an error and `notifications/cancelled` is sent |
-| escalated call | `--approval-timeout`, default 120 s |
-| prompt hook | waits at most 25 s; the proxy takes the prompt within 3 s (21 s when it compiles the contract); Claude Code ends a hook at 30 s |
-| `--compile-url` | 15 s |
-| `structuredContent` | 32 levels, 2000 leaves |
-| user prompt forwarded | at most 8192 characters |
-| HTTP request body | 4 MiB |
-| resource and prompt lists | 500 entries, 200 prompt messages, URI at most 2048 characters |
+| What                      | Value                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| request to a server       | `timeout_seconds` per server, default 30; the call is answered with an error and `notifications/cancelled` is sent              |
+| escalated call            | `--approval-timeout`, default 120 s                                                                                             |
+| prompt hook               | waits at most 25 s; the proxy takes the prompt within 3 s (21 s when it compiles the contract); Claude Code ends a hook at 30 s |
+| `--compile-url`           | 15 s                                                                                                                            |
+| `structuredContent`       | 32 levels, 2000 leaves                                                                                                          |
+| user prompt forwarded     | at most 8192 characters                                                                                                         |
+| HTTP request body         | 4 MiB                                                                                                                           |
+| resource and prompt lists | 500 entries, 200 prompt messages, URI at most 2048 characters                                                                   |
 
 Known limits:
 

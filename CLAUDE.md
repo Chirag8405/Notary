@@ -71,7 +71,7 @@ Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherw
 
 - Never commit to `main` directly. Branch from `main` (`p<phase>/<slug>`, e.g. `p1/ledger`), open a pull request, merge only after review.
 - One PR per issue; put `Closes #<n>` in the PR body. Contract changes (label `contract-change`) need the announcement from phase.md P0b.
-- Run the commands under "Commands" before pushing; the CI workflow is currently removed, so the PR author is the gate.
+- Run the commands under "Commands" before pushing; `.github/workflows/ci.yml` re-runs them in five levels (format and Python lint, then static checks, tests, proofs, build) and `CI passed` is the one check to require before merging.
 
 ## Docs
 

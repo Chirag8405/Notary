@@ -1,0 +1,141 @@
+name: CI
+
+# Not a deploy pipeline: it only checks that the repo is healthy. Jobs run in levels, cheapest
+# first, and a level starts only when the one before it is green.
+#   L1 quick     format, python-lint
+#   L2 static    ts-lint, typecheck
+#   L3 tests     test
+#   L4 proofs    schema-drift, security-proof
+#   L5 build     build
+# `ci-pass` is the single status to require in branch protection.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Remote cache is optional: only used when both are configured on the repo.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  # ---------------------------------------------------------------- level 1: quick
+  format:
+    name: "L1 · format (prettier)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          python: "false"
+      - run: pnpm format:check
+
+  python-lint:
+    name: "L1 · python lint (ruff, import-linter)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - name: Layers and notary_core purity
+        run: uv run --no-sync lint-imports
+
+  # ---------------------------------------------------------------- level 2: static
+  ts-lint:
+    name: "L2 · ts lint (eslint, boundaries)"
+    needs: [format, python-lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run lint
+
+  typecheck:
+    name: "L2 · typecheck (pyright, tsc)"
+    needs: [format, python-lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run typecheck
+
+  # ---------------------------------------------------------------- level 3: tests
+  test:
+    name: "L3 · tests (pytest, vitest)"
+    needs: [ts-lint, typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      # --concurrency=2: the jsdom suites hit their 5 s timeout when too many tasks share a runner.
+      - run: pnpm turbo run test --concurrency=2
+
+  # ---------------------------------------------------------------- level 4: proofs
+  schema-drift:
+    name: "L4 · generated files and fixtures in sync"
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: pnpm schema:check
+      - run: pnpm playground:fixtures:check
+      - name: Working tree is clean
+        run: git diff --exit-code
+
+  security-proof:
+    name: "L4 · CP1 proof (attacks, fuzz)"
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: pnpm --filter @notary/cli cp1
+
+  # ---------------------------------------------------------------- level 5: build
+  build:
+    name: "L5 · build"
+    needs: [schema-drift, security-proof]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run build
+      - name: Working tree is clean
+        run: git diff --exit-code
+
+  # ---------------------------------------------------------------- gate
+  ci-pass:
+    name: CI passed
+    if: always()
+    needs: [format, python-lint, ts-lint, typecheck, test, schema-drift, security-proof, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "a required job did not succeed"; exit 1; }
+          done
