@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="flex min-h-screen flex-col antialiased">
         <TooltipProvider>
           <SiteHeader />
-          <div className="flex-1">{children}</div>
+          <div className="flex-1 animate-in duration-500 fade-in">{children}</div>
           <SiteFooter />
         </TooltipProvider>
       </body>
