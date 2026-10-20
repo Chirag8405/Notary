@@ -25,6 +25,7 @@ Repo rules to keep in mind (from `CLAUDE.md`): never commit to `main`; branch `p
 | 8   | G19, G18 dependency advisories, root `pytest` collection           | Hygiene                                                       |
 | 9   | G25, G27 real-world checks and the #270 demo check                 | Needs the user's machine and keys                             |
 | 10  | G8 HTTP endpoint hardening                                         | Lower urgency; loopback is the default                        |
+| 11  | G28, G29 tool annotations and a LICENSE file                       | Directory listing checks; both are small                      |
 
 ---
 
@@ -179,6 +180,21 @@ Repo rules to keep in mind (from `CLAUDE.md`): never commit to `main`; branch `p
 
 - Open: the demo check in a normal Claude Code session with the guard hook and `/x-ray` (ALLOW, then BLOCK `LEDGER_NOT_FOUND`, then ALLOW; approve an escalation from the card with `NOTARY_MCP_APPROVALS=1`, X-ray opened as `localhost:3000`), then tick the P6 line in `docs/phase.md` (line 182). Then the user decides whether to close #270.
 - Other live checks only the user can run: #258, #259 (including `claude -p` behavior), #261, #262, #264, #265, #266, #267, #269. Listed in `next-steps.md`.
+
+---
+
+## F. Directory quality checks
+
+### G28. MCP tools declare no annotations (priority: medium, directory quality check)
+
+- A directory quality check reports "No tools have read-only/destructive annotations": 14/14 tools are missing one or more hints (`add_contact`, `create_event`, `delete_email`, and 11 more). All four hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) must be explicit booleans on every tool. OpenAI's directory rejects a tool where any hint is missing or non-boolean.
+- **Where to look:** the 14 tools are the seeded world's registry in `packages/world/src/notary_world/tools.py`, and the `annotations` field the proxy passes through in `packages/mcp-proxy/src/notary_mcp_proxy/mcp_backend.py` (lines 330-386). Check which server surface the checker scans (the `notary-bank` MCP server exposes only `add_contact`, `pay_bill`, `read_inbox`).
+- **Do:** set all four hints per tool to match the handler's real behavior (for example `delete_email`: destructive, not read-only; `read_inbox`: read-only). Decide whether they derive from the existing effect and irreversibility metadata in the tool registry so they cannot drift. If the annotations ride in tool definitions, check whether this changes the pinned `tools/list` hash (G9) or a contract. Add a test that every registered tool has four boolean hints.
+
+### G29. No LICENSE file (priority: medium, cheap)
+
+- The repo has no `LICENSE` and no `license` field in `pyproject.toml` or `package.json`. The same quality check flags it, and without one nobody may legally reuse the code.
+- **Do:** the user picks the license (MIT or Apache-2.0 are the usual choices; Apache-2.0 adds a patent grant). Add `LICENSE`, set the `license` field in the root and package manifests, and mention it in the README.
 
 ---
 
