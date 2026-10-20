@@ -11,3 +11,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/notary_core"]
+
+# Dev-only mutation testing (mutmut). Run from this directory; see docs/decisions.md.
+[tool.mutmut]
+source_paths = ["src/notary_core"]
+only_mutate = ["src/notary_core/monitor.py", "src/notary_core/steps/*.py"]
+pytest_add_cli_args_test_selection = ["tests"]
+# test_core_purity scans the mutated copy, which mutmut rewrites to import its trampoline.
+pytest_add_cli_args = ["-p", "no:cacheprovider", "--ignore=tests/test_core_purity.py"]
