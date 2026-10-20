@@ -6,7 +6,7 @@ A deterministic security layer that stops indirect prompt injection in AI agents
 
 NOTARY assumes the agent's LLM is fully hijacked, then makes sure nothing the attacker wants can still happen. The guarantee comes from a small reference monitor that checks every proposed tool call against what the user actually asked for. It does not depend on prompts or classifiers.
 
-> **Status:** under active development. The core monitor pipeline (phase P1) has landed. The gateway, agent runner, server event stream, evaluation harness and parts of the UI are still stubs. [`docs/phase.md`](docs/phase.md) tracks each item.
+> **Status:** under active development. The monitor, gateway, agent runner, server event stream, Trust X-ray UI, judge playground and MCP proxy are implemented. The AgentDojo benchmark harness is still a stub (`NotImplementedError`). [`docs/phase.md`](docs/phase.md) tracks each item.
 
 ## How it works
 

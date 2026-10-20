@@ -1,4 +1,4 @@
-"""Reference monitor (stub)."""
+"""Reference monitor: `decide` runs the six checks in `CHECK_ORDER` over one proposed call."""
 
 from collections.abc import Mapping, Sequence
 from typing import Protocol

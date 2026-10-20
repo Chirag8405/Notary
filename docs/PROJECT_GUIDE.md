@@ -187,16 +187,16 @@ The demo's three-lane contrast: **Undefended** loses the money; **Classifier-onl
 
 ## 6. The six invariants
 
-These are the properties the system claims; each maps to tests and is checked by the oracle and the planned fuzz harness.
+These are the properties the system claims; each maps to tests and is checked by the oracle and the fuzz harness.
 
-| ID  | Invariant                                                                                                        | Mainly enforced by                                |
-| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| I1  | **Complete mediation**: no effect happens outside the gateway                                                    | gateway/executor design; mediation test (planned) |
-| I2  | **Integrity**: no attacker-only value reaches a guarded parameter without a ledger match or explicit endorsement | steps 3, 4; the policy table                      |
-| I3  | **Confidentiality**: no labeled data reaches a principal outside its readers                                     | step 5; reader joins                              |
-| I4  | **Ledger closure**: ledger changes only via user-authored or user-endorsed writes                                | `ledger.with_entry`                               |
-| I5  | **Contract monotonicity**: nothing at runtime widens the contract                                                | `contract.widening_reasons`, frozen models        |
-| I6  | **Model independence**: I1–I5 hold for _any_ sequence of tool calls the LLM emits                                | purity of core; Hijacked Mode; fuzzing            |
+| ID  | Invariant                                                                                                        | Mainly enforced by                                                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| I1  | **Complete mediation**: no effect happens outside the gateway                                                    | gateway/executor design; mediation tests (`packages/mcp-proxy/tests/test_gateway_mediation.py`) |
+| I2  | **Integrity**: no attacker-only value reaches a guarded parameter without a ledger match or explicit endorsement | steps 3, 4; the policy table                                                                    |
+| I3  | **Confidentiality**: no labeled data reaches a principal outside its readers                                     | step 5; reader joins                                                                            |
+| I4  | **Ledger closure**: ledger changes only via user-authored or user-endorsed writes                                | `ledger.with_entry`                                                                             |
+| I5  | **Contract monotonicity**: nothing at runtime widens the contract                                                | `contract.widening_reasons`, frozen models                                                      |
+| I6  | **Model independence**: I1–I5 hold for _any_ sequence of tool calls the LLM emits                                | purity of core; Hijacked Mode; fuzzing                                                          |
 
 I5 detail (`contract.py`): a new contract is "not wider" only if the id, intent text and every pinned manifest hash are equal, no tool/param/egress host/irreversible authorization is added, budgets are not raised, markers are not relaxed, and a tool's effect only moves toward `irreversible`.
 
@@ -224,7 +224,7 @@ Steps refer to the monitor checks above. "Remains" is what NOTARY honestly canno
 | A10 | Tool poisoning / rug pull     | tool description changes after install          | manifest hash pinning (1)                                                             | malicious first-seen tool the user installs                |
 | A11 | Approval phishing             | flood of confirmations                          | card text built from labels; per-session approval budget (6)                          | a determined user can still say yes                        |
 | A12 | Side channels                 | exception/loop count conditioned on a secret    | uniform constant block responses; egress cap                                          | low-bandwidth leaks (same as CaMeL)                        |
-| A13 | Text-to-text deception        | poisoned summary, fake "call this number"       | Output Guard (planned, phase P3a)                                                     | subtle factual bias in a summary                           |
+| A13 | Text-to-text deception        | poisoned summary, fake "call this number"       | Output Guard (`notary_core.output_guard`)                                             | subtle factual bias in a summary                           |
 | A14 | Denial of utility             | content crafted to make the defense refuse      | escalate instead of refuse; reads never gated; ledger auto-corroborates repeat payees | novel high-risk actions cost one click                     |
 
 The code gives each a fixture in `packages/world/fixtures/attacks/A1.json … A14.json` with the scripted tool calls and the expected verdict, deciding check and reason code (for example A1 → `BLOCK / scope / SCOPE_TOOL_NOT_IN_CONTRACT`; A8 → `BLOCK / corroboration / LEDGER_LOOKALIKE`; A10 → `BLOCK / scope / SCOPE_MANIFEST_MISMATCH`; A11 → three `ESCALATE`s then `BLOCK / budget / BUDGET_APPROVALS_EXHAUSTED`).
@@ -257,18 +257,18 @@ flowchart LR
   VS --> OG
 ```
 
-| Component                            | Role                                                                                                                                                     | Where                                                                                  | Status                    |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------- |
-| **Tool Gateway**                     | Only path to the world. Pins each tool's description+schema hash at session start, rejects drift, splits results into labeled fields                     | pure logic in `packages/core` (`gateway.py`); I/O adapter in `packages/mcp-proxy`      | interfaces and stubs only |
-| **Value Store**                      | Handle + label per value; derived values take lowest integrity and narrowest readers                                                                     | models in core; store planned                                                          | models only               |
-| **Intent Compiler** (trusted)        | Sees only user request + tool schemas; outputs the contract; cannot relax the table floor                                                                | `IntentContract` in core; compiler planned                                             | model only                |
-| **Agent LLM** (untrusted)            | Reads content, plans freely, proposes calls. Reads pass ungated                                                                                          | `apps/server` runner                                                                   | replays a hard-coded run  |
-| **Quarantined Extractor** (optional) | Turns messy content into typed fields with span refs; the gateway verifies spans exist                                                                   | planned                                                                                | planned                   |
-| **Reference Monitor**                | `decide()` as above                                                                                                                                      | `packages/core/.../monitor.py`                                                         | **implemented**           |
-| **Trusted Ledger**                   | Contacts, payees, owned resources; grows only by user action (I4)                                                                                        | `ledger.py`                                                                            | **implemented**           |
-| **Endorsement Service**              | Turns ESCALATE into a diff card built from labels (not LLM prose), per-session approval budget, writes approved value to the ledger (trust on first use) | models (`Endorsement`, `DiffCard`, `DiffRow`) in core; service planned                 | models only               |
-| **Output Guard**                     | Labels final-answer sentences by provenance; shows untrusted URLs/phones quoted; defangs links                                                           | planned (A13)                                                                          | planned                   |
-| **Audit Log + Oracle**               | Hash-chained log; oracle diffs the environment against attacker-goal and user-goal predicates independent of what the agent claims                       | audit in core (**implemented**); oracle in `packages/world` (**implemented**, see §10) | partly done               |
+| Component                            | Role                                                                                                                                                     | Where                                                                             | Status          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| **Tool Gateway**                     | Only path to the world. Pins each tool's description+schema hash at session start, rejects drift, splits results into labeled fields                     | pure logic in `packages/core` (`gateway.py`); I/O adapter in `packages/mcp-proxy` | **implemented** |
+| **Value Store**                      | Handle + label per value; derived values take lowest integrity and narrowest readers                                                                     | `notary_core.store` (`InMemoryValueStore`)                                        | **implemented** |
+| **Intent Compiler** (trusted)        | Sees only user request + tool schemas; outputs the contract; cannot relax the table floor                                                                | `notary_server.compiler` (cassette or live)                                       | **implemented** |
+| **Agent LLM** (untrusted)            | Reads content, plans freely, proposes calls. Reads pass ungated                                                                                          | `apps/server` runner (`ServerAgentRunner`); three lanes                           | **implemented** |
+| **Quarantined Extractor** (optional) | Turns messy content into typed fields with span refs; the gateway verifies spans exist                                                                   | `notary_server.extractor`                                                         | **implemented** |
+| **Reference Monitor**                | `decide()` as above                                                                                                                                      | `packages/core/.../monitor.py`                                                    | **implemented** |
+| **Trusted Ledger**                   | Contacts, payees, owned resources; grows only by user action (I4)                                                                                        | `ledger.py`                                                                       | **implemented** |
+| **Endorsement Service**              | Turns ESCALATE into a diff card built from labels (not LLM prose), per-session approval budget, writes approved value to the ledger (trust on first use) | models in core; pure card logic and the broker in `notary_server.endorsement`     | **implemented** |
+| **Output Guard**                     | Labels final-answer sentences by provenance; shows untrusted URLs/phones quoted; defangs links                                                           | `notary_core.output_guard` (A13)                                                  | **implemented** |
+| **Audit Log + Oracle**               | Hash-chained log; oracle diffs the environment against attacker-goal and user-goal predicates independent of what the agent claims                       | audit in core; oracle in `packages/world` (see §10)                               | **implemented** |
 
 The **AgentRunner** (`runner.py`) is one runner with two hook points: (a) a **pre-filter** on tool results before the agent sees them, (b) the **gateway/monitor gate**. The three lanes are just configurations: Undefended = no hooks; Classifier-only = pre-filter; NOTARY = gateway + monitor. `hooks_for_lane` refuses any other combination.
 
@@ -286,8 +286,8 @@ apps/server      FastAPI: REST + WebSocket event stream
 packages/core    PURE monitor, ledger, audit chain, all Pydantic models
 packages/world   seeded world, tools, attacks, oracle, executor, classifier stand-in, fixtures
 packages/cli     `notary` command (fuzz | replay | bench | attack)
-packages/eval    evaluation result shapes (AgentDojo harness not written)
-packages/mcp-proxy  gateway I/O adapter (stub)
+packages/eval    evaluation harness and results export (AgentDojo harness not written)
+packages/mcp-proxy  Gateway I/O adapter and the `notary-mcp-proxy` MCP proxy
 packages/schema  GENERATED JSON Schema, TS types, Zod
 packages/client  GENERATED OpenAPI client + validated WebSocket event stream
 packages/ui      React components for the X-ray
@@ -323,7 +323,7 @@ Python layers: server | cli  >  eval  >  mcp_proxy | world  >  core
 | `contract.py`                | monotonicity checks (I5) and contract digest                                                                                                                                                                                |
 | `audit.py`, `canon.py`       | hash chain; canonical JSON and SHA-256                                                                                                                                                                                      |
 | `session.py`                 | pure budget-state helpers                                                                                                                                                                                                   |
-| `gateway.py`, `runner.py`    | frozen interfaces; `label_tool_result` still `NotImplementedError` (P3a)                                                                                                                                                    |
+| `gateway.py`, `runner.py`    | frozen interfaces, implemented: pure labeling (`label_tool_result`) and the `AgentRunner` protocol with its lane hooks                                                                                                      |
 
 ### `packages/world` (the test universe)
 
@@ -341,10 +341,10 @@ Python layers: server | cli  >  eval  >  mcp_proxy | world  >  core
 
 ### Other packages
 
-- `packages/cli`: `notary replay FILE` prints typed events; `notary attack --list` prints A1–A14; `bench` runs the attack library with no defence and with the real monitor; `fuzz` and `attack` (run) are **stubs** (exit code 2).
+- `packages/cli`: `notary replay FILE` prints typed events; `notary attack --list` prints A1–A14; `bench` runs the attack library with no defence and with the real monitor; `fuzz` and `attack` run against the real monitor (the CP1 proof).
 - `packages/eval`: `TaskResult`/`EvalResults` shapes and `export_results`; `run_agentdojo` is `NotImplementedError`.
-- `packages/mcp-proxy`: `ToolPin` model and a `Gateway` class whose methods raise `NotImplementedError`.
-- `apps/server`: `GET /health`, `GET /scenarios`, `GET /attacks`, and `WS /ws/runs/{scenario}` that replays a golden stream event by event (0.4 s apart), each validated by the `Event` model. No real agent loop yet.
+- `packages/mcp-proxy`: the `Gateway` I/O adapter and the `notary-mcp-proxy` MCP proxy (stdio and Streamable HTTP), with `check`, approvals and an audit log.
+- `apps/server`: the FastAPI app (`app.py`): `GET /health`, `/scenarios`, `/attacks`, the run WebSocket (a real agent loop through `RunEngine`, replayed from cassettes or live), the playground and endorsement endpoints, and the MCP compile endpoint. Details in `docs/architecture.md`.
 - `packages/schema`/`client`: generated artifacts; the client validates every incoming event (`EventValidationError`) and every outgoing command; exposes a `useRunStream` React hook.
 - `packages/ui` and `apps/web`: React components and the `/x-ray` page (§11).
 
@@ -376,19 +376,19 @@ The ground truth that does not trust the agent's words. It looks only at the **w
 | Classifier-only | stand-in keyword filter before the agent | attacker still wins (no instruction text to flag) |
 | NOTARY          | gateway + monitor                        | attacker goal not reached                         |
 
-(An additional evaluation lane, "NOTARY without corroboration" = pure origin check, ROPE-style, is planned for the metrics.)
+(An additional evaluation lane, "NOTARY without corroboration" = pure origin check, ROPE-style, is planned for the metrics; no such lane exists in the code yet.)
 
 ### Hijacked Mode
 
-A judge (or script) types **raw tool calls** with no LLM. The calls go through the same executor and monitor. The claim: whatever you type, the invariants hold (I6). Planned objective cards: send money to the attacker IBAN, leak the 2FA code, delete the inbox, add yourself as a contact; the oracle judges.
+A judge (or script) types **raw tool calls** with no LLM. The calls go through the same executor and monitor. The claim: whatever you type, the invariants hold (I6). Example attacker goals for the oracle to judge (there are no dedicated objective cards in the UI): send money to the attacker IBAN, leak the 2FA code, delete the inbox, add yourself as a contact; the oracle judges.
 
-### Fuzzing (planned)
+### Fuzzing
 
-Hypothesis generates thousands of random tool-call sequences from a fully adversarial "LLM" against seeded worlds and asserts I1–I5 after every step. `notary fuzz` reporting **zero violations** is the main proof artifact. Not implemented yet.
+Hypothesis generates thousands of random tool-call sequences from a fully adversarial "LLM" against seeded worlds and asserts the invariants (I1–I6) after every step (`packages/world/src/notary_world/fuzz.py`). `notary fuzz` reporting **zero violations** is the main proof artifact; CP1 runs it with the `ci` profile (100 examples).
 
-### Planned evaluation metrics
+### Evaluation metrics
 
-Per bucket (fully-specified / parameter-open / action-open): clean utility close to undefended, utility under attack close to clean, static ASR (attack success rate) 0 on effect goals, adaptive ASR not higher than static, low escalation rate on repeat payees, overhead of one compiler call per task. Planned run on the organizer sandbox first, then AgentDojo banking/Slack suites.
+Per bucket (fully-specified / parameter-open / action-open): clean utility close to undefended, utility under attack close to clean, static ASR (attack success rate) 0 on effect goals, adaptive ASR not higher than static, low escalation rate on repeat payees, overhead of one compiler call per task. The seeded world mirrors the organizer sandbox; the AgentDojo banking/Slack run is still to do (the harness is a stub, issue #307).
 
 ---
 
@@ -404,11 +404,11 @@ Per bucket (fully-specified / parameter-open / action-open): clean utility close
 
 ### Trust X-ray (`/x-ray`)
 
-Planned layout: left = contract chips; centre = provenance graph (green = user, blue = ledger, amber = tool content, red outline = classifier-flagged); right = decision stream (one row per decision with origin chips, verdict, reason, hash link); bottom = world diff and the two oracle lights. Supporting views: content inspector, three-lane split, endorsement card (value, source span, nearest ledger entry with differing characters highlighted, remaining approval budget), replay scrubber.
+Layout: left = contract chips; centre = provenance graph (green = user, blue = ledger, amber = tool content, red outline = classifier-flagged); right = decision stream (one row per decision with origin chips, verdict, reason, hash link); bottom = world diff and the two oracle lights. Supporting views: content inspector, three-lane split, endorsement card (value, source span, nearest ledger entry with differing characters highlighted, remaining approval budget), replay scrubber.
 
-**Current state:** `/x-ray` renders a Decision stream, Contract panel and Oracle lights from the live WebSocket stream; the provenance graph is a placeholder; the three-lane view and replay scrubber are small stubs.
+**Current state:** `/x-ray` (`apps/web/components/x-ray-view.tsx`, `packages/ui`) renders the contract panel, provenance graph, decision stream, oracle lights, three-lane view, endorsement card, content inspector and replay scrubber from the live WebSocket stream.
 
-### Judge playground (planned)
+### Judge playground
 
 Four modes: **Poison the world**, **Be the hijacked LLM**, **Attack library** (one click per A1–A14), **Attacker arena** (an LLM attacker iterates N rounds per lane; plot ASR per round: the classifier should climb, NOTARY should stay flat).
 
@@ -567,10 +567,8 @@ This is where invariant I1 (complete mediation) becomes testable, because every 
 Useful to know before you trust any single document:
 
 1. **A3 behaviour (resolved at CP1).** A novel payee now escalates with a diff card: the parameter table gives `payee` an `endorse` floor (#119) and the bill contracts mark it `endorse`. A contract that marks it `ledger` (the A9 contract does, on purpose) still blocks it with `LEDGER_NOT_FOUND`, and a near match is `LEDGER_LOOKALIKE` → BLOCK either way. `KNOWN_REAL_MONITOR_DEVIATIONS` in `attacks.py` is empty.
-2. **Stale status text.** `README.md`/`architecture.md` say the monitor is a stub (`NotImplementedError`) and may still describe other parts as stubs; the monitor is implemented and P2 is done (`phase.md`).
-3. **Fixture path.** `threat-model.md` mentions `packages/world/fixtures/attacks.json` with placeholder titles; the real fixtures are per-attack files in `fixtures/attacks/` with the proper taxonomy.
-4. **Tool names.** The policy keeps both `pay_bill` and `send_money` because the scaffold and the world used different names.
-5. **`send_email.bcc`** is intentionally absent from the policy until the world defines it.
+2. **Tool names.** The policy keeps both `pay_bill` and `send_money` because the scaffold and the world used different names.
+3. **`send_email.bcc`** is intentionally absent from the policy until the world defines it.
 
 ---
 
