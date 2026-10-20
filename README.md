@@ -1,6 +1,6 @@
 # NOTARY
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/chirag8405-notary-1vupkx)](https://m8ven.ai/mcp/chirag8405-notary-1vupkx?s=readme)
+[![M8ven Score](https://m8ven.ai/badge/mcp/chirag8405-notary-1vupkx?v=a4ad71377c8a7e0474fa924f951668ee)](https://m8ven.ai/mcp/chirag8405-notary-1vupkx?s=readme)
 
 A deterministic security layer that stops indirect prompt injection in AI agents.
 
