@@ -59,6 +59,11 @@ export const REASON_TEXT: Readonly<Record<Code, string>> = {
   BUDGET_APPROVALS_EXHAUSTED: "You have no approvals left for this task.",
 };
 
+/** The sentence for a reason code given as plain text (a log line); null for a code not known. */
+export function reasonTextFor(code: string): string | null {
+  return Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as Code] : null;
+}
+
 export function verdictText(verdict: Verdict): VerdictText {
   return VERDICT_TEXT[verdict];
 }

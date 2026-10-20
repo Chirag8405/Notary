@@ -7,6 +7,7 @@ import {
   decidingReason,
   explainDecision,
   paramText,
+  reasonTextFor,
   toolText,
   verdictText,
 } from "@/lib/plain-language";
@@ -54,5 +55,11 @@ describe("plain language", () => {
     expect(toolText("archive_thread")).toBe("Archive thread");
     expect(paramText("iban")).toBe("Account (IBAN)");
     expect(paramText("due_date")).toBe("Due date");
+  });
+
+  it("looks up a reason code given as text, and answers null for an unknown one", () => {
+    expect(reasonTextFor("LEDGER_NOVEL_ESCALATE")).toBe(REASON_TEXT.LEDGER_NOVEL_ESCALATE);
+    expect(reasonTextFor("NOT_A_CODE")).toBeNull();
+    expect(reasonTextFor("toString")).toBeNull();
   });
 });
