@@ -1,5 +1,7 @@
 # NOTARY
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/chirag8405-notary-1vupkx)](https://m8ven.ai/mcp/chirag8405-notary-1vupkx?s=readme)
+
 A deterministic security layer that stops indirect prompt injection in AI agents.
 
 NOTARY assumes the agent's LLM is fully hijacked, then makes sure nothing the attacker wants can still happen. The guarantee comes from a small reference monitor that checks every proposed tool call against what the user actually asked for. It does not depend on prompts or classifiers.
