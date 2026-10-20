@@ -125,7 +125,7 @@ export function RunControls({
         <Button type="button" variant="outline" className="h-9 text-sm" onClick={onRunAgain}>
           Run again
         </Button>
-        <Link href="/playground" className="text-sm underline">
+        <Link href="/playground" className="text-sm underline underline-offset-4">
           Judge playground
         </Link>
       </div>

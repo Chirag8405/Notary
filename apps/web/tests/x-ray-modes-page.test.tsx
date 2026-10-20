@@ -177,7 +177,7 @@ describe("x-ray page headings", () => {
     expect(screen.queryAllByRole("heading", { name: "Oracle" })).toHaveLength(0);
 
     expect(new Set(headings.map((h) => h.tagName))).toEqual(new Set(["H2"]));
-    expect(new Set(headings.map((h) => h.className))).toEqual(new Set(["text-sm font-semibold"]));
+    expect(new Set(headings.map((h) => h.className))).toEqual(new Set(["text-base font-semibold"]));
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
@@ -186,7 +186,7 @@ describe("x-ray page headings", () => {
     const found = screen.getAllByRole("heading", { name: "Three lanes" });
     expect(found).toHaveLength(1);
     expect(found[0]?.tagName).toBe("H2");
-    expect(found[0]?.className).toBe("text-sm font-semibold");
+    expect(found[0]?.className).toBe("text-base font-semibold");
     expect(screen.getAllByLabelText("Three lanes")).toHaveLength(1);
   });
 
