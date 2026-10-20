@@ -3,6 +3,7 @@ name = "notary-core"
 version = "0.0.0"
 description = "NOTARY core: pure, deterministic models and reference monitor"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
 dependencies = ["pydantic>=2.14,<3"]
 
 [build-system]

@@ -2,6 +2,7 @@
   "name": "@notary/mcp-proxy",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "notary_mcp_proxy: MCP gateway wrapping core (tool pinning, labeling)",
   "scripts": {
     "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",

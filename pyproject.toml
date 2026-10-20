@@ -3,6 +3,8 @@ name = "notary-workspace"
 version = "0.0.0"
 description = "NOTARY monorepo (uv workspace root)"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 # Depend on every member so a plain `uv sync` installs the whole workspace.
 dependencies = [
   "notary-core",

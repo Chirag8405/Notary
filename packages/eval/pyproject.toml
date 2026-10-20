@@ -3,6 +3,7 @@ name = "notary-eval"
 version = "0.0.0"
 description = "Library eval harness and results export for charts"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
 dependencies = ["notary-core", "notary-mcp-proxy", "notary-world"]
 
 [build-system]

@@ -2,6 +2,7 @@
   "name": "@notary/web",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Trust X-ray UI and judge playground (Next.js App Router)",
   "scripts": {
