@@ -80,5 +80,6 @@ Any failing check → BLOCK; otherwise any escalating check → ESCALATE; otherw
 - `docs/demo.md` — determinism, Trust X-ray, judge playground, stage script
 - `docs/phase.md` — build phases P0, P0b, P1, P2, P3a-P3d, P4-P7, cut line, risks
 - `docs/decisions.md` — tool/design choices and conventions
+- `docs/PROJECT_GUIDE.md` — plain-language walkthrough of the problem, the design and the repository (read this first if new)
 
 When behavior, invariants, event types or package boundaries change, update the relevant doc in the same commit.
