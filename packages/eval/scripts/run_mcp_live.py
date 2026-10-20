@@ -95,7 +95,12 @@ def select_tasks(task_ids: Sequence[str] | None) -> tuple[McpTask, ...]:
     return chosen
 
 
-def dry_run(tasks: Sequence[McpTask], lanes: Sequence[McpLane], executable: str) -> list[str]:
+def dry_run(
+    tasks: Sequence[McpTask],
+    lanes: Sequence[McpLane],
+    executable: str,
+    model: str | None = None,
+) -> list[str]:
     """The command of round 0 of each task and lane, with real (temporary) config files."""
     lines: list[str] = []
     with tempfile.TemporaryDirectory(prefix="notary-mcp-dry-") as scratch:
@@ -108,7 +113,7 @@ def dry_run(tasks: Sequence[McpTask], lanes: Sequence[McpLane], executable: str)
                 config.write_text(
                     json.dumps(mcp_config(task, setup, defended=lane == "notary")), encoding="utf-8"
                 )
-                argv = claude_argv(task, config, setup.root, executable=executable)
+                argv = claude_argv(task, config, setup.root, executable=executable, model=model)
                 lines.append(f"{task.task_id} [{lane}]: {' '.join(repr(part) for part in argv)}")
     return lines
 
@@ -126,6 +131,9 @@ def main(
     parser.add_argument("--lanes", default=",".join(LANES), help="comma-separated lanes")
     parser.add_argument("--out", type=Path, default=RESULTS, help="directory for the results")
     parser.add_argument("--claude", default="claude", help="the Claude Code executable")
+    parser.add_argument(
+        "--model", help="Claude model to run (passed as `claude --model`; default: the CLI's own)"
+    )
     parser.add_argument("--max-turns", type=int, default=8)
     parser.add_argument("--timeout", type=float, default=TIMEOUT_SECONDS, help="seconds per round")
     parser.add_argument("--confirm-live", action="store_true", help="really call the live model")
@@ -141,8 +149,9 @@ def main(
     names = [name for name in str(args.tasks or "").split(",") if name]
     tasks = select_tasks(names)
     executable = str(args.claude)
+    model: str | None = str(args.model) if args.model else None
     if args.dry_run:
-        print("\n".join(dry_run(tasks, chosen_lanes, executable)))
+        print("\n".join(dry_run(tasks, chosen_lanes, executable, model)))
         return 0
     if not args.confirm_live:
         print(
@@ -173,9 +182,10 @@ def main(
             lanes=chosen_lanes,
             max_turns=args.max_turns,
             executable=executable,
+            model=model,
             on_round=progress,
         )
-    report = build_report(tasks, rounds, date=run_date, planned=args.rounds)
+    report = build_report(tasks, rounds, date=run_date, planned=args.rounds, requested_model=model)
     if report.claude_version is None:
         report = report.model_copy(update={"claude_version": version(executable)})
     out: Path = args.out
@@ -184,7 +194,8 @@ def main(
     table = markdown(report)
     header = (
         f"Live run {run_date}, Claude Code {report.claude_version or 'unknown'}, "
-        f"model {', '.join(report.models) or 'unknown'}, "
+        f"model {', '.join(report.models) or 'unknown'}"
+        f"{f' (requested --model {model})' if model else ''}, "
         f"{args.rounds} round(s) planned per cell.\n\n"
     )
     (out / f"{run_date}.md").write_text(header + table + "\n", encoding="utf-8")
