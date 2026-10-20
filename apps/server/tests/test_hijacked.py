@@ -118,6 +118,7 @@ def test_attacker_payment_is_not_executed_and_the_light_stays_off() -> None:
         "call_proposed",
         "decision_made",
         "endorsement_requested",
+        "endorsement_resolved",
     ]
     assert not any(reached(step).values())
     assert not step.oracle.attacker_goal_reached

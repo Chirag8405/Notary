@@ -41,6 +41,8 @@ const OPEN: CardOutcome = { kind: "open" };
 const RESOLVED: ReadonlySet<CardState> = new Set<CardState>([
   "approved",
   "rejected",
+  "timed_out",
+  "cancelled",
   "replaced",
   "blocked",
 ]);

@@ -326,7 +326,7 @@ def test_listing_is_newest_first_with_the_lengths_of_the_anchors(tmp_path: Path)
         os.utime(tmp_path / (run_id + ANCHOR_SUFFIX), (stamp, stamp))
     listed = list_mcp_runs(tmp_path)
     assert [info.run_id for info in listed] == [ids[2], ids[1], ids[0]]
-    assert [(info.length, info.finished) for info in listed] == [(0, False), (3, False), (11, True)]
+    assert [(info.length, info.finished) for info in listed] == [(0, False), (3, False), (12, True)]
     assert listed[0].head is None
     assert listed[1].head == entries_of(run_events(ids[1], 3, finish=False))[-1].hash
 
@@ -368,7 +368,7 @@ def test_with_a_directory_the_mode_and_the_route_exist(tmp_path: Path) -> None:
         "runs": [
             {
                 "run_id": RUN,
-                "length": 11,
+                "length": 12,
                 "head": entries_of(run_events(RUN))[-1].hash,
                 "finished": True,
             }

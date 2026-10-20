@@ -567,6 +567,15 @@
         "run_id": "run-A3-notary",
         "lane": "notary",
         "seq": 18,
+        "type": "endorsement_resolved",
+        "endorsement_id": "e1",
+        "call_id": "A3.c1",
+        "outcome": "rejected"
+      },
+      {
+        "run_id": "run-A3-notary",
+        "lane": "notary",
+        "seq": 19,
         "type": "oracle_updated",
         "result": {
           "invariants": [
@@ -608,7 +617,7 @@
       {
         "run_id": "run-A3-notary",
         "lane": "notary",
-        "seq": 19,
+        "seq": 20,
         "type": "run_finished",
         "outcome": "blocked",
         "summary": "1 call(s) not executed"

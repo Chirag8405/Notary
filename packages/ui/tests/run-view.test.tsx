@@ -85,12 +85,13 @@ describe("foldEvents on the golden streams", () => {
     expect(second.endorsementId).toBe(endorsement.endorsement_id);
     expect(second.executed).toBeNull();
     expect(view.endorsements).toHaveLength(1);
-    expect(view.endorsements[0]?.endorsement).toEqual(endorsement);
+    // `endorsement_resolved` (a rejection) moves the card from pending to rejected.
+    expect(view.endorsements[0]?.endorsement).toEqual({ ...endorsement, status: "rejected" });
     expect(view.oracle).not.toBeNull();
     expect(view.finished?.outcome).toBe(finished.outcome);
     expect(view.finished?.summary).toBe(finished.summary);
     expect(view.anomalies).toEqual([]);
-    expect(view.lastSeq).toBe(10);
+    expect(view.lastSeq).toBe(11);
     // Two values were labeled before the call that uses them; the amount is only an argument.
     expect(view.values.map((value) => [value.ref.id, value.labeled])).toEqual([
       ["v-email-body", true],
@@ -449,6 +450,26 @@ describe("ordering", () => {
   });
 });
 
+describe("endorsement_resolved", () => {
+  it("marks the card approved or rejected and notes a resolution without a card [I4]", () => {
+    const events = load("poisoned_bill.notary");
+    const upTo = events.slice(
+      0,
+      events.findIndex((e) => e.type === "endorsement_resolved"),
+    );
+    const resolved = pick(events, "endorsement_resolved");
+    const asApproved = { ...resolved, outcome: "approved" as const };
+    expect(foldEvents([...upTo, asApproved]).endorsements[0]?.endorsement.status).toBe("approved");
+    for (const outcome of ["rejected", "replaced", "timed_out", "cancelled"] as const) {
+      const view = foldEvents([...upTo, { ...resolved, outcome }]);
+      expect(view.endorsements[0]?.endorsement.status, outcome).toBe("rejected");
+    }
+    const orphan = foldEvents([...upTo.slice(0, 2), { ...resolved, seq: 2 }]);
+    expect(orphan.endorsements).toEqual([]);
+    expect(orphan.anomalies.some((a) => a.includes("unknown endorsement"))).toBe(true);
+  });
+});
+
 describe("exhaustiveness and exports", () => {
   function label(event: Event): string {
     switch (event.type) {
@@ -458,6 +479,7 @@ describe("exhaustiveness and exports", () => {
       case "decision_made":
       case "effect_executed":
       case "endorsement_requested":
+      case "endorsement_resolved":
       case "oracle_updated":
       case "run_finished":
         return event.type;
@@ -472,7 +494,7 @@ describe("exhaustiveness and exports", () => {
 
   it("handles every event type [I6]", () => {
     const events = load("poisoned_bill.notary");
-    expect(new Set(events.map(label)).size).toBe(8);
+    expect(new Set(events.map(label)).size).toBe(9);
     const started = pick(events, "run_started");
     for (const event of events) {
       expect(() => reduceEvent(reduceEvent(emptyRunView, started), event)).not.toThrow();

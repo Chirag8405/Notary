@@ -141,7 +141,9 @@ describe("EndorsementCard states and buttons", () => {
     const expected: [CardState, string | null][] = [
       ["sending", "Sending..."],
       ["approved", "You confirmed this request"],
-      ["rejected", "You rejected this request"],
+      ["rejected", "This request was rejected"],
+      ["timed_out", "No answer in time: the request was rejected"],
+      ["cancelled", "The request was cancelled"],
       ["blocked", "You confirmed this request, but the monitor blocked the call"],
     ];
     for (const [state, text] of expected) {

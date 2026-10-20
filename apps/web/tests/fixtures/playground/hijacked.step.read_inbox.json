@@ -10,7 +10,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 11,
+        "seq": 12,
         "type": "call_proposed",
         "proposal": {
           "call_id": "c3",
@@ -22,7 +22,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 12,
+        "seq": 13,
         "type": "decision_made",
         "call_id": "c3",
         "decision": {
@@ -41,7 +41,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 13,
+        "seq": 14,
         "type": "effect_executed",
         "call_id": "c3",
         "tool": "read_inbox",
@@ -50,7 +50,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 14,
+        "seq": 15,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-oct.sender",
@@ -72,7 +72,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 15,
+        "seq": 16,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-oct.subject",
@@ -94,7 +94,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 16,
+        "seq": 17,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-oct.body",
@@ -116,7 +116,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 17,
+        "seq": 18,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-oct.verified",
@@ -138,7 +138,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 18,
+        "seq": 19,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-dec.sender",
@@ -160,7 +160,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 19,
+        "seq": 20,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-dec.subject",
@@ -182,7 +182,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 20,
+        "seq": 21,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-dec.body",
@@ -204,7 +204,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 21,
+        "seq": 22,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-dec.verified",
@@ -226,7 +226,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 22,
+        "seq": 23,
         "type": "value_labeled",
         "value": {
           "id": "c3.m-dec.attachment_0",

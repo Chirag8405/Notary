@@ -359,6 +359,58 @@
       "title": "EndorsementRequested",
       "type": "object"
     },
+    "EndorsementResolved": {
+      "additionalProperties": false,
+      "description": "The end of an escalation, appended right after the answer and before anything it causes.",
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "endorsement_id": {
+          "type": "string"
+        },
+        "lane": {
+          "enum": [
+            "undefended",
+            "classifier",
+            "notary"
+          ],
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "approved",
+            "rejected",
+            "replaced",
+            "timed_out",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "endorsement_resolved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "lane",
+        "seq",
+        "type",
+        "endorsement_id",
+        "call_id",
+        "outcome"
+      ],
+      "title": "EndorsementResolved",
+      "type": "object"
+    },
     "Event": {
       "anyOf": [
         {
@@ -377,6 +429,9 @@
           "$ref": "#/$defs/EndorsementRequested"
         },
         {
+          "$ref": "#/$defs/EndorsementResolved"
+        },
+        {
           "$ref": "#/$defs/EffectExecuted"
         },
         {
@@ -392,6 +447,7 @@
           "decision_made": "#/$defs/DecisionMade",
           "effect_executed": "#/$defs/EffectExecuted",
           "endorsement_requested": "#/$defs/EndorsementRequested",
+          "endorsement_resolved": "#/$defs/EndorsementResolved",
           "oracle_updated": "#/$defs/OracleUpdated",
           "run_finished": "#/$defs/RunFinished",
           "run_started": "#/$defs/RunStarted",

@@ -90,7 +90,8 @@ def test_notary_stream_uses_every_event_type() -> None:
     types = {e.type for e in golden_streams()["poisoned_bill.notary"]}
     assert types == {
         "run_started", "value_labeled", "call_proposed", "decision_made",
-        "endorsement_requested", "effect_executed", "oracle_updated", "run_finished",
+        "endorsement_requested", "endorsement_resolved", "effect_executed", "oracle_updated",
+        "run_finished",
     }  # fmt: skip
 
 

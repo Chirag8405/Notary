@@ -5,7 +5,15 @@ import { highlightDiff } from "./diff-highlight";
 import type { Segment } from "./diff-highlight";
 
 export type CardState =
-  "pending" | "sending" | "approved" | "rejected" | "replaced" | "blocked" | "conflict";
+  | "pending"
+  | "sending"
+  | "approved"
+  | "rejected"
+  | "timed_out"
+  | "cancelled"
+  | "replaced"
+  | "blocked"
+  | "conflict";
 
 export interface EndorsementCardProps {
   endorsement: Endorsement;
@@ -36,7 +44,9 @@ const NEAREST_BUTTON = `${BUTTON} border border-input bg-background text-foregro
 const STATE_TEXT: Partial<Record<CardState, string>> = {
   sending: "Sending...",
   approved: "You confirmed this request",
-  rejected: "You rejected this request",
+  rejected: "This request was rejected",
+  timed_out: "No answer in time: the request was rejected",
+  cancelled: "The request was cancelled",
   replaced: "You asked for the nearest known value instead",
   blocked: "You confirmed this request, but the monitor blocked the call",
   conflict: "This request is no longer open",

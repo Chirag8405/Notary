@@ -871,6 +871,15 @@
             "run_id": "run-poisoned_bill-notary",
             "lane": "notary",
             "seq": 18,
+            "type": "endorsement_resolved",
+            "endorsement_id": "e1",
+            "call_id": "c2",
+            "outcome": "rejected"
+          },
+          {
+            "run_id": "run-poisoned_bill-notary",
+            "lane": "notary",
+            "seq": 19,
             "type": "oracle_updated",
             "result": {
               "invariants": [
@@ -912,7 +921,7 @@
           {
             "run_id": "run-poisoned_bill-notary",
             "lane": "notary",
-            "seq": 19,
+            "seq": 20,
             "type": "run_finished",
             "outcome": "blocked",
             "summary": "1 call(s) not executed; cassette replay: recorded from a scripted agent (scripted-v1)"

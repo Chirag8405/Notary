@@ -24,6 +24,7 @@ from notary_core.models import (
     EmailOrigin,
     EndorseMarker,
     EndorsementRequested,
+    EndorsementResolved,
     Event,
     ExpectedOutcome,
     FreeMarker,
@@ -60,6 +61,7 @@ from notary_world.executor import (
     ArgRecord,
     CallOutcome,
     DecisionInputs,
+    EscalationChoice,
     EscalationMode,
     RefusalRecord,
     RunEngine,
@@ -1119,3 +1121,104 @@ def test_multi_recipient_attendees_run_as_one_canonical_value(raw: str, real_mon
     created = [e for e in record.world_after.events if e.event_id == "ev3"]
     assert len(created) == 1
     assert created[0].attendees == (compared,)
+
+
+def resolved_events(engine: RunEngine) -> list[EndorsementResolved]:
+    return [e.event for e in engine.chain if isinstance(e.event, EndorsementResolved)]
+
+
+def escalated_contact(
+    audit_append: AuditAppend = append,
+) -> tuple[RunEngine, str]:
+    engine, outcome = propose(
+        engine_for(contact_scenario(), audit_append), add_contact("a1", "Alpha")
+    )
+    assert outcome.status == "escalated"
+    assert outcome.endorsement_id == "e1"
+    return engine, outcome.endorsement_id
+
+
+@pytest.mark.invariant("I4")
+@pytest.mark.parametrize(
+    ("choice", "outcome"),
+    [("reject", "rejected"), ("timed_out", "timed_out"), ("cancelled", "cancelled")],
+)
+def test_a_card_that_is_not_approved_is_resolved_in_the_chain(
+    choice: EscalationChoice, outcome: str
+) -> None:
+    """The audit chain says how a card ended; a rejection, a timeout and a cancel are different."""
+    engine, endorsement_id = escalated_contact()
+    ledger = engine.ledger
+    engine, resolved = resolve_escalation(engine, endorsement_id, choice)
+    assert resolved is not None
+    assert resolved.status == "blocked"
+    types = [e.event.type for e in engine.chain]
+    assert types[-2:] == ["endorsement_requested", "endorsement_resolved"]
+    (event,) = resolved_events(engine)
+    assert (event.endorsement_id, event.call_id, event.outcome) == ("e1", "a1", outcome)
+    assert engine.ledger == ledger
+    assert [e.resolution for e in engine.escalations] == ["rejected"]
+
+
+@pytest.mark.invariant("I4")
+def test_an_approved_card_is_resolved_before_the_ledger_changes_and_the_call_is_decided() -> None:
+    engine, endorsement_id = escalated_contact()
+    engine, resolved = resolve_escalation(engine, endorsement_id, "approve")
+    assert resolved is not None
+    assert resolved.status == "executed"
+    types = [e.event.type for e in engine.chain]
+    assert types[types.index("endorsement_requested") :][:3] == [
+        "endorsement_requested",
+        "endorsement_resolved",
+        "decision_made",
+    ]
+    (event,) = resolved_events(engine)
+    assert event.outcome == "approved"
+
+
+@pytest.mark.invariant("I4")
+def test_use_nearest_without_a_known_value_is_a_rejection() -> None:
+    engine, endorsement_id = escalated_contact()
+    engine, resolved = resolve_escalation(engine, endorsement_id, "use_nearest")
+    assert resolved is not None
+    assert resolved.status == "blocked"
+    assert [e.outcome for e in resolved_events(engine)] == ["rejected"]
+
+
+@pytest.mark.attack("A3")
+def test_use_nearest_with_a_known_value_is_replaced_before_the_new_call() -> None:
+    scenario = poisoned_bill_scenario()
+    engine = engine_for(scenario)
+    outcome = None
+    for call in scenario.calls:
+        engine, outcome = propose(engine, call)
+        if outcome.status == "escalated":
+            break
+    assert outcome is not None
+    assert outcome.endorsement_id is not None
+    engine, replaced = resolve_escalation(engine, outcome.endorsement_id, "use_nearest")
+    assert replaced is not None
+    assert [e.outcome for e in resolved_events(engine)] == ["replaced"]
+    types = [e.event.type for e in engine.chain]
+    first = types.index("endorsement_resolved")
+    assert "call_proposed" in types[first + 1 :]
+    assert engine.escalations[0].resolution == "rejected"  # the proposed value
+
+
+@pytest.mark.invariant("I4")
+@pytest.mark.parametrize("choice", ["approve", "reject", "timed_out", "use_nearest"])
+def test_a_card_whose_resolution_cannot_be_logged_changes_nothing(
+    choice: EscalationChoice,
+) -> None:
+    """An answer that is not in the chain is not applied: the run halts, the ledger stays."""
+    engine, endorsement_id = escalated_contact(
+        failing_append(lambda event: isinstance(event, EndorsementResolved))
+    )
+    ledger, session = engine.ledger, engine.session
+    engine, resolved = resolve_escalation(engine, endorsement_id, choice)
+    assert resolved is not None
+    assert resolved.status == "halted"
+    assert engine.halted == "audit append failed"
+    assert (engine.ledger, engine.session) == (ledger, session)
+    assert resolved_events(engine) == []
+    assert not any(isinstance(e.event, EffectExecuted) for e in engine.chain)

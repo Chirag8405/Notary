@@ -30,7 +30,9 @@ from notary_core.models import (
     DiffCard,
     EffectExecuted,
     Endorsement,
+    EndorsementOutcome,
     EndorsementRequested,
+    EndorsementResolved,
     Event,
     IntentContract,
     Label,
@@ -584,6 +586,8 @@ class Gateway:
                 ledger = with_entry(ledger, entry, authority)
         except LedgerClosureError as error:
             self._escalations[endorsement_id] = replace(pending, resolved=True)
+            if not self._resolved(endorsement_id, call_id, "rejected"):
+                return self._halted_outcome(call_id)
             return self._outcome(
                 call_id,
                 "blocked",
@@ -591,13 +595,34 @@ class Gateway:
                 endorsement_id=endorsement_id,
                 error=str(error),
             )
+        # Logged before the ledger changes: an approval that is not in the chain is not applied.
+        if not self._resolved(endorsement_id, call_id, "approved"):
+            return self._halted_outcome(call_id)
         self._ledger = ledger
         self._session = with_approval(self._session)
         self._escalations[endorsement_id] = replace(pending, resolved=True)
         return self._decide(pending.call, pending.proposal)
 
-    def reject(self, endorsement_id: str) -> MediationOutcome | None:
-        """The user rejected: no effect, no session change."""
+    def _resolved(self, endorsement_id: str, call_id: str, outcome: EndorsementOutcome) -> bool:
+        """Append `endorsement_resolved`; False when the append failed (the gateway halted)."""
+        return self.emit(
+            lambda run, lane, seq: EndorsementResolved(
+                type="endorsement_resolved",
+                run_id=run,
+                lane=lane,
+                seq=seq,
+                endorsement_id=endorsement_id,
+                call_id=call_id,
+                outcome=outcome,
+            )
+        )
+
+    def reject(
+        self,
+        endorsement_id: str,
+        outcome: Literal["rejected", "timed_out", "cancelled"] = "rejected",
+    ) -> MediationOutcome | None:
+        """The card was not approved (`outcome` says why): no effect, no session change."""
         pending = self._escalations.get(endorsement_id)
         if pending is None or pending.resolved:
             return None
@@ -605,4 +630,6 @@ class Gateway:
         if self._halted is not None:
             return self._halted_outcome(call_id)
         self._escalations[endorsement_id] = replace(pending, resolved=True)
+        if not self._resolved(endorsement_id, call_id, outcome):
+            return self._halted_outcome(call_id)
         return self._outcome(call_id, "blocked", pending.decision, endorsement_id=endorsement_id)

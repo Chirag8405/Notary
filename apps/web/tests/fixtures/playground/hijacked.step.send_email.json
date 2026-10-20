@@ -10,7 +10,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 6,
+        "seq": 7,
         "type": "value_labeled",
         "value": {
           "id": "c2.arg.body",
@@ -32,7 +32,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 7,
+        "seq": 8,
         "type": "value_labeled",
         "value": {
           "id": "c2.arg.subject",
@@ -54,7 +54,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 8,
+        "seq": 9,
         "type": "value_labeled",
         "value": {
           "id": "c2.arg.to",
@@ -76,7 +76,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 9,
+        "seq": 10,
         "type": "call_proposed",
         "proposal": {
           "call_id": "c2",
@@ -131,7 +131,7 @@
       {
         "run_id": "run-hijacked-h1",
         "lane": "notary",
-        "seq": 10,
+        "seq": 11,
         "type": "decision_made",
         "call_id": "c2",
         "decision": {

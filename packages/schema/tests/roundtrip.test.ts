@@ -27,6 +27,7 @@ describe("Python -> Zod golden event streams", () => {
       "decision_made",
       "effect_executed",
       "endorsement_requested",
+      "endorsement_resolved",
       "oracle_updated",
       "run_finished",
       "run_started",

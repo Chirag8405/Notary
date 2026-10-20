@@ -396,7 +396,7 @@ Per bucket (fully-specified / parameter-open / action-open): clean utility close
 
 ### Events (server → client)
 
-`run_started`, `value_labeled`, `call_proposed`, `decision_made`, `endorsement_requested`, `effect_executed`, `oracle_updated`, `run_finished`. Each carries `run_id`, `lane` and `seq`. `run_started` carries the contract; `value_labeled` carries the label and a short preview; `decision_made` carries the ordered reasons (and the diff card for ESCALATE); `oracle_updated` carries I1–I6 and the two goal lights.
+`run_started`, `value_labeled`, `call_proposed`, `decision_made`, `endorsement_requested`, `endorsement_resolved`, `effect_executed`, `oracle_updated`, `run_finished`. Each carries `run_id`, `lane` and `seq`. `run_started` carries the contract; `value_labeled` carries the label and a short preview; `decision_made` carries the ordered reasons (and the diff card for ESCALATE); `endorsement_resolved` says how an escalation ended (`approved`, `rejected`, `replaced`, `timed_out`, `cancelled`); `oracle_updated` carries I1–I6 and the two goal lights.
 
 ### Commands (client → server)
 

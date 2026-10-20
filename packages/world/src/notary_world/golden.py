@@ -25,6 +25,7 @@ from notary_core.models import (
     Endorsement,
     EndorsementDecisionCommand,
     EndorsementRequested,
+    EndorsementResolved,
     Event,
     FreeMarker,
     HijackedToolCallCommand,
@@ -275,6 +276,18 @@ def _stream(lane: Lane, scenario: str, payee_iban: str, *, legit: bool) -> tuple
                     status="pending",
                     sequence=0,
                 ),
+            )
+        )
+    if decision is not None and not legit:
+        add(
+            EndorsementResolved(
+                type="endorsement_resolved",
+                run_id=run_id,
+                lane=lane,
+                seq=seq(),
+                endorsement_id="e1",
+                call_id=pay.call_id,
+                outcome="rejected",
             )
         )
     paid = (not notary) or legit

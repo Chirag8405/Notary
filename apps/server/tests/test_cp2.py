@@ -24,6 +24,7 @@ from notary_core.models import (
     EffectExecuted,
     EndorsementDecisionCommand,
     EndorsementRequested,
+    EndorsementResolved,
     Event,
     Lane,
     OracleUpdated,
@@ -832,7 +833,8 @@ def test_endorsement_flow_over_the_socket() -> None:
 
 
 Beat = tuple[str, str | None, str | None]
-"""An event as the web client reads it after a card: (type, call id, verdict)."""
+"""An event as the web client reads it after a card: (type, call id, verdict or, for
+`endorsement_resolved`, the outcome)."""
 
 
 def beats_after_the_card(decision: str | None) -> list[Beat]:
@@ -866,6 +868,8 @@ def beats_after_the_card(decision: str | None) -> list[Beat]:
             return (event.type, event.proposal.call_id, None)
         if isinstance(event, EffectExecuted):
             return (event.type, event.call_id, None)
+        if isinstance(event, EndorsementResolved):
+            return (event.type, event.call_id, event.outcome)
         return (event.type, None, None)
 
     return [beat(event) for event in after]
@@ -874,28 +878,38 @@ def beats_after_the_card(decision: str | None) -> list[Beat]:
 @pytest.mark.invariant("I4")
 def test_what_follows_a_card() -> None:
     """The web client resolves a card from the run's own events (#239), so the order of the events
-    after a card is a contract: the first event that is not a `value_labeled` says how it ended.
+    after a card is a contract: the first event that is not a `value_labeled` is
+    `endorsement_resolved`, and its outcome says how the card ended (#302).
 
-    - approve: the same call decided again, ALLOW, then its effect;
-    - use nearest: a new call `<call>.nearest` is proposed (after its value is labeled);
-    - reject, a timeout and a cancel: none of that, the run just goes on to the oracle.
-
-    A reject and a timeout look the same in the stream; only the user's click tells them apart.
+    - approve: `approved`, then the same call decided again, ALLOW, then its effect;
+    - use nearest: `replaced`, then a new call `<call>.nearest` is proposed;
+    - reject: `rejected`, and the run just goes on to the oracle;
+    - a timeout: `timed_out`, otherwise the same as a reject.
     """
     approved = beats_after_the_card("approve")
-    assert approved[:2] == [("decision_made", "c2", "ALLOW"), ("effect_executed", "c2", None)]
+    assert approved[:3] == [
+        ("endorsement_resolved", "c2", "approved"),
+        ("decision_made", "c2", "ALLOW"),
+        ("effect_executed", "c2", None),
+    ]
     assert approved[-2:] == [("oracle_updated", None, None), ("run_finished", None, None)]
 
     rejected = beats_after_the_card("reject")
-    assert rejected == [("oracle_updated", None, None), ("run_finished", None, None)]
+    assert rejected == [
+        ("endorsement_resolved", "c2", "rejected"),
+        ("oracle_updated", None, None),
+        ("run_finished", None, None),
+    ]
 
     nearest = beats_after_the_card("use_nearest")
     first_not_labeled = next(beat for beat in nearest if beat[0] != "value_labeled")
-    assert first_not_labeled == ("call_proposed", "c2.nearest", None)
+    assert first_not_labeled == ("endorsement_resolved", "c2", "replaced")
+    assert ("call_proposed", "c2.nearest", None) in nearest
     assert ("decision_made", "c2.nearest", "ALLOW") in nearest
     assert ("decision_made", "c2", "ALLOW") not in nearest  # the original call is not approved
 
-    assert beats_after_the_card(None) == rejected  # a timeout is a reject as far as the stream goes
+    timed_out = beats_after_the_card(None)
+    assert timed_out == [("endorsement_resolved", "c2", "timed_out"), *rejected[1:]]
 
 
 @pytest.mark.invariant("I6")

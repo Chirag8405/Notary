@@ -46,6 +46,7 @@ from notary_world.scenarios import Scenario, golden_run_id, legitimate_bill_scen
 from notary_world.tools import default_manifest_hash
 
 Decision = Literal["approve", "reject", "use_nearest"]
+Resolution = Literal["approve", "reject", "use_nearest", "timed_out", "cancelled"]
 JOIN_SECONDS = 5.0
 OWNER = "owner-1"
 
@@ -83,15 +84,15 @@ def decision(
 class Waiter:
     """Runs `decide(endorsement)` in a thread, like the agent runner's worker thread."""
 
-    def __init__(self, decide: Callable[[Endorsement], Decision], card: Endorsement) -> None:
-        self.result: Decision | None = None
+    def __init__(self, decide: Callable[[Endorsement], Resolution], card: Endorsement) -> None:
+        self.result: Resolution | None = None
         self._thread = threading.Thread(target=self._run, args=(decide, card), daemon=True)
         self._thread.start()
 
-    def _run(self, decide: Callable[[Endorsement], Decision], card: Endorsement) -> None:
+    def _run(self, decide: Callable[[Endorsement], Resolution], card: Endorsement) -> None:
         self.result = decide(card)
 
-    def join(self) -> Decision | None:
+    def join(self) -> Resolution | None:
         self._thread.join(JOIN_SECONDS)
         assert not self._thread.is_alive()
         return self.result
@@ -133,7 +134,7 @@ def test_reject_unblocks_the_decider() -> None:
 def test_timeout_rejects_and_closes_the_slot() -> None:
     broker = EndorsementBroker(timeout_seconds=0.05)
     decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
-    assert decide(endorsement()) == "reject"
+    assert decide(endorsement()) == "timed_out"
     assert broker.submit(decision(), owner=OWNER) == "already_resolved"
     assert broker.pending("r1", owner=OWNER) == ()
 
@@ -146,7 +147,7 @@ def test_cancel_run_rejects_waiters() -> None:
     wait_until(lambda: len(broker.pending("r1", owner=OWNER)) == 2)
     other = waiting(broker, "r2", endorsement("e1"))
     broker.cancel_run("r1", owner=OWNER)
-    assert (first.join(), second.join()) == ("reject", "reject")
+    assert (first.join(), second.join()) == ("cancelled", "cancelled")
     assert broker.submit(decision("r1", "e1"), owner=OWNER) == "already_resolved"
     assert broker.submit(decision("r2", "e1", "reject"), owner=OWNER) == "accepted"
     assert other.join() == "reject"
@@ -157,7 +158,7 @@ def test_a_cancelled_run_rejects_later_escalations_at_once() -> None:
     broker = EndorsementBroker()
     decide = broker.decider_for("r1", owner=OWNER, max_approvals=3)
     broker.cancel_run("r1", owner=OWNER)
-    assert decide(endorsement("e5")) == "reject"
+    assert decide(endorsement("e5")) == "cancelled"
     assert broker.pending("r1", owner=OWNER) == ()
 
 
@@ -205,7 +206,7 @@ def test_a_new_run_with_the_same_id_never_reuses_an_old_decision() -> None:
     assert len(broker.pending("r1", owner=OWNER)) == 1
     assert again.result is None
     broker.cancel_run("r1", owner=OWNER)
-    assert again.join() == "reject"
+    assert again.join() == "cancelled"
 
 
 @pytest.mark.attack("A11")
@@ -240,7 +241,7 @@ def test_an_announced_card_is_rejected_when_the_run_is_cancelled_or_restarted() 
     run.announce(endorsement())
     broker.cancel_run("r1", owner=OWNER)
     assert broker.pending("r1", owner=OWNER) == ()
-    assert run.decide(endorsement()) == "reject"
+    assert run.decide(endorsement()) == "cancelled"
     run.announce(endorsement("e2"))  # a cancelled run registers nothing that can be approved
     assert broker.pending("r1", owner=OWNER) == ()
     assert broker.submit(decision(endorsement_id="e2"), owner=OWNER) == "already_resolved"
@@ -338,11 +339,11 @@ def test_handler_maps_results_to_close_codes() -> None:
 @pytest.mark.invariant("I4")
 def test_decider_has_no_approve_path_without_a_command() -> None:
     broker = EndorsementBroker(timeout_seconds=0.02)
-    assert broker.decider_for("r1", owner=OWNER, max_approvals=3)(endorsement("e1")) == "reject"
+    assert broker.decider_for("r1", owner=OWNER, max_approvals=3)(endorsement("e1")) == "timed_out"
     cancelled = EndorsementBroker()
     waiter = waiting(cancelled)
     cancelled.cancel_run("r1", owner=OWNER)
-    assert waiter.join() == "reject"
+    assert waiter.join() == "cancelled"
     assert DEFAULT_TIMEOUT_SECONDS == 300.0
 
 
@@ -429,7 +430,7 @@ class RunnerSource:
         endorsements = self.broker.start_run(run_id, owner=request.owner, max_approvals=1)
         decide = endorsements.decide
 
-        def counted(card: Endorsement) -> Decision:
+        def counted(card: Endorsement) -> Resolution:
             self.deciders_asked += 1
             return decide(card)
 
@@ -657,7 +658,7 @@ def test_runs_with_the_same_id_and_other_owners_are_separate_runs() -> None:
     wait_until(lambda: len(broker.pending("r1", owner="b")) == 1)
     assert first.result is None  # starting b's run did not drop a's card
     broker.cancel_run("r1", owner="b")
-    assert second.join() == "reject"
+    assert second.join() == "cancelled"
     assert len(broker.pending("r1", owner="a")) == 1  # nor did cancelling b's run
     assert first.result is None
     assert broker.submit(decision(), owner="a") == "accepted"
@@ -690,7 +691,7 @@ def test_the_rest_list_shows_the_cards_of_every_owner_but_answers_nothing() -> N
     assert broker.pending_for_run("r2") == ()
     broker.cancel_run("r1", owner="a")
     broker.cancel_run("r1", owner="b")
-    assert (a.join(), b.join()) == ("reject", "reject")
+    assert (a.join(), b.join()) == ("cancelled", "cancelled")
 
 
 def card_frames(ws: WebSocketTestSession) -> EndorsementRequested:

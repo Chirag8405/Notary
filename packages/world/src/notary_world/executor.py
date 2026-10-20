@@ -28,7 +28,9 @@ from notary_core.models import (
     DiffCard,
     EffectExecuted,
     Endorsement,
+    EndorsementOutcome,
     EndorsementRequested,
+    EndorsementResolved,
     Event,
     HijackedToolCallCommand,
     IntentContract,
@@ -779,7 +781,9 @@ def _approval_entries(
     return tuple(entries)
 
 
-EscalationChoice = Literal["approve", "reject", "use_nearest"]
+EscalationChoice = Literal["approve", "reject", "use_nearest", "timed_out", "cancelled"]
+"""The answer to a card. `timed_out` and `cancelled` are rejections that say why nobody said yes
+(the Endorsement Service knows; the engine only records it in `endorsement_resolved`)."""
 NEAREST_SUFFIX = ".nearest"
 """Appended to a call id for the call proposed again with the nearest known value."""
 
@@ -797,11 +801,39 @@ def _nearest_call(call: RawToolCall, card: DiffCard | None) -> RawToolCall | Non
     return RawToolCall(call_id=f"{call.call_id}{NEAREST_SUFFIX}", tool=call.tool, args=args)
 
 
+def _resolved(
+    engine: RunEngine, endorsement_id: str, call_id: str, outcome: EndorsementOutcome
+) -> RunEngine:
+    """Append `endorsement_resolved`; appended before anything the answer causes."""
+    return _emit(
+        engine,
+        lambda run, lane, seq: EndorsementResolved(
+            type="endorsement_resolved",
+            run_id=run,
+            lane=lane,
+            seq=seq,
+            endorsement_id=endorsement_id,
+            call_id=call_id,
+            outcome=outcome,
+        ),
+    )
+
+
+_REJECTION_OUTCOME: dict[str, EndorsementOutcome] = {
+    "reject": "rejected",
+    "timed_out": "timed_out",
+    "cancelled": "cancelled",
+}
+
+
 def resolve_escalation(
     engine: RunEngine, endorsement_id: str, decision: EscalationChoice
 ) -> tuple[RunEngine, CallOutcome | None]:
     """Reject; approve (endorse into the ledger, then decide the same proposal again); or use the
-    nearest known value (reject the proposed value, then propose a new call with the ledger's)."""
+    nearest known value (reject the proposed value, then propose a new call with the ledger's).
+
+    Every answer appends `endorsement_resolved` first, so a rejection, a timeout and a cancel are
+    in the audit chain (a failed append halts the run and nothing else happens)."""
     _check_open(engine)
     if engine.halted is not None:
         return engine, None
@@ -818,13 +850,22 @@ def resolve_escalation(
         endorsement_id=endorsement_id,
         error=None,
     )
-    if decision == "reject":
+    call_id = proposal.call_id
+    if decision != "approve" and decision != "use_nearest":
+        engine = _resolved(engine, endorsement_id, call_id, _REJECTION_OUTCOME[decision])
+        if engine.halted is not None:
+            return engine, _halted(call_id, engine, escalated)
         return _set_resolution(engine, endorsement_id, "rejected"), blocked
     if decision == "use_nearest":
         # The swapped value is not endorsed: no ledger write, no approval used. The replacement is
         # an ordinary new proposal that the monitor judges like any other.
-        engine = _set_resolution(engine, endorsement_id, "rejected")
         replacement = _nearest_call(call, escalated.diff_card)
+        engine = _resolved(
+            engine, endorsement_id, call_id, "rejected" if replacement is None else "replaced"
+        )
+        if engine.halted is not None:
+            return engine, _halted(call_id, engine, escalated)
+        engine = _set_resolution(engine, endorsement_id, "rejected")
         if replacement is None:
             return engine, blocked
         return propose(engine, replacement)
@@ -840,6 +881,13 @@ def resolve_escalation(
                 ledger = with_entry(ledger, entry, authority)
         except LedgerClosureError as error:
             reason = str(error)
+    # The outcome is appended before the ledger changes: an approval that is not logged is not
+    # applied. A refused write is a rejection of the card (the refusal is recorded as well).
+    engine = _resolved(
+        engine, endorsement_id, call_id, "rejected" if reason is not None else "approved"
+    )
+    if engine.halted is not None:
+        return engine, _halted(call_id, engine, escalated)
     if reason is not None:
         refusal = RefusalRecord(step=engine.step, kind="ledger_write", reason=reason)
         engine = replace(engine, refusals=(*engine.refusals, refusal))

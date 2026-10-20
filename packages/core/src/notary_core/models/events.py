@@ -50,6 +50,23 @@ class EndorsementRequested(EventBase):
     endorsement: Endorsement
 
 
+EndorsementOutcome = Literal["approved", "rejected", "replaced", "timed_out", "cancelled"]
+"""How an escalation ended. `approved`: the user approved and the endorsed values were written to
+the ledger. `rejected`: the user said no (also: the approval could not be applied, which is
+recorded as a refusal). `replaced`: the user asked for the nearest known value; the new call is
+judged like any other. `timed_out`: nobody answered in time. `cancelled`: the run, the agent's
+call or the connection ended first. Only `approved` and `replaced` are followed by more work."""
+
+
+class EndorsementResolved(EventBase):
+    """The end of an escalation, appended right after the answer and before anything it causes."""
+
+    type: Literal["endorsement_resolved"]
+    endorsement_id: str
+    call_id: str
+    outcome: EndorsementOutcome
+
+
 class EffectExecuted(EventBase):
     type: Literal["effect_executed"]
     call_id: str
@@ -74,6 +91,7 @@ Event = Annotated[
     | CallProposed
     | DecisionMade
     | EndorsementRequested
+    | EndorsementResolved
     | EffectExecuted
     | OracleUpdated
     | RunFinished,

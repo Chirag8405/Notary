@@ -10,7 +10,6 @@ are byte-identical. `run` returns the final `RunRecord` (a generator's return va
 
 from collections.abc import Callable, Generator, Mapping, Sequence
 from types import MappingProxyType
-from typing import Literal
 
 from notary_core.audit import append
 from notary_core.gateway import ToolResult, ToolResultField, make_labeler
@@ -48,6 +47,7 @@ from notary_world.executor import (
     MAX_ESCALATION_ROUNDS,
     AuditAppend,
     CallOutcome,
+    EscalationChoice,
     RunEngine,
     RunRecord,
     finish,
@@ -61,7 +61,7 @@ from notary_world.oracle import GoalPair, evaluate
 from notary_world.scenarios import Scenario
 from notary_world.tools import TOOL_SPECS, RawToolCall, world_manifests, world_policy
 
-EscalationDecider = Callable[[Endorsement], Literal["approve", "reject", "use_nearest"]]
+EscalationDecider = Callable[[Endorsement], EscalationChoice]
 """Asked (possibly blocking) after the escalation was streamed. The only place a human approval
 can enter a run."""
 
@@ -79,7 +79,7 @@ SCENARIO_GOALS: Mapping[str, GoalPair] = MappingProxyType(
 )
 
 
-def reject_all(endorsement: Endorsement) -> Literal["approve", "reject", "use_nearest"]:
+def reject_all(endorsement: Endorsement) -> EscalationChoice:
     """The default decider: an unattended run never approves anything."""
     return "reject"
 
