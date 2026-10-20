@@ -10,3 +10,10 @@ packages/world/fixtures
 packages/client/src/generated
 .venv
 packages/client/openapi.json
+.claude
+apps/server/results
+apps/server/tests/fixtures
+apps/web/tests/fixtures/playground
+packages/eval/fixtures
+packages/eval/results
+packages/mcp-proxy/schema
