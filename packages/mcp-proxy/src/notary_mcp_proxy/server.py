@@ -374,6 +374,7 @@ class ProxyServer:
                 arguments = as_object(params.get("arguments")) or {}
                 return result(request_id, self._call(name, arguments, request_id))
             return error(request_id, METHOD_NOT_FOUND, f"method not found: {method}")
+        # fail closed: a JSON-RPC error, the call does not run
         except Exception as failure:
             # The exception text may quote server-authored data: it goes to stderr, not the agent.
             diagnostic(
@@ -658,6 +659,7 @@ class ProxyServer:
             pins = self._gateway.check_drift()
         except ServerError as failure:
             report("tools/list_changed drift check", failure)
+        # the drift check only reports; the call path re-lists tools itself
         except Exception as failure:
             diagnostic(f"drift check failed: {type(failure).__name__}")
         else:

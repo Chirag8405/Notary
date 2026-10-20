@@ -330,6 +330,7 @@ def _emit(engine: RunEngine, make: EventFactory) -> RunEngine:
     event = make(engine.run_id, engine.lane, len(engine.chain))
     try:
         chain = engine.audit_append(engine.chain, event)
+    # fail closed: a failed audit append halts the engine
     except Exception:
         return replace(engine, halted=engine.halted or HALT_AUDIT)
     return replace(engine, chain=chain)

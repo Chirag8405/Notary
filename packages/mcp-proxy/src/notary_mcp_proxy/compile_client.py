@@ -244,6 +244,7 @@ class PromptCompiler:
         except CompileClientError as failure:
             diagnostic(f"compile: kept the config contract: {failure}")
             return None
+        # fail closed: keep the (narrower) config contract
         except Exception as failure:
             diagnostic(f"compile: kept the config contract: failed ({type(failure).__name__})")
             return None

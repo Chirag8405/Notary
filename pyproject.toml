@@ -55,7 +55,7 @@ target-version = "py312"
 extend-exclude = [".venv"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "TID", "PT", "C4", "N"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "TID", "PT", "C4", "N", "PGH003", "PGH004"]
 ignore = ["RUF012"]
 
 [tool.ruff.lint.per-file-ignores]

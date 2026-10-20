@@ -221,6 +221,7 @@ class Gateway:
         event = make(self._run_id, self._lane, len(self._chain))
         try:
             self._chain = self._audit_append(self._chain, event)
+        # fail closed: a failed audit append halts the run
         except Exception:
             self._halted = self._halted or HALT_AUDIT
             return False
@@ -257,6 +258,7 @@ class Gateway:
                 classifier=None,
             )
             self._chain = self._audit_append(self._chain, event)
+        # fail closed: a failed opening append halts the run
         except Exception:
             self._halted = self._halted or HALT_AUDIT
             self._opening_failed = True

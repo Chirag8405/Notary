@@ -590,6 +590,7 @@ def check_i6(run: RunRecord, monitor: Monitor | None = None) -> InvariantResult:
                 inputs.ledger,
                 inputs.session,
             )
+        # a crashing monitor is an I6 failure, never a pass
         except Exception as error:
             detail = I6_RAISED.format(
                 exception=_safe(type(error).__name__), call_id=_safe(record.call_id)

@@ -75,6 +75,7 @@ class RunLog:
         try:
             self._write_anchor()
             _fsync_directory(directory)
+        # cleanup only, then re-raise
         except BaseException:
             self.close()
             raise

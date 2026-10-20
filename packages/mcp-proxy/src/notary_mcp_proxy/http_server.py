@@ -216,6 +216,7 @@ class AgentEndpoint:
         handler = _handler_for(self)
         try:
             self._httpd = _Server(settings.host, settings.port, handler)
+        # cleanup only, then re-raise
         except BaseException:
             self._close_pipes()
             raise
