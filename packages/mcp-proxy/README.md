@@ -208,16 +208,16 @@ form without `kind` is the same as `"kind": "stdio"`) or `{"kind": "http", "url"
 
 A tool spec:
 
-| Key                         | Meaning                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
+| Key                         | Meaning                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `effect`                    | `read` (no side effect and no outbound channel; skips every check after scope), `write` or `irreversible` |
-| `server`                    | which server runs it; required with `servers`                                             |
-| `remote_name`               | the server's name for the tool when the contract name differs                             |
-| `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                       |
-| `readers`                   | who may read the results (`["*"]` default; `["user"]` marks them secret)                  |
-| `origin`                    | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}` |
-| `fields`                    | per-path config for `structuredContent`: `readers`, `unit`                                |
-| `records`, `record_readers` | the `records` result shape of the attack-library world server                             |
+| `server`                    | which server runs it; required with `servers`                                                             |
+| `remote_name`               | the server's name for the tool when the contract name differs                                             |
+| `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                                       |
+| `readers`                   | who may read the results (`["*"]` default; `["user"]` marks them secret)                                  |
+| `origin`                    | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}`                 |
+| `fields`                    | per-path config for `structuredContent`: `readers`, `unit`                                                |
+| `records`, `record_readers` | the `records` result shape of the attack-library world server                                             |
 
 Markers say what a parameter may be: `{"kind": "ledger", "ledger": "payees"}` (must be a ledger entry),
 `{"kind": "literal", "value": ...}`, `{"kind": "named_source", "source": ...}`, `{"kind": "endorse"}`
