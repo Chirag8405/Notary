@@ -2,6 +2,7 @@
   "name": "@notary/config-typescript",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Shared tsconfig bases",
   "files": [
     "*.json"

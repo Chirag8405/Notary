@@ -2,6 +2,7 @@
   "name": "@notary/server",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "notary_server: FastAPI app (REST + WebSocket events), agent runner, world host",
   "scripts": {
     "dev": "uv run --no-sync uvicorn notary_server.app:app --ws websockets --reload --host 0.0.0.0 --port 8000",

@@ -2,6 +2,7 @@
   "name": "@notary/core",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "notary_core: pure Pydantic models, reference monitor, ledger, audit chain",
   "scripts": {
     "lint": "uv run --no-sync ruff check . && uv run --no-sync ruff format --check . && uv run --no-sync lint-imports --config ../../pyproject.toml",
