@@ -210,7 +210,7 @@ A tool spec:
 
 | Key                         | Meaning                                                                                   |
 | --------------------------- | ----------------------------------------------------------------------------------------- |
-| `effect`                    | `read` (no side effect and no outbound channel), `write` or `irreversible`                |
+| `effect`                    | `read` (no side effect and no outbound channel; skips every check after scope), `write` or `irreversible` |
 | `server`                    | which server runs it; required with `servers`                                             |
 | `remote_name`               | the server's name for the tool when the contract name differs                             |
 | `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                       |
@@ -345,7 +345,9 @@ head line elsewhere and use `--expect-head H --expect-length N`.
 prints, per tool, the effective effect, the manifest hash and each parameter's effective marker, unit and
 kind, then findings. Errors: `TOOL_MISSING`, `TOOL_NAME_COLLISION`, `PARAM_UNCLASSIFIED`, `PARAM_NOT_IN_CONFIG`
 for a required parameter, `LEDGER_VALUE_INVALID`, `PROMPT_MISSING`. Warnings include
-`IRREVERSIBLE_NOT_AUTHORIZED`, `RENAMED_TOOL_UNREVIEWED`, `LEDGER_VALUE_PLACEHOLDER`. Exit `0` no error
+`IRREVERSIBLE_NOT_AUTHORIZED`, `RENAMED_TOOL_UNREVIEWED`, `LEDGER_VALUE_PLACEHOLDER`, and
+`READ_TOOL_FREE_TEXT_PARAM` (a `read` tool whose parameter can hold text: `read` tools are not checked
+after scope, so declare a search or fetch tool `write`). Exit `0` no error
 finding, `1` an error finding, `2` unreadable config or a server failed to start. The toy bank reports
 one placeholder warning for its `DE00ACME...` IBAN.
 
