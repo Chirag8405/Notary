@@ -1,29 +1,16 @@
 import re
 import unicodedata
 
+from notary_core.units._public_suffixes import ICANN_RULES, PRIVATE_RULES
 from notary_core.units.types import Canonical
 
-# Small embedded list. Unknown multi-part suffixes (for example com.sg) are
-# deliberately treated as two-label domains (documented known gap); extending
-# the list later is a data change, not a logic change.
-MULTIPART_SUFFIXES: frozenset[str] = frozenset(
-    {
-        "co.uk",
-        "org.uk",
-        "ac.uk",
-        "gov.uk",
-        "com.au",
-        "net.au",
-        "org.au",
-        "co.nz",
-        "co.jp",
-        "co.in",
-        "com.br",
-        "com.cn",
-        "com.mx",
-        "co.za",
-    }
-)
+# Rules of the pinned Public Suffix List, split by kind. Built once at import from the embedded
+# frozensets (pure data; nothing is read from disk or the network). Both the ICANN and the
+# PRIVATE section count: a private suffix such as github.io is a public suffix for egress.
+_RULES: frozenset[str] = ICANN_RULES | PRIVATE_RULES
+_EXCEPTIONS: frozenset[str] = frozenset(r[1:] for r in _RULES if r.startswith("!"))
+_WILDCARDS: frozenset[str] = frozenset(r[2:] for r in _RULES if r.startswith("*."))
+_SUFFIXES: frozenset[str] = frozenset(r for r in _RULES if r[0] not in "!*")
 
 _OCTET = r"(?:0|[1-9][0-9]{0,2})"
 _IPV4 = re.compile(rf"{_OCTET}\.{_OCTET}\.{_OCTET}\.{_OCTET}")
@@ -61,16 +48,49 @@ def is_ipv6_literal(host: str) -> bool:
     return len(groups) <= _MAX_GROUPS and all(len(group) <= _MAX_GROUP_LEN for group in groups)
 
 
+def _ace(label: str) -> str:
+    if label.isascii():
+        return label
+    try:
+        return "xn--" + label.encode("punycode").decode("ascii")
+    except UnicodeError:
+        return label
+
+
+def _suffix_length(labels: list[str]) -> int:
+    """Number of trailing labels of `labels` that form the public suffix (PSL algorithm).
+
+    An exception rule prevails over everything and its suffix is the rule minus its first
+    label; otherwise the longest matching suffix or wildcard rule wins; with no match the
+    implicit "*" rule makes the last label the suffix.
+    """
+    count = len(labels)
+    for start in range(count):
+        if ".".join(labels[start:]) in _EXCEPTIONS:
+            return count - start - 1
+    for start in range(count):
+        if ".".join(labels[start:]) in _SUFFIXES or ".".join(labels[start + 1 :]) in _WILDCARDS:
+            return count - start
+    return 1
+
+
 def registrable_domain(host: str) -> str:
-    """Approximate registrable domain of an already canonical host."""
+    """Registrable domain (public suffix plus one label) of a host, by the Public Suffix List.
+
+    The input is normally a canonical host from `canonicalize_host`; as defence in depth the
+    function also lowercases, drops one trailing dot and converts non-ASCII labels to punycode,
+    and returns that normalized form. Both PSL sections apply, so `a.github.io` and
+    `b.github.io` are different registrable domains and an egress entry for one tenant does
+    not admit another. IP literals are returned unchanged. A host that is itself a public
+    suffix (`co.uk`, `github.io`) or a single label (`localhost`) has no registrable domain
+    and is returned as is, so an allowlist entry for it matches only that exact host, never
+    its subdomains.
+    """
     if is_strict_ipv4(host) or host.startswith("["):
         return host
-    labels = host.split(".")
-    if len(labels) <= 2:
-        return host
-    if ".".join(labels[-2:]) in MULTIPART_SUFFIXES:
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+    labels = [_ace(label) for label in host.lower().removesuffix(".").split(".")]
+    keep = _suffix_length(labels) + 1
+    return ".".join(labels[-keep:])
 
 
 def _preprocess(raw: str) -> str:
