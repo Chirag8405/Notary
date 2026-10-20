@@ -24,11 +24,23 @@ TOOLS = [
     {
         "name": "read_inbox",
         "description": "List the emails in the user's inbox.",
+        "annotations": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "pay_bill",
         "description": "Pay a bill to a payee by IBAN.",
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -41,6 +53,12 @@ TOOLS = [
     {
         "name": "add_contact",
         "description": "Add a name to the user's address book.",
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
         "inputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string", "description": "Name of the contact"}},

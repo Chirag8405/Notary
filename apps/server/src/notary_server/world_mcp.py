@@ -49,7 +49,7 @@ from notary_mcp_proxy.jsonrpc import (
 from notary_world.attacks import AttackNotFoundError, attack_world, get_setup
 from notary_world.scenarios import get_scenario
 from notary_world.state import WorldState
-from notary_world.tools import WorldToolResult, call, world_manifests
+from notary_world.tools import WorldToolResult, call, get_tool, tool_annotations, world_manifests
 
 SERVER_INFO: JsonObject = {"name": "notary-world", "version": "0.0.0"}
 
@@ -59,13 +59,19 @@ def _compact(value: JsonValue) -> str:
 
 
 def tool_definitions(state: WorldState) -> list[JsonValue]:
-    """The tools as an MCP `tools/list` answer: name, description and input schema."""
+    """The tools as an MCP `tools/list` answer: name, description, input schema, annotations."""
     tools: list[JsonValue] = []
     for manifest in world_manifests(state):
         schema = as_object(json.loads(manifest.input_schema)) or {}
-        tools.append(
-            {"name": manifest.name, "description": manifest.description, "inputSchema": schema}
-        )
+        spec = get_tool(manifest.name)
+        definition: JsonObject = {
+            "name": manifest.name,
+            "description": manifest.description,
+            "inputSchema": schema,
+        }
+        if spec is not None:
+            definition["annotations"] = dict(tool_annotations(spec))
+        tools.append(definition)
     return tools
 
 

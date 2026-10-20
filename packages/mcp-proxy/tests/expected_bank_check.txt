@@ -1,9 +1,9 @@
-tool add_contact  effect=write  hash=81112750c48afac75e5bafff69239566f81fb1b236efc3b17213fd50741765d3
+tool add_contact  effect=write  hash=8a369523036cd1118e8fd42e7200ebfa968cbc6588439628801592a8da721d61
   param name  marker=endorse  unit=identifier  kind=identifier
-tool pay_bill  effect=irreversible  hash=832e7c5ec7c8b24b6c43f9e3ba5729dd99006223208ee94a252608be03f86546
+tool pay_bill  effect=irreversible  hash=142f9d71bc45525a8b992bb023569f46050d347317ba2407e0bfbcf9460e1bf4
   param amount  marker=free  unit=amount  kind=amount
   param payee  marker=ledger  unit=iban  kind=destination
-tool read_inbox  effect=read  hash=18c1aea4cd017739cdc42be83ecfa3165e1e9630c0d3f3d2a9f634220b9b81be
+tool read_inbox  effect=read  hash=bf8d731e6216b5173c94389a258f01422287b2d58a107291c5ae46727a57320e
 
 warning LEDGER_VALUE_PLACEHOLDER: ledger payees/Acme Utilities: check digits 00 never occur in a real IBAN; a placeholder or test IBAN
 ok: 0 error(s), 1 other finding(s)
