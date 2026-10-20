@@ -10,9 +10,10 @@ export type Decision = "approve" | "reject" | "use_nearest";
  *
  * - open: pending, or sending once the user clicked; a socket closed with 4409 (`conflict`)
  *   turns an open card into "no longer open". Any other close leaves it as it was.
- * - approved, replaced, blocked: what the server did, whatever was clicked.
- * - closed (not approved): "rejected" when the user rejected it, otherwise "no longer open"
- *   (a timeout, a cancel, or an answer that did not take).
+ * - approved, replaced, blocked, rejected, timed out, cancelled: what the run's own
+ *   `endorsement_resolved` event says (#302), whatever was clicked.
+ * - closed (a stream without that event): "rejected" when the user rejected it, otherwise "no
+ *   longer open" (a timeout, a cancel, or an answer that did not take).
  */
 export function shownState(
   outcome: CardOutcome,
@@ -26,6 +27,12 @@ export function shownState(
       return "replaced";
     case "blocked":
       return "blocked";
+    case "rejected":
+      return "rejected";
+    case "timed_out":
+      return "timed_out";
+    case "cancelled":
+      return "cancelled";
     case "closed":
       return clicked === "reject" ? "rejected" : "conflict";
     case "open":

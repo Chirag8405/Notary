@@ -48,7 +48,7 @@ describe("useRunStream", () => {
       await flush();
       const state = hook.result.current;
       expect(state.status).toBe("finished");
-      expect(state.events).toHaveLength(11);
+      expect(state.events).toHaveLength(12);
       expect("closeCode" in state).toBe(false);
     }
   });
@@ -122,7 +122,7 @@ describe("useRunStream", () => {
     socket.finish(1000);
     await flush();
     expect(hook.result.current.status).toBe("finished");
-    expect(hook.result.current.events).toHaveLength(11);
+    expect(hook.result.current.events).toHaveLength(12);
     const noFactory = vi.fn(() => undefined);
     expect(noFactory).not.toHaveBeenCalled();
   });

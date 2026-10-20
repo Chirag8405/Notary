@@ -202,6 +202,15 @@
           "status": "pending",
           "sequence": 0
         }
+      },
+      {
+        "run_id": "run-hijacked-h1",
+        "lane": "notary",
+        "seq": 6,
+        "type": "endorsement_resolved",
+        "endorsement_id": "e1",
+        "call_id": "c1",
+        "outcome": "rejected"
       }
     ],
     "oracle": {

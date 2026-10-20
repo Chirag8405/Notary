@@ -31,7 +31,7 @@ describe("openRun events", () => {
     for (const message of messages) socket.message(message);
     socket.finish(1000);
     const types = await collect(session);
-    expect(types).toHaveLength(11);
+    expect(types).toHaveLength(12);
     expect(types[0]).toBe("run_started");
     expect(types.at(-1)).toBe("run_finished");
     expect(types).toEqual(
@@ -80,7 +80,7 @@ describe("openRun events", () => {
     for (const message of goldenMessages()) socket.message(message);
     socket.finish(1000);
     await run;
-    expect(seen).toHaveLength(11);
+    expect(seen).toHaveLength(12);
     expect(socket.closeCalls).toBeGreaterThan(0);
   });
 });

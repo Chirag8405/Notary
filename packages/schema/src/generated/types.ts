@@ -3,7 +3,7 @@
 // DO NOT EDIT. Change the Pydantic models in notary_core and run `pnpm schema:generate`.
 
 
-export type Event = (RunStarted | ValueLabeled | CallProposed | DecisionMade | EndorsementRequested | EffectExecuted | OracleUpdated | RunFinished)
+export type Event = (RunStarted | ValueLabeled | CallProposed | DecisionMade | EndorsementRequested | EndorsementResolved | EffectExecuted | OracleUpdated | RunFinished)
 export type Marker = (LiteralMarker | NamedSourceMarker | LedgerMarker | EndorseMarker | FreeMarker)
 export type Origin = (UserOrigin | ToolOrigin | EmailOrigin | FileOrigin | WebOrigin | LedgerOrigin | LlmOrigin)
 export type Command = (EndorsementDecisionCommand | HijackedToolCallCommand | PoisonWorldCommand | ArenaStartCommand)
@@ -29,6 +29,7 @@ EndorseMarker: EndorseMarker
 Endorsement: Endorsement
 EndorsementDecisionCommand: EndorsementDecisionCommand
 EndorsementRequested: EndorsementRequested
+EndorsementResolved: EndorsementResolved
 Event: Event
 ExpectedOutcome: ExpectedOutcome
 FileOrigin: FileOrigin
@@ -272,6 +273,18 @@ card: DiffCard
 endorsement_id: string
 sequence: number
 status: ("pending" | "approved" | "rejected")
+}
+/**
+ * The end of an escalation, appended right after the answer and before anything it causes.
+ */
+export interface EndorsementResolved {
+call_id: string
+endorsement_id: string
+lane: ("undefended" | "classifier" | "notary")
+outcome: ("approved" | "rejected" | "replaced" | "timed_out" | "cancelled")
+run_id: string
+seq: number
+type: "endorsement_resolved"
 }
 export interface EffectExecuted {
 call_id: string

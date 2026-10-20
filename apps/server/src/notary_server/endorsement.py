@@ -35,6 +35,9 @@ RunKey = tuple[str, str]
 server-side secret per socket, never sent to a client) is what tells two runs apart (#201)."""
 
 Decision = Literal["approve", "reject", "use_nearest"]
+Resolution = Literal["approve", "reject", "use_nearest", "timed_out", "cancelled"]
+"""A slot's answer: a user's `Decision`, or why nobody answered (both reject; the audit chain
+records which)."""
 
 
 class PendingEndorsement(NotaryModel):
@@ -50,7 +53,7 @@ class _Slot:
     def __init__(self, endorsement: Endorsement, remaining_approvals: int) -> None:
         self.endorsement = endorsement
         self.remaining_approvals = remaining_approvals
-        self.decision: Decision | None = None
+        self.decision: Resolution | None = None
 
 
 class _Run:
@@ -62,7 +65,7 @@ class _Run:
     def reject_unresolved(self) -> None:
         for slot in self.slots.values():
             if slot.decision is None:
-                slot.decision = "reject"
+                slot.decision = "cancelled"
 
     def has_waiter(self) -> bool:
         return any(slot.decision is None for slot in self.slots.values())
@@ -108,7 +111,7 @@ class EndorsementBroker:
             with self._cond:
                 self._slot(key, endorsement, max_approvals)
 
-        def decide(endorsement: Endorsement) -> Decision:
+        def decide(endorsement: Endorsement) -> Resolution:
             return self._wait(key, endorsement, max_approvals)
 
         return EndorsementRun(announce, decide)
@@ -129,17 +132,17 @@ class EndorsementBroker:
             slot = _Slot(endorsement, remaining)
             run.slots[endorsement.endorsement_id] = slot
             if run.cancelled:
-                slot.decision = "reject"
+                slot.decision = "cancelled"
         return slot
 
-    def _wait(self, key: RunKey, endorsement: Endorsement, max_approvals: int) -> Decision:
+    def _wait(self, key: RunKey, endorsement: Endorsement, max_approvals: int) -> Resolution:
         with self._cond:
             slot = self._slot(key, endorsement, max_approvals)
             deadline = time.monotonic() + self._timeout
             while slot.decision is None:
                 left = deadline - time.monotonic()
                 if left <= 0:
-                    slot.decision = "reject"
+                    slot.decision = "timed_out"
                     break
                 self._cond.wait(left)
             return slot.decision

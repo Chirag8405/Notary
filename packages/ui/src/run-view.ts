@@ -96,6 +96,7 @@ type CallProposedEvent = Extract<Event, { type: "call_proposed" }>;
 type DecisionMadeEvent = Extract<Event, { type: "decision_made" }>;
 type EffectExecutedEvent = Extract<Event, { type: "effect_executed" }>;
 type EndorsementRequestedEvent = Extract<Event, { type: "endorsement_requested" }>;
+type EndorsementResolvedEvent = Extract<Event, { type: "endorsement_resolved" }>;
 type OracleUpdatedEvent = Extract<Event, { type: "oracle_updated" }>;
 type RunStartedEvent = Extract<Event, { type: "run_started" }>;
 
@@ -297,6 +298,22 @@ function applyEndorsementRequested(draft: Draft, event: EndorsementRequestedEven
   draft.calls[found.index] = { ...found.call, endorsementId: endorsement.endorsement_id };
 }
 
+function applyEndorsementResolved(draft: Draft, event: EndorsementResolvedEvent): void {
+  const index = draft.endorsements.findIndex(
+    (item) => item.endorsement.endorsement_id === event.endorsement_id,
+  );
+  const found = draft.endorsements[index];
+  if (found === undefined) {
+    note(
+      draft,
+      `endorsement_resolved for unknown endorsement ${event.endorsement_id} (seq ${event.seq})`,
+    );
+    return;
+  }
+  const status = event.outcome === "approved" ? "approved" : "rejected";
+  draft.endorsements[index] = { ...found, endorsement: { ...found.endorsement, status } };
+}
+
 function applyOracleUpdated(draft: Draft, event: OracleUpdatedEvent): void {
   draft.oracle = clonePlain(event.result);
 }
@@ -325,6 +342,9 @@ function apply(draft: Draft, event: Event): Draft {
       return draft;
     case "endorsement_requested":
       applyEndorsementRequested(draft, event);
+      return draft;
+    case "endorsement_resolved":
+      applyEndorsementResolved(draft, event);
       return draft;
     case "oracle_updated":
       applyOracleUpdated(draft, event);

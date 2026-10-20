@@ -13,6 +13,8 @@ export function describeEvent(event: Event): string {
       return `${event.decision.verdict} for ${event.call_id}`;
     case "endorsement_requested":
       return `Endorsement ${event.endorsement.status} for ${event.endorsement.call_id}`;
+    case "endorsement_resolved":
+      return `Endorsement ${event.endorsement_id} ${event.outcome.replace("_", " ")}`;
     case "effect_executed":
       return `Executed ${event.tool}: ${event.summary}`;
     case "oracle_updated":

@@ -19,7 +19,7 @@ from notary_world.golden import CLASSIFIER_NAME
 LANES: tuple[Lane, ...] = ("undefended", "classifier", "notary")
 
 GATELESS_DROPPED: frozenset[str] = frozenset(
-    {"decision_made", "value_labeled", "endorsement_requested"}
+    {"decision_made", "value_labeled", "endorsement_requested", "endorsement_resolved"}
 )
 """Event types a lane without a gate does not show (the golden baseline streams omit them)."""
 

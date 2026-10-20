@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The end of an escalation, appended right after the answer and before anything it causes.",
+  "properties": {
+    "call_id": {
+      "type": "string"
+    },
+    "endorsement_id": {
+      "type": "string"
+    },
+    "lane": {
+      "enum": [
+        "undefended",
+        "classifier",
+        "notary"
+      ],
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "approved",
+        "rejected",
+        "replaced",
+        "timed_out",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "const": "endorsement_resolved",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "lane",
+    "seq",
+    "type",
+    "endorsement_id",
+    "call_id",
+    "outcome"
+  ],
+  "title": "EndorsementResolved",
+  "type": "object"
+}

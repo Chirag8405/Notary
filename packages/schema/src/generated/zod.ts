@@ -76,6 +76,9 @@ export type Endorsement = z.infer<typeof EndorsementSchema>;
 export const EndorsementRequestedSchema = z.object({ "endorsement": EndorsementSchema, "lane": z.enum(["undefended","classifier","notary"]), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("endorsement_requested") }).strict();
 export type EndorsementRequested = z.infer<typeof EndorsementRequestedSchema>;
 
+export const EndorsementResolvedSchema = z.object({ "call_id": z.string(), "endorsement_id": z.string(), "lane": z.enum(["undefended","classifier","notary"]), "outcome": z.enum(["approved","rejected","replaced","timed_out","cancelled"]), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("endorsement_resolved") }).strict().describe("The end of an escalation, appended right after the answer and before anything it causes.");
+export type EndorsementResolved = z.infer<typeof EndorsementResolvedSchema>;
+
 export const InvariantResultSchema = z.object({ "detail": z.string(), "id": z.enum(["I1","I2","I3","I4","I5","I6"]), "passed": z.boolean() }).strict();
 export type InvariantResult = z.infer<typeof InvariantResultSchema>;
 
@@ -121,7 +124,7 @@ export type RunStarted = z.infer<typeof RunStartedSchema>;
 export const ValueLabeledSchema = z.object({ "lane": z.enum(["undefended","classifier","notary"]), "preview": z.string(), "run_id": z.string(), "seq": z.number().int().gte(0), "type": z.literal("value_labeled"), "unit": z.union([z.enum(["iban","email","url_host","amount","identifier"]), z.null()]), "value": ValueRefSchema }).strict();
 export type ValueLabeled = z.infer<typeof ValueLabeledSchema>;
 
-export const EventSchema = z.discriminatedUnion("type", [RunStartedSchema, ValueLabeledSchema, CallProposedSchema, DecisionMadeSchema, EndorsementRequestedSchema, EffectExecutedSchema, OracleUpdatedSchema, RunFinishedSchema]);
+export const EventSchema = z.discriminatedUnion("type", [RunStartedSchema, ValueLabeledSchema, CallProposedSchema, DecisionMadeSchema, EndorsementRequestedSchema, EndorsementResolvedSchema, EffectExecutedSchema, OracleUpdatedSchema, RunFinishedSchema]);
 export type Event = z.infer<typeof EventSchema>;
 
 export const AuditEntrySchema = z.object({ "event": EventSchema, "hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")), "index": z.number().int().gte(0), "prev_hash": z.string().regex(new RegExp("^[0-9a-f]{64}$")) }).strict();

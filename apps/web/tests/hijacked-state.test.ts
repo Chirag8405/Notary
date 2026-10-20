@@ -192,7 +192,7 @@ describe("hijackedReducer", () => {
         ],
       },
     ]);
-    expect(state.events).toHaveLength(5);
+    expect(state.events).toHaveLength(6);
     expect(state.objectives.map((objective) => objective.objectiveId)).toEqual([
       "pay_attacker",
       "leak_2fa",
@@ -212,7 +212,7 @@ describe("hijackedReducer", () => {
       ["c3", "executed"],
     ]);
     expect(state.log[1]?.reasonCodes).toEqual(["SCOPE_TOOL_NOT_IN_CONTRACT"]);
-    expect(state.events).toHaveLength(5 + 5 + 12);
+    expect(state.events).toHaveLength(6 + 5 + 12);
     expect(state.oracle).toEqual(step("hijacked.step.read_inbox").oracle);
   });
 
@@ -309,6 +309,6 @@ describe("hijackedReducer", () => {
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
     expect(frozen.log).toHaveLength(1);
-    expect(frozen.events).toHaveLength(5);
+    expect(frozen.events).toHaveLength(6);
   });
 });

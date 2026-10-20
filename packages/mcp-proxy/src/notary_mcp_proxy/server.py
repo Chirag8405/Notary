@@ -84,6 +84,14 @@ from notary_mcp_proxy.structured import (
     unflatten,
 )
 
+_REJECTION_OUTCOME: dict[str, Literal["rejected", "timed_out", "cancelled"]] = {
+    "timeout": "timed_out",
+    "cancelled": "cancelled",
+    "closed": "cancelled",
+}
+"""`endorsement_resolved.outcome` for an approval wait that ended without a user answer
+(`Answer.cause`); a user's own rejection is "rejected"."""
+
 SERVER_INFO: JsonObject = {"name": "notary", "version": "0.0.0"}
 INSTRUCTIONS = (
     "Every tool call is checked by NOTARY against the user's frozen intent contract. "
@@ -498,7 +506,11 @@ class ProxyServer:
         """Close the card without any effect and tell the agent why (the Gateway logs nothing)."""
         endorsement_id = outcome.endorsement_id
         if endorsement_id is not None:
-            self._gateway.reject(endorsement_id)
+            # Approvals switched off are a standing "no", not a request that ended unanswered.
+            self._gateway.reject(
+                endorsement_id,
+                "rejected" if disabled else _REJECTION_OUTCOME.get(answer.cause, "rejected"),
+            )
             failed = self._elicit_failures.get(endorsement_id)
             cause = (
                 "disabled"

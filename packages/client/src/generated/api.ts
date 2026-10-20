@@ -318,7 +318,7 @@ export interface components {
             /** Deferred */
             deferred: boolean;
             /** Events */
-            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EndorsementResolved"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
             /** Name */
             name: string;
             /** Ok */
@@ -501,6 +501,35 @@ export interface components {
              */
             type: "endorsement_requested";
         };
+        /**
+         * EndorsementResolved
+         * @description The end of an escalation, appended right after the answer and before anything it causes.
+         */
+        EndorsementResolved: {
+            /** Call Id */
+            call_id: string;
+            /** Endorsement Id */
+            endorsement_id: string;
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "undefended" | "classifier" | "notary";
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "approved" | "rejected" | "replaced" | "timed_out" | "cancelled";
+            /** Run Id */
+            run_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "endorsement_resolved";
+        };
         /** ExpectedOutcome */
         ExpectedOutcome: {
             /** Code */
@@ -581,7 +610,7 @@ export interface components {
             /** Call Id */
             call_id: string;
             /** Events */
-            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EndorsementResolved"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
             /** Objectives */
             objectives: components["schemas"]["ObjectiveStatus"][];
             oracle: components["schemas"]["OracleResult"];
@@ -658,7 +687,7 @@ export interface components {
             /** Attacker Goal Reached */
             attacker_goal_reached: boolean | null;
             /** Events */
-            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
+            events: (components["schemas"]["RunStarted"] | components["schemas"]["ValueLabeled"] | components["schemas"]["CallProposed"] | components["schemas"]["DecisionMade"] | components["schemas"]["EndorsementRequested"] | components["schemas"]["EndorsementResolved"] | components["schemas"]["EffectExecuted"] | components["schemas"]["OracleUpdated"] | components["schemas"]["RunFinished"])[];
             /**
              * Lane
              * @enum {string}

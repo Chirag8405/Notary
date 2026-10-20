@@ -290,6 +290,15 @@
     "run_id": "run-poisoned_bill-notary",
     "lane": "notary",
     "seq": 9,
+    "type": "endorsement_resolved",
+    "endorsement_id": "e1",
+    "call_id": "c2",
+    "outcome": "rejected"
+  },
+  {
+    "run_id": "run-poisoned_bill-notary",
+    "lane": "notary",
+    "seq": 10,
     "type": "oracle_updated",
     "result": {
       "invariants": [
@@ -331,7 +340,7 @@
   {
     "run_id": "run-poisoned_bill-notary",
     "lane": "notary",
-    "seq": 10,
+    "seq": 11,
     "type": "run_finished",
     "outcome": "blocked",
     "summary": "Payment held: new payee needs endorsement"

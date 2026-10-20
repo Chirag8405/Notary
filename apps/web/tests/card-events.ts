@@ -11,6 +11,10 @@ import { load, must } from "./golden";
  * - approve: `decision_made <call> ALLOW`, then the effect
  * - reject or timeout: `oracle_updated`, `run_finished`
  * - use nearest: `value_labeled`, `call_proposed <call>.nearest`, its decision
+ *
+ * Since #302 the server also appends `endorsement_resolved` right after the answer. The streams
+ * below are the older shape (no such event), which the UI still understands; `resolvedFor` and
+ * `RESOLVED_*` are the current one.
  */
 const golden = load("poisoned_bill.notary");
 
@@ -100,6 +104,19 @@ export const MAX_APPROVALS = must(
   "max_approvals",
 );
 
+/** `endorsement_resolved` for a card, as the server appends it right after the answer. */
+export function resolvedFor(
+  outcome: "approved" | "rejected" | "replaced" | "timed_out" | "cancelled",
+  endorsementId: string = CARD,
+  callId: string = CALL,
+): Event {
+  const resolved = must(
+    golden.find((event) => event.type === "endorsement_resolved"),
+    "the golden resolution",
+  );
+  return { ...resolved, endorsement_id: endorsementId, call_id: callId, outcome };
+}
+
 /** What the server sends after each answer. */
 export const APPROVED = append(TO_REQUEST, decisionFor("ALLOW"), ORACLE, FINISHED);
 export const REJECTED = append(TO_REQUEST, ORACLE, FINISHED);
@@ -110,3 +127,15 @@ export const REPLACED = append(
   decisionFor("ALLOW", `${CALL}.nearest`),
 );
 export const BLOCKED = append(TO_REQUEST, decisionFor("BLOCK", CALL, "BUDGET_APPROVALS_EXHAUSTED"));
+
+/** The current shape: the answer is logged first, then whatever it causes. */
+export const RESOLVED_REJECTED = append(TO_REQUEST, resolvedFor("rejected"), ORACLE, FINISHED);
+export const RESOLVED_TIMED_OUT = append(TO_REQUEST, resolvedFor("timed_out"), ORACLE, FINISHED);
+export const RESOLVED_CANCELLED = append(TO_REQUEST, resolvedFor("cancelled"), ORACLE, FINISHED);
+export const RESOLVED_APPROVED = append(
+  TO_REQUEST,
+  resolvedFor("approved"),
+  decisionFor("ALLOW"),
+  ORACLE,
+  FINISHED,
+);

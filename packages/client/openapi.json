@@ -264,6 +264,7 @@
                   "decision_made": "#/components/schemas/DecisionMade",
                   "effect_executed": "#/components/schemas/EffectExecuted",
                   "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "endorsement_resolved": "#/components/schemas/EndorsementResolved",
                   "oracle_updated": "#/components/schemas/OracleUpdated",
                   "run_finished": "#/components/schemas/RunFinished",
                   "run_started": "#/components/schemas/RunStarted",
@@ -286,6 +287,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementResolved"
                 },
                 {
                   "$ref": "#/components/schemas/EffectExecuted"
@@ -798,6 +802,65 @@
         "title": "EndorsementRequested",
         "type": "object"
       },
+      "EndorsementResolved": {
+        "additionalProperties": false,
+        "description": "The end of an escalation, appended right after the answer and before anything it causes.",
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "endorsement_id": {
+            "title": "Endorsement Id",
+            "type": "string"
+          },
+          "lane": {
+            "enum": [
+              "undefended",
+              "classifier",
+              "notary"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "approved",
+              "rejected",
+              "replaced",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "endorsement_resolved",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "lane",
+          "seq",
+          "type",
+          "endorsement_id",
+          "call_id",
+          "outcome"
+        ],
+        "title": "EndorsementResolved",
+        "type": "object"
+      },
       "ExpectedOutcome": {
         "additionalProperties": false,
         "properties": {
@@ -1032,6 +1095,7 @@
                   "decision_made": "#/components/schemas/DecisionMade",
                   "effect_executed": "#/components/schemas/EffectExecuted",
                   "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "endorsement_resolved": "#/components/schemas/EndorsementResolved",
                   "oracle_updated": "#/components/schemas/OracleUpdated",
                   "run_finished": "#/components/schemas/RunFinished",
                   "run_started": "#/components/schemas/RunStarted",
@@ -1054,6 +1118,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementResolved"
                 },
                 {
                   "$ref": "#/components/schemas/EffectExecuted"
@@ -1326,6 +1393,7 @@
                   "decision_made": "#/components/schemas/DecisionMade",
                   "effect_executed": "#/components/schemas/EffectExecuted",
                   "endorsement_requested": "#/components/schemas/EndorsementRequested",
+                  "endorsement_resolved": "#/components/schemas/EndorsementResolved",
                   "oracle_updated": "#/components/schemas/OracleUpdated",
                   "run_finished": "#/components/schemas/RunFinished",
                   "run_started": "#/components/schemas/RunStarted",
@@ -1348,6 +1416,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/EndorsementRequested"
+                },
+                {
+                  "$ref": "#/components/schemas/EndorsementResolved"
                 },
                 {
                   "$ref": "#/components/schemas/EffectExecuted"

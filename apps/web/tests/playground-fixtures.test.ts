@@ -32,7 +32,7 @@ describe("playground fixtures", () => {
       user_goal_achieved: boolean;
     }[];
     expect(runs.map((run) => run.lane)).toEqual(["undefended", "classifier", "notary"]);
-    expect(runs.map((run) => run.events.length)).toEqual([7, 7, 20]);
+    expect(runs.map((run) => run.events.length)).toEqual([7, 7, 21]);
     expect(runs.map((run) => run.attacker_goal_reached)).toEqual([true, true, false]);
     expect(runs.map((run) => run.user_goal_achieved)).toEqual([false, false, false]);
 

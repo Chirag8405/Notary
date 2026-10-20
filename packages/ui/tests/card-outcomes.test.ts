@@ -184,7 +184,58 @@ describe("cardOutcomes", () => {
     expect(cardOutcomes(full)).toEqual(cardOutcomes([...full]));
   });
 
-  it("the golden NOTARY stream as recorded: the card is followed by the oracle, so it is closed", () => {
-    expect(outcomeOf(golden)).toEqual({ kind: "closed", nextSeq: must(ORACLE.seq, "seq") });
+  it("the golden NOTARY stream as recorded: the card is resolved as rejected", () => {
+    expect(outcomeOf(golden)).toEqual({ kind: "rejected", resolvedSeq: 9 });
+  });
+
+  describe("endorsement_resolved (#302)", () => {
+    function resolved(outcome: string, id = CARD): Event {
+      const event = must(
+        golden.find((e) => e.type === "endorsement_resolved"),
+        "the golden resolution",
+      );
+      return { ...event, endorsement_id: id, outcome: outcome as typeof event.outcome };
+    }
+
+    it("names a rejection, a timeout and a cancel, which the old stream could not tell apart [I4]", () => {
+      for (const kind of ["rejected", "timed_out", "cancelled"] as const) {
+        const events = after(resolved(kind), ORACLE, FINISHED);
+        expect(outcomeOf(events)).toEqual({ kind, resolvedSeq: 9 });
+      }
+    });
+
+    it("approved is followed by the call's own decision: allowed or blocked [I4]", () => {
+      expect(outcomeOf(after(resolved("approved"), decision("ALLOW")))).toEqual({
+        kind: "approved",
+        decisionSeq: 10,
+      });
+      expect(
+        outcomeOf(
+          after(resolved("approved"), decision("BLOCK", CALL, "BUDGET_APPROVALS_EXHAUSTED")),
+        ),
+      ).toEqual({ kind: "blocked", decisionSeq: 10, code: "BUDGET_APPROVALS_EXHAUSTED" });
+    });
+
+    it("approved is already approved before the decision arrives [I4]", () => {
+      expect(outcomeOf(after(resolved("approved")))).toEqual({ kind: "approved", decisionSeq: 9 });
+    });
+
+    it("replaced finds the new call past the value that was labeled [I2]", () => {
+      const events = after(resolved("replaced"), LABELED, proposal(`${CALL}.nearest`));
+      expect(outcomeOf(events)).toEqual({ kind: "replaced", proposalSeq: 11 });
+      expect(outcomeOf(after(resolved("replaced")))).toEqual({ kind: "replaced", proposalSeq: 9 });
+    });
+
+    it("a resolution of another card is not this card's outcome", () => {
+      const events = after(resolved("approved", "e9"), ORACLE);
+      expect(outcomeOf(events)).toEqual({ kind: "closed", nextSeq: 9 });
+    });
+
+    it("an approved card is counted against the budget; the others are not", () => {
+      const approvedThenRejected = after(resolved("approved"), decision("ALLOW"));
+      expect(cardOutcomes(approvedThenRejected).remainingBefore.get(CARD)).toBe(
+        cardOutcomes(toRequest).remainingBefore.get(CARD),
+      );
+    });
   });
 });

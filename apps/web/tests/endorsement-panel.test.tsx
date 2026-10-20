@@ -17,6 +17,10 @@ import {
   MAX_APPROVALS,
   REJECTED,
   REPLACED,
+  RESOLVED_APPROVED,
+  RESOLVED_CANCELLED,
+  RESOLVED_REJECTED,
+  RESOLVED_TIMED_OUT,
   TO_REQUEST,
   append,
   decisionFor,
@@ -187,7 +191,32 @@ describe("EndorsementPanel: the stream resolves the cards", () => {
     expect(stateOf()).toBe("sending");
     update({ events: REJECTED });
     expect(stateOf()).toBe("rejected");
-    expect(screen.getByText("You rejected this request")).toBeTruthy();
+    expect(screen.getByText("This request was rejected")).toBeTruthy();
+  });
+
+  it("the resolution names the outcome whatever was clicked, so the card never sticks on sending [I4]", () => {
+    const rejected = mount();
+    fireEvent.click(button("Reject"));
+    expect(stateOf()).toBe("sending");
+    rejected.update({ events: RESOLVED_REJECTED });
+    expect(stateOf()).toBe("rejected");
+    rejected.unmount();
+
+    const timedOut = mount();
+    timedOut.update({ events: RESOLVED_TIMED_OUT });
+    expect(stateOf()).toBe("timed_out");
+    expect(screen.getByText("No answer in time: the request was rejected")).toBeTruthy();
+    timedOut.unmount();
+
+    const cancelled = mount();
+    fireEvent.click(button("Confirm"));
+    cancelled.update({ events: RESOLVED_CANCELLED });
+    expect(stateOf()).toBe("cancelled");
+    cancelled.unmount();
+
+    const approved = mount();
+    approved.update({ events: RESOLVED_APPROVED });
+    expect(stateOf()).toBe("approved");
   });
 
   it("no click and the run moved on (timeout or cancel): no longer open, not rejected [I4]", () => {

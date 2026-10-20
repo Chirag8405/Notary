@@ -12,7 +12,7 @@ import socket
 import stat
 import sys
 import threading
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import IO
 
@@ -21,7 +21,16 @@ from builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 from stdio_session import StdioSession, proxy_command, request, tool_call
 
-from notary_core.models import DecisionMade, EffectExecuted, EndorsementRequested, RunFinished
+from notary_core.audit import append
+from notary_core.models import (
+    AuditEntry,
+    DecisionMade,
+    EffectExecuted,
+    EndorsementRequested,
+    EndorsementResolved,
+    Event,
+    RunFinished,
+)
 from notary_mcp_proxy import BackendResult, RawCall
 from notary_mcp_proxy.approvals import ApprovalDesk, Pending, printable
 from notary_mcp_proxy.control import (
@@ -144,6 +153,14 @@ class Rig:
     def types(self) -> list[str]:
         return [entry.event.type for entry in self.gateway.chain]
 
+    def outcomes(self) -> list[str]:
+        """The `endorsement_resolved` outcomes in the chain, in order."""
+        return [
+            entry.event.outcome
+            for entry in self.gateway.chain
+            if isinstance(entry.event, EndorsementResolved)
+        ]
+
     def summary(self) -> str:
         """The `run_finished` summary after the agent closed the connection."""
         self.server.finish_run()
@@ -215,11 +232,13 @@ def test_approve_runs_the_call(make_rig: Callable[..., Rig]) -> None:
     answer = call.result()
     assert not is_error(answer)
     assert rig.backend.calls == [("add_contact", {"name": NAME})]
+    assert rig.outcomes() == ["approved"]
     assert rig.types() == [
         "value_labeled",
         "call_proposed",
         "decision_made",
         "endorsement_requested",
+        "endorsement_resolved",
         "decision_made",
         "effect_executed",
     ]
@@ -258,6 +277,7 @@ def test_reject_has_no_effect(make_rig: Callable[..., Rig]) -> None:
     assert "effect_executed" not in rig.types()
     assert rig.gateway.pending_endorsements() == ()
     assert rig.gateway.approve("e1", ()) is None  # no card is left that could be approved later
+    assert rig.outcomes() == ["rejected"]
     assert rig.summary().endswith("; rejected: e1 (user)")
 
 
@@ -281,6 +301,7 @@ def test_timeout_rejects(make_rig: Callable[..., Rig]) -> None:
     assert rig.gateway.pending_endorsements() == ()
     assert rig.gateway.approve("e1", ()) is None
     assert "effect_executed" not in rig.types()
+    assert rig.outcomes() == ["timed_out"]
     assert rig.summary().endswith("; rejected: e1 (timeout)")
 
 
@@ -378,6 +399,7 @@ def test_client_cancel_rejects_without_a_response(wire: tuple[Rig, Wire]) -> Non
     assert rig.desk.pending() == ()
     assert rig.gateway.pending_endorsements() == ()
     assert rig.ask("approve", "e1")["ok"] is False
+    assert rig.outcomes() == ["cancelled"]
     assert w.finish() == []
 
 
@@ -390,6 +412,7 @@ def test_end_of_input_while_waiting_rejects(wire: tuple[Rig, Wire]) -> None:
     assert all(is_error(message) for message in rest)  # a late answer, if any, is a refusal
     assert rig.backend.calls == []
     assert rig.verdicts() == ["ESCALATE"]
+    assert rig.outcomes() == ["cancelled"]
     assert rig.gateway.pending_endorsements() == ()
     assert rig.desk.pending() == ()
 
@@ -566,6 +589,9 @@ def test_without_a_desk_every_escalation_is_rejected_at_once() -> None:
     assert gateway.pending_endorsements() == ()
     requested = [e for e in gateway.chain if isinstance(e.event, EndorsementRequested)]
     assert len(requested) == 1  # the card was logged, then closed
+    assert [e.event.outcome for e in gateway.chain if isinstance(e.event, EndorsementResolved)] == [
+        "rejected"
+    ]
     assert gateway.reject("e1") is None
 
 
@@ -707,3 +733,28 @@ def test_control_none_over_stdio_rejects_at_once(tmp_path_factory: pytest.TempPa
     assert "approvals are disabled" in json.dumps(answer)
     err = session.finish()
     assert "approvals disabled" in err
+
+
+@pytest.mark.invariant("I4")
+@pytest.mark.parametrize("answer", ["approve", "reject"])
+def test_a_resolution_that_cannot_be_logged_is_not_applied(answer: str) -> None:
+    """The outcome is appended before the ledger changes; if that fails nothing is applied."""
+    refuse = {"on": False}
+
+    def audit_append(chain: Sequence[AuditEntry], event: Event) -> tuple[AuditEntry, ...]:
+        if refuse["on"] and isinstance(event, EndorsementResolved):
+            raise RuntimeError("disk full")
+        return append(chain, event)
+
+    backend = RecordingBackend()
+    gateway = make_gateway(backend, audit_append=audit_append)
+    outcome = gateway.propose(RawCall(call_id="c1", tool="add_contact", args={"name": NAME}))
+    assert outcome.status == "escalated"
+    ledger, session = gateway.ledger, gateway.session
+    refuse["on"] = True
+    result = gateway.approve("e1", ()) if answer == "approve" else gateway.reject("e1")
+    assert result is not None
+    assert result.status == "halted"
+    assert (gateway.ledger, gateway.session) == (ledger, session)
+    assert backend.calls == []
+    assert not any(isinstance(e.event, EndorsementResolved) for e in gateway.chain)
