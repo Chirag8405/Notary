@@ -614,3 +614,61 @@ def test_a_timed_out_run_is_reported_as_failed(monkeypatch: pytest.MonkeyPatch) 
     assert run.exit_code == script.TIMED_OUT
     assert run.lines == ("partial",)
     assert script.claude_version("claude") is None
+
+
+def test_the_model_option_is_added_to_the_command_only_when_given(tmp_path: Path) -> None:
+    task = get_task("gh-toxic-flow")
+    plain = claude_argv(task, tmp_path / "mcp.json", tmp_path)
+    assert "--model" not in plain
+    named = claude_argv(task, tmp_path / "mcp.json", tmp_path, model="claude-haiku-x")
+    assert named[named.index("--model") + 1] == "claude-haiku-x"
+    assert named[: len(plain)] == plain
+
+
+def test_the_script_passes_the_model_to_every_run_and_records_it(tmp_path: Path) -> None:
+    script = _runner_script()
+    seen: list[Sequence[str]] = []
+
+    def spy(argv: Sequence[str], cwd: Path) -> AgentRun:
+        seen.append(argv)
+        return _fake_agent(argv, cwd)
+
+    out = tmp_path / "results"
+    args = ["--confirm-live", "--rounds", "1", "--tasks", "gh-read-private-note"]
+    script.main(
+        [*args, "--model", "claude-haiku-x", "--out", str(out)],
+        runner=spy,
+        version=_fake_version,
+        today=lambda: "2031-04-05",
+    )
+    assert seen
+    assert all(argv[list(argv).index("--model") + 1] == "claude-haiku-x" for argv in seen)
+    report = McpLiveReport.model_validate_json((out / "2031-04-05.json").read_text())
+    assert report.requested_model == "claude-haiku-x"
+    assert "(requested --model claude-haiku-x)" in (out / "2031-04-05.md").read_text()
+
+    seen.clear()
+    plain_out = tmp_path / "plain"
+    script.main(
+        [*args, "--out", str(plain_out)],
+        runner=spy,
+        version=_fake_version,
+        today=lambda: "2031-04-05",
+    )
+    assert all("--model" not in argv for argv in seen)
+    plain = McpLiveReport.model_validate_json((plain_out / "2031-04-05.json").read_text())
+    assert plain.requested_model is None
+    assert "requested" not in (plain_out / "2031-04-05.md").read_text()
+
+
+def test_a_result_file_from_before_the_model_option_still_loads() -> None:
+    old = Path(__file__).resolve().parents[1] / "results" / "mcp" / "2026-10-19.json"
+    report = McpLiveReport.model_validate_json(old.read_text())
+    assert report.requested_model is None
+    assert report.models == ("claude-sonnet-5-5",)
+
+
+def test_the_dry_run_shows_the_model(capsys: pytest.CaptureFixture[str]) -> None:
+    script = _runner_script()
+    script.main(["--dry-run", "--tasks", "gh-toxic-flow", "--model", "m-1"])
+    assert "'--model' 'm-1'" in capsys.readouterr().out

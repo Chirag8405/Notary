@@ -491,6 +491,8 @@ class McpLiveReport(NotaryModel):
     date: str
     claude_version: str | None
     models: tuple[str, ...]
+    requested_model: str | None = None
+    """The `--model` the run asked for; none when the CLI's default model was used."""
     rounds: Annotated[int, Field(ge=1)]
     """Rounds planned per task and lane."""
     runs: tuple[EvalResults, ...]
@@ -519,7 +521,12 @@ def build_cells(tasks: Sequence[McpTask], rounds: Sequence[LiveRound]) -> tuple[
 
 
 def build_report(
-    tasks: Sequence[McpTask], rounds: Sequence[LiveRound], *, date: str, planned: int
+    tasks: Sequence[McpTask],
+    rounds: Sequence[LiveRound],
+    *,
+    date: str,
+    planned: int,
+    requested_model: str | None = None,
 ) -> McpLiveReport:
     models = tuple(dict.fromkeys(r.model for r in rounds if r.model is not None))
     versions = tuple(dict.fromkeys(r.claude_version for r in rounds if r.claude_version))
@@ -535,6 +542,7 @@ def build_report(
         date=date,
         claude_version=versions[0] if versions else None,
         models=models,
+        requested_model=requested_model,
         rounds=planned,
         runs=runs,
         cells=build_cells(tasks, rounds),
@@ -680,9 +688,13 @@ def claude_argv(
     *,
     max_turns: int = MAX_TURNS,
     executable: str = "claude",
+    model: str | None = None,
 ) -> list[str]:
-    """The headless Claude Code command: only the MCP tools, no session saved, stream-json out."""
-    return [
+    """The headless Claude Code command: only the MCP tools, no session saved, stream-json out.
+
+    `model` adds `--model <model>`; none leaves the CLI's default model.
+    """
+    argv = [
         executable,
         "-p",
         task.prompt.replace("{root}", str(root)),
@@ -700,6 +712,9 @@ def claude_argv(
         "--max-turns",
         str(max_turns),
     ]
+    if model is not None:
+        argv += ["--model", model]
+    return argv
 
 
 def run_live_round(
@@ -711,6 +726,7 @@ def run_live_round(
     workroot: Path,
     max_turns: int = MAX_TURNS,
     executable: str = "claude",
+    model: str | None = None,
 ) -> LiveRound:
     """One round: a fresh sandbox, one agent run, the goals judged on the server's call log."""
     if not SERVERS[task.server].logs:
@@ -725,7 +741,9 @@ def run_live_round(
         json.dumps(mcp_config(task, setup, defended=lane == "notary")), encoding="utf-8"
     )
     run = runner(
-        claude_argv(task, agent_config, setup.root, max_turns=max_turns, executable=executable),
+        claude_argv(
+            task, agent_config, setup.root, max_turns=max_turns, executable=executable, model=model
+        ),
         workdir,
     )
     transcript = parse_transcript(run.lines)
@@ -752,6 +770,7 @@ def run_live_plan(
     lanes: Sequence[McpLane] = LANES,
     max_turns: int = MAX_TURNS,
     executable: str = "claude",
+    model: str | None = None,
     on_round: Callable[[LiveRound], None] | None = None,
 ) -> tuple[LiveRound, ...]:
     """Round-first: every task and lane once, then the next round (so a stop leaves cells even)."""
@@ -767,6 +786,7 @@ def run_live_plan(
                     workroot=workroot,
                     max_turns=max_turns,
                     executable=executable,
+                    model=model,
                 )
                 done.append(finished)
                 if on_round is not None:
