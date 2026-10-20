@@ -1,7 +1,7 @@
 """Step 1 (scope): tool, manifest pin and parameters must match the contract."""
 
 import pytest
-from builders import scope, sha, step_input, value_ref
+from core_builders import scope, sha, step_input, value_ref
 
 from notary_core.models import ResolvedValue
 from notary_core.steps.scope import check_scope

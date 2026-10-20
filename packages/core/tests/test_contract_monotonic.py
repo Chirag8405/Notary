@@ -1,7 +1,7 @@
 """Contract monotonicity (#55): no runtime step may widen the frozen contract (I5)."""
 
 import pytest
-from builders import budget, contract, sha
+from core_builders import budget, contract, sha
 from hypothesis import given
 from hypothesis import strategies as st
 

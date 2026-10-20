@@ -3,9 +3,9 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
-from builders import allow_all_monitor, contract_with, rebuild_chain
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from world_builders import allow_all_monitor, contract_with, rebuild_chain
 
 from notary_core.audit import append
 from notary_core.ledger import UserAuthoredAuthority

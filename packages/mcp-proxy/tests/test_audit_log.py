@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from builders import ACME_IBAN, RecordingBackend, make_gateway
+from proxy_builders import ACME_IBAN, RecordingBackend, make_gateway
 from stdio_session import StdioSession, proxy_command, request, tool_call
 
 from notary_core.audit import GENESIS_HASH, append, verify_chain, verify_chain_detailed

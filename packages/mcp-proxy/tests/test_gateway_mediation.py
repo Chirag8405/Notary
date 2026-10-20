@@ -1,7 +1,9 @@
 from collections.abc import Callable, Mapping, Sequence
 
 import pytest
-from builders import (
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from proxy_builders import (
     ACCOUNTANT_EMAIL,
     ACME_IBAN,
     ATTACKER_IBAN,
@@ -14,8 +16,6 @@ from builders import (
     make_gateway,
     plain_value,
 )
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from notary_core.audit import append, verify_chain
 from notary_core.models import (

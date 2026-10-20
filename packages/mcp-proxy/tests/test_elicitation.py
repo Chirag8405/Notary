@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import IO
 
 import pytest
-from builders import RecordingBackend, make_gateway
+from proxy_builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 
 from notary_core.endorsement import render_card

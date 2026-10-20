@@ -1,9 +1,9 @@
 from collections.abc import Mapping, Sequence
 
 import pytest
-from builders import contract_with
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from world_builders import contract_with
 
 import notary_core.resolver as core_resolver
 from notary_core.canon import sha256_hex

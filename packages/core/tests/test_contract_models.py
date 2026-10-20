@@ -1,7 +1,7 @@
 """Frozen-contract validators (P0b): reasons, decisions, contracts, commands, attack cases."""
 
 import pytest
-from builders import budget, contract, decision, reason, scope, sha
+from core_builders import budget, contract, decision, reason, scope, sha
 from pydantic import TypeAdapter, ValidationError
 
 from notary_core.models import (

@@ -77,3 +77,4 @@ Architecture context: [architecture.md](architecture.md). Phases: [phase.md](pha
 - IDs (A1-A14, I1-I6, component names, decision-order steps) are stable; never rename them. Tests, code and UI cite them.
 - Generated files are never hand-edited ([list](../CLAUDE.md)).
 - Docs are updated in the same commit as the behavior change.
+- Pytest runs in `--import-mode=importlib` (root `pyproject.toml`) so test files may share a basename across packages and `uv run --no-sync pytest` works from the root. Shared test helpers are named per package (`core_builders`, `proxy_builders`, `world_builders`, `server_builders`) and found through `pythonpath`; new helper modules need a unique name and a `pythonpath` entry.

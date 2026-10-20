@@ -1,9 +1,9 @@
 from collections.abc import Callable, Mapping, Sequence
 
 import pytest
-from builders import allow_all_monitor, contract_with, rebuild_chain, types_collapsed
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from world_builders import allow_all_monitor, contract_with, rebuild_chain, types_collapsed
 
 from notary_core.audit import append, verify_chain
 from notary_core.canon import sha256_hex

@@ -2,7 +2,7 @@ from collections.abc import Mapping, Sequence
 from typing import Literal
 
 import pytest
-from builders import allow_all_monitor, block_all_monitor, contract_with
+from world_builders import allow_all_monitor, block_all_monitor, contract_with
 
 from notary_core.ledger import ToolResultAuthority, UserAuthoredAuthority
 from notary_core.models import (

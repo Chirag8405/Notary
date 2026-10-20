@@ -1,7 +1,7 @@
 """Tests for the pipeline runner, using fake steps."""
 
 import pytest
-from builders import contract, scope, sha
+from core_builders import contract, scope, sha
 from hypothesis import given
 from hypothesis import strategies as st
 

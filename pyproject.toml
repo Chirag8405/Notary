@@ -71,7 +71,15 @@ known-first-party = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --import-mode=importlib"
+# importlib mode lets test files share a basename across packages; the
+# per-package helper modules (*_builders.py) are imported by name from here.
+pythonpath = [
+  "apps/server/tests",
+  "packages/core/tests",
+  "packages/mcp-proxy/tests",
+  "packages/world/tests",
+]
 
 [tool.importlinter]
 root_packages = [

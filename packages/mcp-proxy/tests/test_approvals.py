@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import IO
 
 import pytest
-from builders import RecordingBackend, make_gateway
+from proxy_builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 from stdio_session import StdioSession, proxy_command, request, tool_call
 

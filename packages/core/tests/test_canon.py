@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import cast
 
 import pytest
-from builders import contract
+from core_builders import contract
 from hypothesis import given
 from hypothesis import strategies as st
 
