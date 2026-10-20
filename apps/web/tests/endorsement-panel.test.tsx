@@ -1,3 +1,4 @@
+import { describeSendError } from "@/lib/send-error";
 import { CommandSchema } from "@notary/schema";
 import type { Command, Event } from "@notary/schema";
 import { foldEvents } from "@notary/ui";
@@ -138,7 +139,9 @@ describe("EndorsementPanel commands", () => {
     });
     fireEvent.click(button("Confirm"));
     expect(stateOf()).toBe("pending");
-    expect(screen.getByRole("alert").textContent).toBe("run socket is not open");
+    expect(screen.getByRole("alert").textContent).toBe(
+      describeSendError(new Error("run socket is not open")),
+    );
     expect(button("Confirm").disabled).toBe(false);
 
     fireEvent.click(button("Confirm"));

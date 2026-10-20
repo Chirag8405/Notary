@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { PANELS } from "@/components/playground-panels";
+import { Button } from "@/components/ui/button";
 import {
   DEFAULT_PLAYGROUND_MODE,
+  MODE_INTRO,
   MODE_TITLES,
   PLAYGROUND_MODES,
   playgroundUrl,
@@ -16,7 +19,7 @@ export interface PlaygroundViewProps {
   initialMode?: PlaygroundMode;
 }
 
-/** The judge playground: four tabs and the active mode's panel. Panels keep their own state. */
+/** The judge playground: four tabs, what the open mode is for, and the mode's panel. */
 export function PlaygroundView({
   apiUrl,
   initialMode = DEFAULT_PLAYGROUND_MODE,
@@ -24,27 +27,35 @@ export function PlaygroundView({
   const [mode, setMode] = useState<PlaygroundMode>(initialMode);
   const Panel = PANELS[mode];
   return (
-    <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6 text-sm">
-      <header>
-        <h1 className="text-xl font-semibold">Judge playground</h1>
+    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 text-sm sm:px-6">
+      <header className="space-y-1">
+        <h1 className="text-3xl font-semibold tracking-tight">Judge playground</h1>
+        <p className="text-base text-muted-foreground">
+          Try to break NOTARY.{" "}
+          <Link href="/demo" className="underline underline-offset-4">
+            New here? Start with the guided demo.
+          </Link>
+        </p>
       </header>
       <div role="tablist" aria-label="Playground modes" className="flex flex-wrap gap-2">
         {PLAYGROUND_MODES.map((item) => (
-          <button
+          <Button
             key={item}
             type="button"
             role="tab"
             aria-selected={item === mode}
-            className={`h-8 border px-3 ${item === mode ? "bg-primary text-primary-foreground" : "bg-background"}`}
+            variant={item === mode ? "default" : "outline"}
+            className="h-9"
             onClick={() => {
               setMode(item);
               window.history.replaceState(null, "", playgroundUrl({ mode: item }));
             }}
           >
             {MODE_TITLES[item]}
-          </button>
+          </Button>
         ))}
       </div>
+      <p className="text-base">{MODE_INTRO[mode]}</p>
       <div role="tabpanel" aria-label={MODE_TITLES[mode]}>
         <Panel apiUrl={apiUrl} />
       </div>

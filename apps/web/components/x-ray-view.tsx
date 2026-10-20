@@ -19,16 +19,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AnchorFooter } from "@/components/anchor-footer";
+import { Disclosure } from "@/components/disclosure";
+import { HowItWorks } from "@/components/how-it-works";
+import { OutcomeBanner } from "@/components/outcome-banner";
+import { RunTimeline } from "@/components/run-timeline";
 import { EffectsList } from "@/components/effects-list";
 import { EndorsementPanel } from "@/components/endorsement-panel";
-import { DemoGuide, DemoStepNav } from "@/components/demo-steps";
+import { DemoGuide, DemoStepFooter, DemoStepNav } from "@/components/demo-steps";
 import { RunControls } from "@/components/run-controls";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DEMO_STEPS, activeStep } from "@/lib/demo-steps";
+import { summarizeOutcome } from "@/lib/guided";
 import {
   DEFAULT_MODE,
   callIdForSelection,
@@ -65,14 +70,32 @@ const STATUS_VARIANT = {
   error: "destructive",
 } as const;
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
+/** A titled region. The title is the heading; the hint says in plain words what the region shows. */
+function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <Card className="text-sm">
       <CardHeader>
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <CardTitle>
+          <h2 className="text-base font-semibold">{title}</h2>
+        </CardTitle>
+        {hint === undefined ? null : <CardDescription>{hint}</CardDescription>}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
+  );
+}
+
+/** What this page is, in two sentences, plus the way back to the simple walkthrough. */
+function PageIntro() {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-base text-muted-foreground">What NOTARY decided in this run, and why.</p>
+      <HowItWorks>
+        <Button type="button" variant="outline">
+          How this works
+        </Button>
+      </HowItWorks>
+    </div>
   );
 }
 
@@ -158,6 +181,9 @@ function XRayRun({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resolved, setResolved] = useState<ReadonlySet<string>>(() => new Set());
   const [rejected, setRejected] = useState<ReadonlySet<string>>(() => new Set());
+  // The graph measures its box when it mounts; inside a closed row that box is empty, so it is
+  // mounted again each time the evidence opens.
+  const [graphKey, setGraphKey] = useState(0);
 
   const runId = view.runId;
   const onResolvedChange = useCallback((next: ReadonlySet<string>) => {
@@ -200,7 +226,7 @@ function XRayRun({
         <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
           NOTARY
         </p>
-        <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+        <h1 className="flex flex-wrap items-center gap-3 text-3xl font-semibold tracking-tight">
           Trust X-ray
           <Badge variant={STATUS_VARIANT[stream.status]} data-status={stream.status}>
             {stream.status}
@@ -219,6 +245,7 @@ function XRayRun({
         ) : null}
       </header>
       <Separator />
+      <PageIntro />
       {controls}
       {problem === null ? null : (
         <div className="flex flex-wrap items-center gap-3">
@@ -232,56 +259,96 @@ function XRayRun({
           ) : null}
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
-        <Panel title="Contract">
-          <ContractPanel contract={view.contract} />
+      {following && view.endorsements.length > 0 ? (
+        <Panel title="Awaiting the user">
+          <p data-mcp-escalation>
+            The proxy holds an escalated call until you answer. Confirm or Reject here (the server
+            must be started with NOTARY_MCP_APPROVALS=1 and this page opened on the same machine),
+            or run <code>notary-mcp-proxy approve|reject &lt;id&gt;</code>. The card closes when the
+            proxy&apos;s audit chain shows the outcome.
+          </p>
         </Panel>
+      ) : null}
+      {mode === "golden" && view.endorsements.length > 0 ? (
+        <Alert
+          role="group"
+          aria-label="Replay notice"
+          data-golden-note
+          className="flex flex-wrap items-center gap-3"
+        >
+          <span>
+            This is a fixed replay, so its buttons cannot answer the approval. Switch to the
+            recorded run to answer it.
+          </span>
+          <Button type="button" variant="outline" onClick={onUseCassette}>
+            Switch to the recorded run
+          </Button>
+        </Alert>
+      ) : null}
+      {runId !== null && view.endorsements.length > 0 ? (
+        <EndorsementPanel
+          runId={runId}
+          endorsements={view.endorsements}
+          send={stream.send}
+          events={stream.events}
+          resolveFromEvents={mode !== "golden"}
+          allowNearest={!following}
+          toolByCallId={toolByCallId}
+          onResolvedChange={onResolvedChange}
+          onRejectedChange={onRejectedChange}
+          {...(stream.status === "error" && stream.closeCode !== undefined
+            ? { closeCode: stream.closeCode }
+            : {})}
+        />
+      ) : null}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="space-y-4">
-          <Panel title="Provenance graph">
-            <ProvenanceGraph view={view} selectedId={selectedId} onSelect={setSelectedId} />
-          </Panel>
-          {following && view.endorsements.length > 0 ? (
-            <Panel title="Awaiting the user">
-              <p data-mcp-escalation>
-                The proxy holds an escalated call until you answer. Confirm or Reject here (the
-                server must be started with NOTARY_MCP_APPROVALS=1 and this page opened on the same
-                machine), or run <code>notary-mcp-proxy approve|reject &lt;id&gt;</code>. The card
-                closes when the proxy&apos;s audit chain shows the outcome.
-              </p>
-            </Panel>
-          ) : null}
-          {runId !== null && view.endorsements.length > 0 ? (
-            <EndorsementPanel
-              runId={runId}
-              endorsements={view.endorsements}
-              send={stream.send}
-              events={stream.events}
-              resolveFromEvents={mode !== "golden"}
-              allowNearest={!following}
-              toolByCallId={toolByCallId}
-              onResolvedChange={onResolvedChange}
-              onRejectedChange={onRejectedChange}
-              {...(stream.status === "error" && stream.closeCode !== undefined
-                ? { closeCode: stream.closeCode }
-                : {})}
-            />
-          ) : null}
-          <Panel title="Content inspector">
-            <ContentInspector view={view} valueId={valueIdForSelection(view, selectedId)} />
+          <OutcomeBanner
+            outcome={summarizeOutcome(view, { unresolved, rejected: rejected.size })}
+          />
+          <Panel title="What changed">
+            <EffectsList view={view} />
           </Panel>
         </div>
-        <Panel title="Decision stream">
-          <DecisionStream
-            view={view}
-            selectedCallId={callIdForSelection(view, selectedId)}
-            onSelect={(target) => {
-              setSelectedId(selectionFromChip(target).nodeId);
-            }}
-            resolvedEndorsements={resolved}
-          />
+        <Panel title="In plain words">
+          <RunTimeline view={view} />
         </Panel>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <Disclosure
+        title="Technical evidence"
+        hint="contract, graph and the full decision log"
+        onToggle={(open) => {
+          if (open) setGraphKey((key) => key + 1);
+        }}
+      >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+          <Panel title="Contract">
+            <ContractPanel contract={view.contract} />
+          </Panel>
+          <div className="space-y-4">
+            <Panel title="Provenance graph">
+              <ProvenanceGraph
+                key={graphKey}
+                view={view}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            </Panel>
+            <Panel title="Content inspector">
+              <ContentInspector view={view} valueId={valueIdForSelection(view, selectedId)} />
+            </Panel>
+          </div>
+          <Panel title="Decision stream">
+            <DecisionStream
+              view={view}
+              selectedCallId={callIdForSelection(view, selectedId)}
+              onSelect={(target) => {
+                setSelectedId(selectionFromChip(target).nodeId);
+              }}
+              resolvedEndorsements={resolved}
+            />
+          </Panel>
+        </div>
         <Card className="text-sm">
           <CardContent>
             <OraclePanel
@@ -291,12 +358,9 @@ function XRayRun({
             />
           </CardContent>
         </Card>
-        <Panel title="What changed">
-          <EffectsList view={view} />
-        </Panel>
-      </div>
+      </Disclosure>
       {viewMode === "three-lane" && !following ? (
-        <Panel title="Three lanes">
+        <Panel title="Three lanes" hint="The same attack against three defences.">
           <ThreeLaneContainer
             apiUrl={apiUrl}
             scenario={scenario}
@@ -319,7 +383,7 @@ function McpIdle({ controls }: { controls: ReactNode }) {
         <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
           NOTARY
         </p>
-        <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+        <h1 className="flex flex-wrap items-center gap-3 text-3xl font-semibold tracking-tight">
           Trust X-ray
           <Badge variant="muted" data-status="idle">
             idle
@@ -435,6 +499,7 @@ export function XRayView({
           controls={controls}
         />
       )}
+      <DemoStepFooter active={active} onSelect={selectStep} />
     </main>
   );
 }

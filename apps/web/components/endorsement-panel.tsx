@@ -8,6 +8,7 @@ import type { CardOutcome, CardState, EndorsementView } from "@notary/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { shownState } from "@/lib/card-state";
+import { describeSendError } from "@/lib/send-error";
 import type { Decision } from "@/lib/card-state";
 
 export interface EndorsementPanelProps {
@@ -127,7 +128,7 @@ export function EndorsementPanel({
       sendRef.current(command);
     } catch (error) {
       clicked.current.delete(endorsementId);
-      const message = error instanceof Error ? error.message : "could not send the decision";
+      const message = describeSendError(error);
       setErrors((current) => new Map(current).set(endorsementId, message));
       return;
     }

@@ -30,8 +30,8 @@ describe("AsrChart", () => {
     expect(lines[1]?.getAttribute("stroke-dasharray")).toBe("6 4");
     expect(lines[0]?.getAttribute("points")).toBe("44,16 254,16 464,16");
     expect(lines[1]?.getAttribute("points")).toBe("44,204 254,204 464,204");
-    expect(lines[0]?.getAttribute("class")).toContain("stroke-red-600");
-    expect(lines[1]?.getAttribute("class")).toContain("stroke-blue-600");
+    expect(lines[0]?.getAttribute("class")).toContain("stroke-foreground");
+    expect(lines[1]?.getAttribute("class")).toContain("stroke-muted-foreground");
     expect(container.querySelectorAll("circle[data-point]")).toHaveLength(6);
   });
 

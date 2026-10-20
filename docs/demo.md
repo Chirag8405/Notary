@@ -96,6 +96,19 @@ cd apps/server && uv run --no-sync python scripts/model_eval.py --rounds 20 --ou
 - **Raw results:** `apps/server/results/model_eval/2026-10-19.json` (a `ModelEvalReport`: both models, 18 cells, merged from two runs that used different keys).
 - **Live results vary:** quote these numbers only with their date, models and round count. They are not a test.
 
+## Landing page and guided demo (`apps/web`, routes `/` and `/demo`)
+
+`/` is a landing page (what NOTARY is, how it works, the three answers) with a **Start the demo** button; it no longer redirects into the Trust X-ray. `/demo?step=attack|pause|normal|try` is a four-step guided path on the cassette stack, in plain words (`apps/web/lib/plain-language.ts` maps verdicts, reason codes, tools and parameters; the technical codes stay in a tooltip):
+
+| Step     | What it shows                                                                                                                                                         |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attack` | the undefended and classifier-only agents pay the attacker; one outcome banner per lane                                                                               |
+| `pause`  | the NOTARY lane pauses on the swapped IBAN; a dialog shows it beside the usual account and offers "Use the account I normally use", "No, stop this", "Approve anyway" |
+| `normal` | the legitimate bill is allowed with no question                                                                                                                       |
+| `try`    | links to the playground (Hijacked Mode, attack library, arena) and the Trust X-ray                                                                                    |
+
+The outcome banner (`summarizeOutcome` in `apps/web/lib/guided.ts`) only maps the oracle's two booleans and the run's end to words. The Trust X-ray (`/x-ray`) is the advanced view; the header links to it. It follows the same layout: a "Step n of 4" count with a progress bar, a "What to watch" card, the approval card first, then the result banner, "What changed" and "In plain words", with the technical record (contract, provenance graph, content inspector, decision stream, oracle) under a collapsible "The evidence" and Back/Next at the foot. The playground modes are laid out as numbered step cards (`StepCard`), with a one-sentence intro per mode (`MODE_INTRO`), plain result banners (`laneOutcome`, `attemptOutcome` in `apps/web/lib/guided.ts`), and the raw replays under "Technical replay". Secondary detail starts closed behind a labelled row (`Disclosure` in `apps/web/components/disclosure.tsx`, and "What to watch" on the Trust X-ray): the technical evidence, the "Why it stops" text on each attack card, "Or build your own call", the technical details of a hijacked session, and the arena's seed. The content stays in the page while closed. The plain `/x-ray` address (no `mode`) opens the recorded run (`cassette`), because the fixed replay (`golden`) cannot answer an approval: its socket closes when the replay ends. A named mode is always honoured, and a golden run with a card shows a notice with a button to switch to the recorded run. Status colours are shared tokens (`ok`, `warn`, `bad`, `info` in `globals.css`) so every card reads in light and dark.
+
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
 
 | Region | Content                                                                                                                                                                                                                                                                                                                                          |

@@ -1,4 +1,5 @@
 import { statusText } from "@/lib/hijacked-state";
+import { reasonTextFor } from "@/lib/plain-language";
 import type { LogEntry } from "@/lib/hijacked-state";
 
 export interface CallLogProps {
@@ -25,6 +26,14 @@ export function CallLog({ log }: CallLogProps) {
         >
           <p data-part="call" className="font-mono">
             {`${entry.callId} ${entry.tool} (${argsText(entry.args)}) -> ${statusText(entry.status)}`}
+          </p>
+          <p data-part="plain" className="mt-1">
+            {entry.reasonCodes
+              .map(reasonTextFor)
+              .filter((text): text is string => text !== null)
+              .filter((text, index, all) => all.indexOf(text) === index)
+              .filter((text) => text !== "This check passed.")
+              .join(" ")}
           </p>
           <p data-part="reasons" className="font-mono text-xs text-muted-foreground">
             {entry.reasonCodes.length === 0 ? "No reason codes" : entry.reasonCodes.join(", ")}

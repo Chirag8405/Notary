@@ -59,17 +59,15 @@ function lanesOf(urls: string[], mode: string): string[] {
 }
 
 describe("the root", () => {
-  it("redirects to the first demo step [I6]", () => {
-    let thrown: unknown = null;
-    try {
-      Home();
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(Error);
-    const digest = thrown instanceof Error && "digest" in thrown ? String(thrown.digest) : "";
-    expect(digest.startsWith("NEXT_REDIRECT")).toBe(true);
-    expect(digest).toContain(stepUrl(1));
+  it("is a landing page that starts the guided demo", () => {
+    render(<Home />);
+    expect(screen.getByRole("heading", { level: 1, name: "NOTARY" })).toBeTruthy();
+    const starts = screen.getAllByRole("link", { name: /Start the demo/ });
+    expect(starts.length).toBeGreaterThan(0);
+    for (const link of starts) expect(link.getAttribute("href")).toBe("/demo");
+    expect(screen.getByRole("link", { name: "Open the Trust X-ray" }).getAttribute("href")).toBe(
+      "/x-ray",
+    );
   });
 });
 
@@ -227,7 +225,7 @@ describe("the endorsement buttons", () => {
     const [confirm, reject] = buttons;
     expect(reject?.className).toContain("bg-primary");
     expect(reject?.className).toContain("text-primary-foreground");
-    expect(confirm?.className).toContain("border-amber-500");
+    expect(confirm?.className).toContain("border-warn");
     expect(confirm?.className).not.toContain("bg-primary");
     expect(document.activeElement).not.toBe(confirm);
     expect(document.activeElement).not.toBe(reject);
