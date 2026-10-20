@@ -440,7 +440,8 @@ def test_check_prints_a_section_per_server(
     assert out.index("server files") < out.index("tool read_file")
     assert out.index("server mail") < out.index("tool send_email")
     assert out.index("tool read_file") < out.index("server mail")
-    assert out.endswith("ok: 0 error(s), 0 other finding(s)\n")
+    assert "READ_TOOL_FREE_TEXT_PARAM" in out  # `read_file` takes a path the agent chooses
+    assert out.endswith("ok: 0 error(s), 1 other finding(s)\n")
 
 
 def test_the_single_form_still_works() -> None:

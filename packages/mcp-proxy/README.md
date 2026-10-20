@@ -208,16 +208,16 @@ form without `kind` is the same as `"kind": "stdio"`) or `{"kind": "http", "url"
 
 A tool spec:
 
-| Key                         | Meaning                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
-| `effect`                    | `read` (no side effect and no outbound channel), `write` or `irreversible`                |
-| `server`                    | which server runs it; required with `servers`                                             |
-| `remote_name`               | the server's name for the tool when the contract name differs                             |
-| `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                       |
-| `readers`                   | who may read the results (`["*"]` default; `["user"]` marks them secret)                  |
-| `origin`                    | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}` |
-| `fields`                    | per-path config for `structuredContent`: `readers`, `unit`                                |
-| `records`, `record_readers` | the `records` result shape of the attack-library world server                             |
+| Key                         | Meaning                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `effect`                    | `read` (no side effect and no outbound channel; skips every check after scope), `write` or `irreversible` |
+| `server`                    | which server runs it; required with `servers`                                                             |
+| `remote_name`               | the server's name for the tool when the contract name differs                                             |
+| `params`                    | name -> `{"marker": ..., "unit": ..., "kind": ...}`                                                       |
+| `readers`                   | who may read the results (`["*"]` default; `["user"]` marks them secret)                                  |
+| `origin`                    | origin of the results (default `tool:<name>`, always untrusted); e.g. `{"kind": "email"}`                 |
+| `fields`                    | per-path config for `structuredContent`: `readers`, `unit`                                                |
+| `records`, `record_readers` | the `records` result shape of the attack-library world server                                             |
 
 Markers say what a parameter may be: `{"kind": "ledger", "ledger": "payees"}` (must be a ledger entry),
 `{"kind": "literal", "value": ...}`, `{"kind": "named_source", "source": ...}`, `{"kind": "endorse"}`
@@ -345,7 +345,9 @@ head line elsewhere and use `--expect-head H --expect-length N`.
 prints, per tool, the effective effect, the manifest hash and each parameter's effective marker, unit and
 kind, then findings. Errors: `TOOL_MISSING`, `TOOL_NAME_COLLISION`, `PARAM_UNCLASSIFIED`, `PARAM_NOT_IN_CONFIG`
 for a required parameter, `LEDGER_VALUE_INVALID`, `PROMPT_MISSING`. Warnings include
-`IRREVERSIBLE_NOT_AUTHORIZED`, `RENAMED_TOOL_UNREVIEWED`, `LEDGER_VALUE_PLACEHOLDER`. Exit `0` no error
+`IRREVERSIBLE_NOT_AUTHORIZED`, `RENAMED_TOOL_UNREVIEWED`, `LEDGER_VALUE_PLACEHOLDER`, and
+`READ_TOOL_FREE_TEXT_PARAM` (a `read` tool whose parameter can hold text: `read` tools are not checked
+after scope, so declare a search or fetch tool `write`). Exit `0` no error
 finding, `1` an error finding, `2` unreadable config or a server failed to start. The toy bank reports
 one placeholder warning for its `DE00ACME...` IBAN.
 

@@ -167,6 +167,7 @@ With `serve --http` (docs/demo.md, "Streamable HTTP") the proxy listens on a TCP
 - An MCP agent with a shell can approve its own escalation through the control CLI (see "Approvals through the MCP proxy"); deny the shell. The same socket takes the user's prompt (see "The user's prompt as a trusted value"), so a shell can also forge a trusted user value.
 - The HTTP endpoint (`serve --http`) is authenticated by one static bearer token and has no TLS of its own: it is meant for loopback (see "The MCP proxy as a network service"); a remote bind exposes the token to the network unless a TLS reverse proxy is added.
 - Resource URIs and prompt arguments are chosen by the agent and reach the allow-listed server without a monitor decision (a read is not a tool call); allow only servers and prefixes that may see anything the agent has read (docs/demo.md, "Resources and prompts").
+- A tool declared `read` skips every check after scope (`READ_ONLY_UNGATED`), so a `read` tool with a text parameter is an ungated egress path if it reaches anything outside the process. The declaration is part of the trusted base; `notary-mcp-proxy check` warns (`READ_TOOL_FREE_TEXT_PARAM`) for each such parameter. Declare a search, fetch or URL tool `write`.
 - An attacker can steer among trusted values; effect budgets bound the damage.
 - Correct labels and the sensitive-parameter table are the trusted base, and are hand-authored.
 - Covert channels are mitigated, not closed (A5, A12).

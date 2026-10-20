@@ -7,7 +7,9 @@ import pytest
 
 from notary_core.models import (
     CHECK_ORDER,
+    FreeMarker,
     IntentContract,
+    ResolvedValue,
     SessionState,
     ToolCallProposal,
     ToolScope,
@@ -62,6 +64,38 @@ def test_read_only_tool_is_allowed_after_scope(
     assert [(r.check, r.outcome, r.code) for r in decision.reasons] == [
         ("scope", "pass", "READ_ONLY_UNGATED")
     ]
+
+
+@pytest.mark.invariant("I5")
+def test_read_tool_is_allowed_even_with_a_secret_labeled_argument(
+    make_scope: Callable[..., ToolScope],
+    make_contract: Callable[..., IntentContract],
+    make_proposal: Callable[..., ToolCallProposal],
+    make_session: Callable[..., SessionState],
+    make_value: Callable[..., ResolvedValue],
+) -> None:
+    """Documents a limit: `read` means "no outbound channel" and the declaration is trusted.
+
+    A tool declared `read` that takes text is therefore ungated egress; `notary-mcp-proxy check`
+    reports it as `READ_TOOL_FREE_TEXT_PARAM`. See decisions.md, "Read tools with text parameters".
+    """
+    contract = make_contract(
+        tools=(make_scope("web_search", effect="read", params={"query": FreeMarker(kind="free")}),)
+    )
+    secret = make_value(
+        "v1", "sk-secret-key", origin="file", integrity="untrusted", readers=("user",)
+    )
+    policy: PolicyTable = {"web_search": make_tool_policy("read", {})}
+    decision = decide(
+        contract,
+        make_proposal("web_search", query=secret),
+        {"v1": secret},
+        (),
+        make_session(),
+        policy=policy,
+    )
+    assert decision.verdict == "ALLOW"
+    assert [r.code for r in decision.reasons] == ["READ_ONLY_UNGATED"]
 
 
 @pytest.mark.invariant("I2")

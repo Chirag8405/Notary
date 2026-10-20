@@ -31,6 +31,7 @@ FindingCode = Literal[
     "LEDGER_VALUE_INVALID",
     "LEDGER_VALUE_PLACEHOLDER",
     "IRREVERSIBLE_NOT_AUTHORIZED",
+    "READ_TOOL_FREE_TEXT_PARAM",
     "SERVER_TOOL_NOT_EXPOSED",
     "TOOL_NAME_COLLISION",
     "RENAMED_TOOL_UNREVIEWED",
@@ -72,6 +73,25 @@ def _schema_params(schema: JsonObject | None) -> tuple[frozenset[str], frozenset
     names = [as_str(name) for name in as_list((schema or {}).get("required")) or []]
     required = frozenset(name for name in names if name is not None)
     return frozenset(properties), required
+
+
+_NON_TEXT_TYPES = frozenset({"integer", "number", "boolean", "null"})
+
+
+def _can_carry_text(prop: JsonObject | None) -> bool:
+    """Whether the agent can put arbitrary text in this schema property.
+
+    Closed sets (`enum`, `const`) and purely numeric, boolean or null types cannot; a string, an
+    array or object (which can hold strings), or a property with no `type` can.
+    """
+    if prop is None or "enum" in prop or "const" in prop:
+        return False
+    kind = prop.get("type")
+    if isinstance(kind, str):
+        return kind not in _NON_TEXT_TYPES
+    if isinstance(kind, list):
+        return any(isinstance(k, str) and k not in _NON_TEXT_TYPES for k in kind)
+    return True
 
 
 def _tool_findings(
@@ -127,6 +147,27 @@ def _tool_findings(
                 param=None,
                 detail="irreversible and not in authorized_irreversible; every call is blocked",
             )
+        )
+    if policy_effect == "read":
+        # A `read` tool skips every check after scope (READ_ONLY_UNGATED), so a text parameter is
+        # an egress path the monitor cannot see. Only a parameter pinned by a `literal` marker is
+        # out of the agent's hands.
+        properties = as_object((schema or {}).get("properties")) or {}
+        found.extend(
+            Finding(
+                severity="warning",
+                code="READ_TOOL_FREE_TEXT_PARAM",
+                tool=tool,
+                param=name,
+                detail=(
+                    f"`{tool}` is a `read` tool (no checks after scope) and the agent can put "
+                    f"text in `{name}`; if it can reach anything outside this process (a search, "
+                    "a fetch, a URL), declare it `write`, or pin the value with a `literal` marker"
+                ),
+            )
+            for name in sorted(spec.params)
+            if spec.params[name].marker.kind != "literal"
+            and _can_carry_text(as_object(properties.get(name)))
         )
     return found
 

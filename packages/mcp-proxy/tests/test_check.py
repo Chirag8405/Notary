@@ -45,13 +45,23 @@ def _schema(props: list[str], required: list[str] | None = None) -> JsonObject:
 
 
 def _run(
-    config: ProxyConfig, server: dict[str, list[str]], required: dict[str, list[str]] | None = None
+    config: ProxyConfig,
+    server: dict[str, list[str]],
+    required: dict[str, list[str]] | None = None,
+    property_schemas: dict[str, JsonObject] | None = None,
 ) -> CheckReport:
-    manifests = [
-        ToolManifest(name=name, description="d", input_schema=json.dumps(_schema(props)))
-        for name, props in server.items()
-    ]
+    """`property_schemas` replaces the `{"type": "string"}` schema of the named properties."""
     schemas = {name: _schema(props, (required or {}).get(name)) for name, props in server.items()}
+    for schema in schemas.values():
+        properties = schema["properties"]
+        assert isinstance(properties, dict)
+        for name, prop in (property_schemas or {}).items():
+            if name in properties:
+                properties[name] = prop
+    manifests = [
+        ToolManifest(name=name, description="d", input_schema=json.dumps(schemas[name]))
+        for name in server
+    ]
     return check_config(config, manifests, schemas)
 
 
@@ -61,10 +71,75 @@ def _codes(report: CheckReport) -> set[tuple[str, str]]:
 
 def test_clean_config_is_ok() -> None:
     config = _config({"read_file": {"effect": "read", "params": {"path": FREE}}})
-    report = _run(config, {"read_file": ["path"]})
+    report = _run(config, {"read_file": ["path"]}, property_schemas={"path": {"enum": ["a.txt"]}})
     assert report.ok
     assert report.findings == ()
     assert report.tools[0].params == (("path", "free", "identifier", "identifier"),)
+
+
+READ_FREE_TEXT = ("warning", "READ_TOOL_FREE_TEXT_PARAM")
+
+
+def test_read_tool_with_a_string_param_warns() -> None:
+    config = _config({"web_search": {"effect": "read", "params": {"query": FREE}}})
+    report = _run(config, {"web_search": ["query"]})
+    assert _codes(report) == {READ_FREE_TEXT}
+    assert report.ok
+    (finding,) = report.findings
+    assert (finding.tool, finding.param) == ("web_search", "query")
+
+
+@pytest.mark.parametrize(
+    "prop",
+    [
+        {"type": "object"},
+        {"type": "array", "items": {"type": "string"}},
+        {},
+        {"type": ["null", "string"]},
+    ],
+)
+def test_read_tool_warns_for_any_property_that_can_hold_text(prop: JsonObject) -> None:
+    config = _config({"web_search": {"effect": "read", "params": {"query": FREE}}})
+    assert _codes(_run(config, {"web_search": ["query"]}, property_schemas={"query": prop})) == {
+        READ_FREE_TEXT
+    }
+
+
+@pytest.mark.parametrize(
+    "prop",
+    [
+        {"type": "integer"},
+        {"type": "boolean"},
+        {"type": "string", "enum": ["a", "b"]},
+        {"const": "x"},
+    ],
+)
+def test_read_tool_with_a_closed_or_non_text_param_does_not_warn(prop: JsonObject) -> None:
+    config = _config({"web_search": {"effect": "read", "params": {"query": FREE}}})
+    report = _run(config, {"web_search": ["query"]}, property_schemas={"query": prop})
+    assert report.findings == ()
+
+
+def test_read_tool_with_a_literal_marker_does_not_warn() -> None:
+    marker = {"marker": {"kind": "literal", "value": "status"}}
+    config = _config({"web_search": {"effect": "read", "params": {"query": marker}}})
+    assert _run(config, {"web_search": ["query"]}).findings == ()
+
+
+def test_read_tool_with_no_params_does_not_warn() -> None:
+    config = _config({"get_time": {"effect": "read"}})
+    assert _run(config, {"get_time": []}).findings == ()
+
+
+def test_write_tool_with_a_string_param_does_not_get_the_read_warning() -> None:
+    config = _config({"post_note": {"effect": "write", "params": {"text": FREE}}})
+    assert READ_FREE_TEXT not in _codes(_run(config, {"post_note": ["text"]}))
+
+
+def test_read_warning_follows_the_effective_effect_not_the_declared_one() -> None:
+    """The table says `write` for `send_email`, so it is not an ungated `read` tool."""
+    config = _config({"send_email": {"effect": "read", "params": {"body": FREE}}})
+    assert READ_FREE_TEXT not in _codes(_run(config, {"send_email": ["body"]}))
 
 
 def test_tool_missing() -> None:
