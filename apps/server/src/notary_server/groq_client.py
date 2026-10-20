@@ -44,6 +44,32 @@ class GroqResponseError(ValueError):
     """The model answered with something the runner cannot use (no choice, bad tool arguments)."""
 
 
+class ToolCallRejectedError(Exception):
+    """The provider refused the model's own tool call (HTTP 400 `tool_use_failed`: the arguments
+    did not match the tool's schema). It carries the provider's reason, never the model's text."""
+
+
+REJECTED_TURN_PREFIX = "[invalid tool call, rejected by the provider] "
+"""Starts the content of the recorded turn that stands for a rejected tool call."""
+
+
+def tool_call_rejection(error: groq.BadRequestError) -> str | None:
+    """The provider's reason when `error` is a rejected tool call (`tool_use_failed`), else None.
+    The model's `failed_generation` is dropped on purpose: it is model output, not a record."""
+    raw = error.body
+    if not isinstance(raw, dict):
+        return None
+    body = cast(dict[str, object], raw)
+    inner = body.get("error", body)
+    if not isinstance(inner, dict):
+        return None
+    fields = cast(dict[str, object], inner)
+    if fields.get("code") != "tool_use_failed":
+        return None
+    message = fields.get("message")
+    return message if isinstance(message, str) else "tool_use_failed"
+
+
 class ChatApi(Protocol):
     """The one SDK call used, so tests can pass a fake."""
 
@@ -58,7 +84,7 @@ class ChatApi(Protocol):
     ) -> ChatCompletion: ...
 
 
-class _SdkChat:
+class SdkChat:
     def __init__(self, max_wait_seconds: float) -> None:
         self._client = groq.Groq()
         self._max_wait = max_wait_seconds
@@ -85,6 +111,11 @@ class _SdkChat:
                     # no answer.
                     reasoning_effort="low" if model.startswith("openai/gpt-oss") else groq.omit,
                 )
+            except groq.BadRequestError as bad:
+                reason = tool_call_rejection(bad)
+                if reason is None:
+                    raise
+                raise ToolCallRejectedError(reason) from bad
             except groq.RateLimitError as limited:
                 if attempt == RATE_LIMIT_WAITS:
                     raise
@@ -242,15 +273,24 @@ class GroqClient:
 
     def _chat(self) -> ChatApi:
         if self._api is None:
-            self._api = _SdkChat(self._max_wait)
+            self._api = SdkChat(self._max_wait)
         return self._api
 
     def complete(self, request: LlmRequest) -> CassetteTurn:
-        completion = self._chat().create(
-            model=request.model,
-            max_tokens=request.max_tokens,
-            temperature=0,
-            messages=to_groq_messages(request.system, request.messages),
-            tools=[_tool_param(spec) for spec in request.tools],
-        )
+        """One answer. A tool call the provider rejects is answered with a turn that has a
+        message and no calls: the agent proposes nothing and the run ends (fails closed), instead
+        of the whole run, or a recording, dying on one malformed call."""
+        try:
+            completion = self._chat().create(
+                model=request.model,
+                max_tokens=request.max_tokens,
+                temperature=0,
+                messages=to_groq_messages(request.system, request.messages),
+                tools=[_tool_param(spec) for spec in request.tools],
+            )
+        except ToolCallRejectedError as rejected:
+            LOG.warning("Groq rejected the model's tool call: %s", rejected)
+            return CassetteTurn(
+                role="assistant", content=f"{REJECTED_TURN_PREFIX}{rejected}", tool_calls=()
+            )
         return drop_args_of_parameterless_tools(from_groq_completion(completion), request.tools)

@@ -15,11 +15,15 @@ from groq.types.chat import (
 )
 
 from notary_server.groq_client import (
+    REJECTED_TURN_PREFIX,
     GroqClient,
     GroqResponseError,
+    SdkChat,
+    ToolCallRejectedError,
     from_groq_completion,
     retry_after,
     to_groq_messages,
+    tool_call_rejection,
 )
 from notary_server.llm import DEFAULT_MODEL, LlmRequest, LlmToolSpec
 from notary_world.models import CassetteToolCall, CassetteTurn
@@ -233,6 +237,64 @@ def test_sdk_errors_propagate() -> None:
     client = GroqClient(chat_api=FakeApi(RuntimeError("boom")))
     with pytest.raises(RuntimeError, match="boom"):
         client.complete(request(turn("user", "hi")))
+
+
+def bad_request(body: object) -> groq.BadRequestError:
+    response = httpx.Response(400, request=httpx.Request("POST", "https://api.groq.test/chat"))
+    return groq.BadRequestError("bad", response=response, body=body)
+
+
+@pytest.mark.invariant("I6")
+def test_a_rejected_tool_call_is_recognised_from_either_body_shape() -> None:
+    reason = "parameters for tool pay_bill did not match schema"
+    inner = {"message": reason, "code": "tool_use_failed", "failed_generation": "SECRET-ISH"}
+    assert tool_call_rejection(bad_request({"error": inner})) == reason
+    assert tool_call_rejection(bad_request(inner)) == reason
+    assert tool_call_rejection(bad_request({"code": "tool_use_failed"})) == "tool_use_failed"
+    assert tool_call_rejection(bad_request({"error": {"code": "other"}})) is None
+    assert tool_call_rejection(bad_request(None)) is None
+    assert tool_call_rejection(bad_request("text")) is None
+
+
+@pytest.mark.invariant("I6")
+def test_a_rejected_tool_call_ends_the_turn_without_calls_and_without_the_models_text() -> None:
+    client = GroqClient(chat_api=FakeApi(ToolCallRejectedError("pay_bill: missing 'amount'")))
+    answer = client.complete(request(turn("user", "hi")))
+    assert answer.role == "assistant"
+    assert answer.tool_calls == ()
+    assert answer.content == f"{REJECTED_TURN_PREFIX}pay_bill: missing 'amount'"
+
+
+@pytest.mark.invariant("I6")
+def test_the_sdk_wrapper_turns_a_rejected_tool_call_into_tool_call_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only `tool_use_failed` is converted; any other 400 still propagates."""
+
+    class Completions:
+        def __init__(self, error: Exception) -> None:
+            self.error = error
+
+        def create(self, **kwargs: object) -> object:
+            raise self.error
+
+    class Chat:
+        def __init__(self, error: Exception) -> None:
+            self.completions = Completions(error)
+
+    class FakeGroq:
+        error: Exception = RuntimeError("unset")
+
+        def __init__(self) -> None:
+            self.chat = Chat(FakeGroq.error)
+
+    monkeypatch.setattr(groq, "Groq", FakeGroq)
+    FakeGroq.error = bad_request({"error": {"code": "tool_use_failed", "message": "why"}})
+    with pytest.raises(ToolCallRejectedError, match="why"):
+        SdkChat(1.0).create(model="m", max_tokens=5, temperature=0, messages=[], tools=[])
+    FakeGroq.error = bad_request({"error": {"code": "invalid_request_error"}})
+    with pytest.raises(groq.BadRequestError):
+        SdkChat(1.0).create(model="m", max_tokens=5, temperature=0, messages=[], tools=[])
 
 
 class ExplodingEnviron(dict[str, str]):
