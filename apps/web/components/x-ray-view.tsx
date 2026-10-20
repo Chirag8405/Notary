@@ -269,6 +269,22 @@ function XRayRun({
           </p>
         </Panel>
       ) : null}
+      {mode === "golden" && view.endorsements.length > 0 ? (
+        <Alert
+          role="group"
+          aria-label="Replay notice"
+          data-golden-note
+          className="flex flex-wrap items-center gap-3"
+        >
+          <span>
+            This is a fixed replay, so its buttons cannot answer the approval. Switch to the
+            recorded run to answer it.
+          </span>
+          <Button type="button" variant="outline" onClick={onUseCassette}>
+            Switch to the recorded run
+          </Button>
+        </Alert>
+      ) : null}
       {runId !== null && view.endorsements.length > 0 ? (
         <EndorsementPanel
           runId={runId}
