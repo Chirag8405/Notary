@@ -24,31 +24,31 @@ interface LightText {
 }
 
 const ATTACKER: Record<Exclude<LightState, "neutral">, LightText> = {
-  bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-red-100 text-red-900" },
+  bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-bad-soft text-bad-strong" },
   good: {
     glyph: "✓",
     label: "Attacker goal not reached",
-    classes: "bg-green-100 text-green-900",
+    classes: "bg-ok-soft text-ok-strong",
   },
   pending: {
     glyph: "–",
     label: "Attacker goal unknown",
-    classes: "bg-neutral-100 text-neutral-700",
+    classes: "bg-muted text-muted-foreground",
   },
 };
 
 const USER: Record<LightState, LightText> = {
-  good: { glyph: "✓", label: "User goal achieved", classes: "bg-green-100 text-green-900" },
-  bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-red-100 text-red-900" },
+  good: { glyph: "✓", label: "User goal achieved", classes: "bg-ok-soft text-ok-strong" },
+  bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-bad-soft text-bad-strong" },
   neutral: {
     glyph: "-",
     label: "Bill not paid: you rejected it, blocked safely",
-    classes: "bg-slate-100 text-slate-800",
+    classes: "bg-muted text-foreground",
   },
   pending: {
     glyph: "–",
     label: "User goal pending",
-    classes: "bg-neutral-100 text-neutral-700",
+    classes: "bg-muted text-muted-foreground",
   },
 };
 
@@ -88,7 +88,7 @@ export function OraclePanel({
 
   return (
     <section className="space-y-2" aria-label="Oracle panel">
-      <h2 className="text-sm font-semibold">
+      <h2 className="text-base font-semibold">
         Oracle
         {lane === "" ? null : (
           <span data-lane-label className="ml-2 font-normal text-muted-foreground">
@@ -102,7 +102,7 @@ export function OraclePanel({
       </ul>
       <OracleLights result={view.oracle} />
       {failed.length === 0 ? null : (
-        <ul className="space-y-1 text-xs text-red-800" aria-label="Failed invariants">
+        <ul className="space-y-1 text-xs text-bad-strong" aria-label="Failed invariants">
           {failed.map((item) => (
             <li key={item.id} data-invariant={item.id} data-state="fail">
               <span className="font-semibold">{item.id}</span> {item.detail}

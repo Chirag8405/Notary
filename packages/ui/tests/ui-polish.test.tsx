@@ -40,7 +40,7 @@ describe("EndorsementCard buttons", () => {
       expect(button.className).toContain("rounded-md");
     }
     expect(buttons[1]?.className).toContain("bg-primary");
-    expect(buttons[0]?.className).toContain("border-amber-500");
+    expect(buttons[0]?.className).toContain("border-warn");
     expect(buttons[2]?.className).toContain("border-input");
     expect(buttons[2]?.className).not.toContain("bg-primary");
     buttons[0]?.click();

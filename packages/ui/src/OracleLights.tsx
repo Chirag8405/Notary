@@ -13,7 +13,7 @@ export function OracleLights({ result }: OracleLightsProps) {
         const found = result?.invariants.find((invariant) => invariant.id === id);
         const state = found === undefined ? "unknown" : found.passed ? "pass" : "fail";
         const color =
-          state === "pass" ? "bg-green-500" : state === "fail" ? "bg-red-500" : "bg-neutral-300";
+          state === "pass" ? "bg-ok" : state === "fail" ? "bg-bad" : "bg-muted-foreground/40";
         return (
           <li key={id} data-state={state} title={found?.detail} className="flex items-center gap-1">
             <span className={`inline-block h-3 w-3 rounded-full ${color}`} />

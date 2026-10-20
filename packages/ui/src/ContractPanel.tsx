@@ -10,9 +10,9 @@ export interface ContractPanelProps {
 const MANIFEST_SHORT = 8;
 
 const TONE_CLASS: Record<MarkerTone, string> = {
-  strict: "border-green-500 bg-green-50 text-green-900",
-  gated: "border-yellow-500 bg-yellow-50 text-yellow-900",
-  open: "border-neutral-400 bg-neutral-50 text-neutral-700",
+  strict: "border-ok bg-ok-soft text-ok-strong",
+  gated: "border-warn bg-warn-soft text-warn-strong",
+  open: "border-border bg-muted text-muted-foreground",
 };
 
 /** The frozen intent contract as chips: what the user approved, not the monitor's effective policy. */
@@ -48,14 +48,14 @@ export function ContractPanel({ contract }: ContractPanelProps) {
               <span
                 data-manifest
                 title={scope.manifest_hash}
-                className="font-mono text-xs text-neutral-400"
+                className="font-mono text-xs text-muted-foreground"
               >
                 {scope.manifest_hash.slice(0, MANIFEST_SHORT)}
               </span>
               {isIrreversible ? (
                 <span
                   data-irreversible-tag
-                  className="rounded bg-red-100 px-1 text-xs font-semibold text-red-900"
+                  className="rounded bg-bad-soft px-1 text-xs font-semibold text-bad-strong"
                 >
                   irreversible
                 </span>

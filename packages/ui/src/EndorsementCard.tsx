@@ -36,7 +36,7 @@ const BUTTON =
   "inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50";
 /** Reject keeps the call blocked: the primary action. Confirm approves the value shown: outlined. */
 const REJECT_BUTTON = `${BUTTON} bg-primary text-primary-foreground hover:bg-primary/90`;
-const CONFIRM_BUTTON = `${BUTTON} border border-amber-500 bg-background text-amber-900 hover:bg-amber-50`;
+const CONFIRM_BUTTON = `${BUTTON} border border-warn bg-background text-warn-strong hover:bg-warn-soft`;
 
 /** The third choice: it approves nothing, so it looks like a plain secondary action. */
 const NEAREST_BUTTON = `${BUTTON} border border-input bg-background text-foreground hover:bg-muted`;
@@ -60,7 +60,7 @@ function Highlighted({ segments, marker }: { segments: readonly Segment[]; marke
           <mark
             key={`${marker}:${index}`}
             data-differs
-            className="bg-red-200 font-bold underline decoration-red-700"
+            className="rounded-sm bg-bad/25 px-px font-bold text-bad-strong underline decoration-bad"
           >
             {segment.text}
           </mark>
@@ -76,31 +76,43 @@ function originText(row: DiffRow): string {
   return row.origin.kind === "tool" ? `tool:${row.origin.name}` : row.origin.kind;
 }
 
+const LABEL = "text-xs font-medium tracking-wide text-muted-foreground uppercase";
+
 /** The ledger value is highlighted with the same positions only when it is as long as the proposal. */
 function LedgerValue({ row }: { row: DiffRow }) {
   if (row.nearest_ledger_value === null) {
-    return <p data-ledger-empty>no similar ledger entry</p>;
+    return (
+      <div className="space-y-1">
+        <p className={LABEL}>Nearest known value</p>
+        <p data-ledger-empty className="text-muted-foreground">
+          no similar ledger entry
+        </p>
+      </div>
+    );
   }
   const comparable = Array.from(row.nearest_ledger_value).length === Array.from(row.preview).length;
   return (
-    <p>
-      nearest ledger value:{" "}
-      <code data-ledger className="font-mono">
-        {comparable ? (
-          <Highlighted
-            segments={highlightDiff(row.nearest_ledger_value, row.differing_positions)}
-            marker="ledger"
-          />
-        ) : (
-          row.nearest_ledger_value
+    <div className="space-y-1">
+      <p className={LABEL}>Nearest known value</p>
+      <p>
+        <span className="sr-only">nearest ledger value: </span>
+        <code data-ledger className="font-mono break-all">
+          {comparable ? (
+            <Highlighted
+              segments={highlightDiff(row.nearest_ledger_value, row.differing_positions)}
+              marker="ledger"
+            />
+          ) : (
+            row.nearest_ledger_value
+          )}
+        </code>
+        {comparable ? null : (
+          <span data-length-note className="ml-2 block text-xs text-muted-foreground">
+            different length: positions not comparable
+          </span>
         )}
-      </code>
-      {comparable ? null : (
-        <span data-length-note className="ml-2 text-xs text-muted-foreground">
-          different length: positions not comparable
-        </span>
-      )}
-    </p>
+      </p>
+    </div>
   );
 }
 
@@ -139,43 +151,67 @@ export function EndorsementCard({
       aria-label="Endorsement request"
       data-endorsement-id={endorsement.endorsement_id}
       data-state={state}
-      className="space-y-3 rounded border-2 border-yellow-500 bg-yellow-50 p-3 text-sm"
+      className="space-y-4 rounded-lg border-2 border-warn bg-warn-soft p-4 text-sm text-foreground"
     >
-      <h3 ref={heading} tabIndex={-1} className="font-semibold">
-        Confirm {toolName ?? endorsement.call_id}?
-      </h3>
+      <header className="space-y-1">
+        <p className="text-xs font-semibold tracking-wide text-warn-strong uppercase">
+          Needs your decision
+        </p>
+        <h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
+          Confirm {toolName ?? endorsement.call_id}?
+        </h3>
+        <p className="text-muted-foreground">
+          The agent wants to use a value you have not used before. Compare it with what you know,
+          then choose.
+        </p>
+      </header>
       {endorsement.card.rows.map((row) => (
         <div
           key={`${row.param}:${row.value_id}`}
           data-row
           data-param={row.param}
-          className="space-y-1"
+          className="space-y-3 rounded-md border bg-card p-3"
         >
           <p className="font-semibold">{row.param}</p>
-          <p>
-            <code data-proposed className="font-mono">
-              <Highlighted
-                segments={highlightDiff(row.preview, row.differing_positions)}
-                marker="proposed"
-              />
-            </code>
-          </p>
-          <p className="text-xs">
-            <span data-origin={row.origin.kind}>{originText(row)}</span>
-            {", "}
-            <span data-integrity={row.integrity}>{row.integrity}</span>
-          </p>
-          <LedgerValue row={row} />
-          <p>This value is not in your ledger.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <p className={LABEL}>Agent proposes</p>
+              <p>
+                <code data-proposed className="font-mono break-all">
+                  <Highlighted
+                    segments={highlightDiff(row.preview, row.differing_positions)}
+                    marker="proposed"
+                  />
+                </code>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span data-origin={row.origin.kind}>{originText(row)}</span>
+                {", "}
+                <span data-integrity={row.integrity}>{row.integrity}</span>
+              </p>
+            </div>
+            <LedgerValue row={row} />
+          </div>
+          <p className="font-medium text-warn-strong">This value is not in your ledger.</p>
         </div>
       ))}
       {remainingApprovals === null ? null : (
-        <p data-approvals>Approvals left: {remainingApprovals}</p>
+        <p data-approvals className="text-xs text-muted-foreground">
+          Approvals left: {remainingApprovals}
+        </p>
       )}
-      {exhausted ? <p data-exhausted>No approvals left: the call is blocked</p> : null}
-      {stateText === undefined ? null : <p data-state-text>{stateText}</p>}
+      {exhausted ? (
+        <p data-exhausted className="font-medium text-bad-strong">
+          No approvals left: the call is blocked
+        </p>
+      ) : null}
+      {stateText === undefined ? null : (
+        <p data-state-text className="font-medium">
+          {stateText}
+        </p>
+      )}
       {error === undefined || error === null || error === "" ? null : (
-        <p role="alert" className="text-red-700">
+        <p role="alert" className="text-bad-strong">
           {error}
         </p>
       )}
