@@ -9,6 +9,7 @@
     "typecheck": "uv run --no-sync pyright",
     "test": "uv run --no-sync pytest",
     "build": "uv build --out-dir dist",
-    "schema:generate": "uv run --no-sync python scripts/export_schema.py"
+    "schema:generate": "uv run --no-sync python scripts/export_schema.py",
+    "psl:generate": "uv run --no-sync python scripts/gen_public_suffixes.py"
   }
 }

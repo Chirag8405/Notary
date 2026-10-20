@@ -5,13 +5,12 @@ from typing import assert_never
 from notary_core.models import DecisionUnit
 from notary_core.units.amount import CanonicalAmount, canonicalize_amount, to_cents
 from notary_core.units.email import canonicalize_email
-from notary_core.units.host import MULTIPART_SUFFIXES, canonicalize_host, registrable_domain
+from notary_core.units.host import canonicalize_host, registrable_domain
 from notary_core.units.iban import canonicalize_iban, iban_mod97_ok
 from notary_core.units.identifier import canonicalize_identifier
 from notary_core.units.types import Canonical
 
 __all__ = [
-    "MULTIPART_SUFFIXES",
     "Canonical",
     "CanonicalAmount",
     "canonicalize",

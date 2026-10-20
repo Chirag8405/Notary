@@ -5,3 +5,5 @@ packages/client/openapi.json text eol=lf
 packages/client/src/generated/** text eol=lf
 packages/world/fixtures/streams/** text eol=lf
 packages/world/fixtures/commands/** text eol=lf
+packages/core/data/public_suffix_list.dat text eol=lf
+packages/core/src/notary_core/units/_public_suffixes.py text eol=lf
