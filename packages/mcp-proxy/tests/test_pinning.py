@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from builders import ACME_IBAN, RecordingBackend, make_contract, make_gateway
+from proxy_builders import ACME_IBAN, RecordingBackend, make_contract, make_gateway
 
 from notary_core.pinning import manifest_hash
 from notary_mcp_proxy import RawCall, schema_text

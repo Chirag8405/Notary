@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
-from builders import ACME_IBAN, ATTACKER_IBAN, RecordingBackend, make_gateway
+from proxy_builders import ACME_IBAN, ATTACKER_IBAN, RecordingBackend, make_gateway
 from pydantic import JsonValue
 from stdio_session import StdioSession, proxy_command, request, tool_call
 

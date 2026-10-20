@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import get_args
 
 import pytest
-from builders import contract, sha
+from core_builders import contract, sha
 from hypothesis import given
 from hypothesis import strategies as st
 

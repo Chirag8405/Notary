@@ -1,7 +1,7 @@
 """Step 2 (irreversibility): irreversible tools need explicit authorization."""
 
 import pytest
-from builders import step_input
+from core_builders import step_input
 
 from notary_core.models import ToolEffect
 from notary_core.policy.sensitive_params import PolicyTable, make_tool_policy

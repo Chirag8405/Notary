@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from builders import RecordingBackend, make_gateway
+from proxy_builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 
 from notary_core.models import DecisionMade, EffectExecuted, RunFinished

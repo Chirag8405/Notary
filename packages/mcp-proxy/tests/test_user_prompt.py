@@ -15,7 +15,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 
 import pytest
-from builders import (
+from proxy_builders import (
     ACME_IBAN,
     ATTACKER_IBAN,
     RecordingBackend,

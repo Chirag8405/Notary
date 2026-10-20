@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from builders import RecordingBackend, make_contract, make_gateway
+from proxy_builders import RecordingBackend, make_contract, make_gateway
 from stdio_session import StdioSession, proxy_command, request, tool_call
 from test_dispatch import GatedBackend, Wire
 from test_user_prompt import PATIENCE, PROMPT, empty_ledger_config, run_prompt_hook, text_of

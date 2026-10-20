@@ -14,7 +14,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 
 import pytest
-from builders import RecordingBackend, make_gateway
+from proxy_builders import RecordingBackend, make_gateway
 from pydantic import JsonValue
 
 from notary_core.models import CallProposed, DecisionMade
