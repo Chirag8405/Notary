@@ -22,6 +22,8 @@ dev = [
   "hypothesis>=6.170",
   "import-linter>=2.15",
   "httpx2>=2.13",
+  "pytest-cov>=7.1.0",
+  "mutmut>=3.8.0",
 ]
 
 [tool.uv]
@@ -72,6 +74,10 @@ known-first-party = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers --import-mode=importlib"
+# pytest's default norecursedirs plus `mutants` (the git-ignored mutmut work copy of core).
+norecursedirs = [
+  "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "mutants",
+]
 # importlib mode lets test files share a basename across packages; the
 # per-package helper modules (*_builders.py) are imported by name from here.
 pythonpath = [

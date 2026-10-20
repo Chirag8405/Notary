@@ -18,6 +18,8 @@
     "format:check": "prettier --check .",
     "playground:fixtures": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py",
     "playground:fixtures:check": "uv run --no-sync python apps/server/scripts/capture_playground_fixtures.py --check",
+    "coverage": "uv run --no-sync pytest packages/core packages/mcp-proxy --cov=notary_core --cov=notary_mcp_proxy --cov-branch --cov-report=term-missing",
+    "mutation": "uv run --no-sync --directory packages/core mutmut run && uv run --no-sync --directory packages/core mutmut results",
     "e2e": "pnpm --filter @notary/web e2e"
   },
   "devDependencies": {

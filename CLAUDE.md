@@ -48,6 +48,8 @@ uv run --no-sync pytest apps/server/tests/test_cp2.py   # CP2 proof: cassette re
 uv run --no-sync python apps/server/scripts/record_cassettes.py [--live]   # re-record cassettes (--live needs GROQ_API_KEY, in the shell or a git-ignored .env)
 pnpm playground:fixtures         # re-record the playground fixtures (apps/web/tests/fixtures/playground) from the real server
 pnpm playground:fixtures:check   # fail when a recorded playground answer differs from the server's
+pnpm coverage                    # opt-in line+branch coverage of notary_core and notary_mcp_proxy (no gate)
+pnpm mutation                    # opt-in mutmut run on core monitor.py + steps/ (~30 s); survivors are listed, see decisions.md
 pnpm e2e                         # Playwright smoke test of Hijacked Mode, real server and web, an installed browser (not in the gate)
 ```
 
