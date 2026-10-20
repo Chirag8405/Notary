@@ -1,0 +1,672 @@
+"""GENERATED FILE. DO NOT EDIT BY HAND.
+
+Confusable single characters and their ASCII skeleton, from Unicode's confusables.txt
+(UTS #39, Unicode Security Mechanisms).
+
+    Unicode data version: 18.0.0
+    Upstream file date:   2026-08-06, 01:05:35 GMT
+    Upstream SHA-256:     6ed3ee967c9dfdf6677d563c9985182fbc50a2efb7d6059cd57b2e2ce18f5b92
+    Source:               https://www.unicode.org/Public/security/latest/confusables.txt
+    Vendored input:       packages/core/data/confusables-subset.txt
+    License:              Unicode License v3, packages/core/data/UNICODE-LICENSE.txt
+    Generator:            packages/core/scripts/gen_confusables.py
+    Entries:              644
+
+Regenerate (no network):
+
+    uv run --no-sync python packages/core/scripts/gen_confusables.py generate
+
+Keys are already NFKC-stable and casefolded; values are lowercase and never contain a
+key, so one lookup per character is a complete mapping. See the generator docstring.
+"""
+
+UNICODE_VERSION = "18.0.0"
+SOURCE_DATE = "2026-08-06, 01:05:35 GMT"
+SOURCE_SHA256 = "6ed3ee967c9dfdf6677d563c9985182fbc50a2efb7d6059cd57b2e2ce18f5b92"
+
+SKELETON: dict[str, str] = {
+    "0": "o",  # DIGIT ZERO
+    "1": "l",  # DIGIT ONE
+    "i": "l",  # LATIN CAPITAL LETTER I
+    "|": "l",  # VERTICAL LINE
+    "\u00a1": "l",  # INVERTED EXCLAMATION MARK
+    "\u00d7": "x",  # MULTIPLICATION SIGN
+    "\u00e6": "ae",  # LATIN SMALL LETTER AE
+    "\u00fe": "p",  # LATIN SMALL LETTER THORN
+    "\u0131": "l",  # LATIN SMALL LETTER DOTLESS I
+    "\u0153": "oe",  # LATIN SMALL LIGATURE OE
+    "\u0185": "b",  # LATIN CAPITAL LETTER TONE SIX
+    "\u018d": "g",  # LATIN SMALL LETTER TURNED DELTA
+    "\u0192": "f",  # LATIN SMALL LETTER F WITH HOOK
+    "\u01a8": "2",  # LATIN CAPITAL LETTER TONE TWO
+    "\u01bd": "s",  # LATIN SMALL LETTER TONE FIVE
+    "\u01bf": "p",  # LATIN LETTER WYNN
+    "\u01c0": "l",  # LATIN LETTER DENTAL CLICK
+    "\u01c1": "ll",  # LATIN LETTER LATERAL CLICK
+    "\u021d": "3",  # LATIN CAPITAL LETTER YOGH
+    "\u0223": "8",  # LATIN SMALL LETTER OU
+    "\u0237": "j",  # LATIN SMALL LETTER DOTLESS J
+    "\u024d": "r",  # LATIN CAPITAL LETTER R WITH STROKE
+    "\u0251": "a",  # LATIN SMALL LETTER ALPHA
+    "\u025c": "3",  # LATIN CAPITAL LETTER REVERSED OPEN E
+    "\u0261": "g",  # LATIN SMALL LETTER SCRIPT G
+    "\u0263": "y",  # LATIN SMALL LETTER GAMMA
+    "\u0269": "l",  # LATIN SMALL LETTER IOTA
+    "\u026a": "l",  # LATIN LETTER SMALL CAPITAL I
+    "\u026f": "w",  # LATIN SMALL LETTER TURNED M
+    "\u0280": "r",  # LATIN LETTER YR
+    "\u0284": "f",  # LATIN SMALL LETTER DOTLESS J WITH STROKE AND HOOK
+    "\u028b": "u",  # LATIN SMALL LETTER V WITH HOOK
+    "\u028f": "y",  # LATIN LETTER SMALL CAPITAL Y
+    "\u0292": "3",  # LATIN CAPITAL LETTER EZH
+    "\u029d": "j",  # LATIN CAPITAL LETTER J WITH CROSSED-TAIL
+    "\u02a3": "dz",  # LATIN SMALL LETTER DZ DIGRAPH
+    "\u02a6": "ts",  # LATIN SMALL LETTER TS DIGRAPH
+    "\u02aa": "ls",  # LATIN SMALL LETTER LS DIGRAPH
+    "\u02ab": "lz",  # LATIN SMALL LETTER LZ DIGRAPH
+    "\u02d7": "-",  # MODIFIER LETTER MINUS SIGN
+    "\u03b1": "a",  # GREEK SMALL LETTER ALPHA
+    "\u03b2": "b",  # GREEK CAPITAL LETTER BETA
+    "\u03b3": "y",  # GREEK SMALL LETTER GAMMA
+    "\u03b5": "e",  # GREEK CAPITAL LETTER EPSILON
+    "\u03b6": "z",  # GREEK CAPITAL LETTER ZETA
+    "\u03b7": "h",  # GREEK CAPITAL LETTER ETA
+    "\u03b9": "l",  # GREEK SMALL LETTER IOTA
+    "\u03ba": "k",  # GREEK CAPITAL LETTER KAPPA
+    "\u03bc": "m",  # GREEK CAPITAL LETTER MU
+    "\u03bd": "v",  # GREEK SMALL LETTER NU
+    "\u03bf": "o",  # GREEK SMALL LETTER OMICRON
+    "\u03c1": "p",  # GREEK SMALL LETTER RHO
+    "\u03c3": "o",  # GREEK SMALL LETTER SIGMA
+    "\u03c4": "t",  # GREEK CAPITAL LETTER TAU
+    "\u03c5": "u",  # GREEK SMALL LETTER UPSILON
+    "\u03c7": "x",  # GREEK CAPITAL LETTER CHI
+    "\u03dd": "f",  # GREEK LETTER DIGAMMA
+    "\u03e9": "2",  # COPTIC CAPITAL LETTER HORI
+    "\u03ed": "o",  # COPTIC SMALL LETTER SHIMA
+    "\u03f3": "j",  # GREEK LETTER YOT
+    "\u03f8": "p",  # GREEK SMALL LETTER SHO
+    "\u03fb": "m",  # GREEK CAPITAL LETTER SAN
+    "\u0430": "a",  # CYRILLIC SMALL LETTER A
+    "\u0431": "6",  # CYRILLIC SMALL LETTER BE
+    "\u0432": "b",  # CYRILLIC CAPITAL LETTER VE
+    "\u0433": "r",  # CYRILLIC SMALL LETTER GHE
+    "\u0435": "e",  # CYRILLIC SMALL LETTER IE
+    "\u0437": "3",  # CYRILLIC CAPITAL LETTER ZE
+    "\u043a": "k",  # CYRILLIC CAPITAL LETTER KA
+    "\u043c": "m",  # CYRILLIC CAPITAL LETTER EM
+    "\u043d": "h",  # CYRILLIC CAPITAL LETTER EN
+    "\u043e": "o",  # CYRILLIC SMALL LETTER O
+    "\u0440": "p",  # CYRILLIC SMALL LETTER ER
+    "\u0441": "c",  # CYRILLIC SMALL LETTER ES
+    "\u0442": "t",  # CYRILLIC CAPITAL LETTER TE
+    "\u0443": "y",  # CYRILLIC SMALL LETTER U
+    "\u0445": "x",  # CYRILLIC SMALL LETTER HA
+    "\u0448": "w",  # CYRILLIC SMALL LETTER SHA
+    "\u044b": "bl",  # CYRILLIC CAPITAL LETTER YERU
+    "\u044c": "b",  # CYRILLIC CAPITAL LETTER SOFT SIGN
+    "\u044e": "lo",  # CYRILLIC CAPITAL LETTER YU
+    "\u0455": "s",  # CYRILLIC SMALL LETTER DZE
+    "\u0456": "l",  # CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I
+    "\u0458": "j",  # CYRILLIC SMALL LETTER JE
+    "\u0461": "w",  # CYRILLIC SMALL LETTER OMEGA
+    "\u0475": "v",  # CYRILLIC SMALL LETTER IZHITSA
+    "\u0479": "oy",  # CYRILLIC SMALL LETTER UK
+    "\u04af": "y",  # CYRILLIC SMALL LETTER STRAIGHT U
+    "\u04bb": "h",  # CYRILLIC SMALL LETTER SHHA
+    "\u04bd": "e",  # CYRILLIC SMALL LETTER ABKHASIAN CHE
+    "\u04cf": "l",  # CYRILLIC SMALL LETTER PALOCHKA
+    "\u04d5": "ae",  # CYRILLIC SMALL LIGATURE A IE
+    "\u04e1": "3",  # CYRILLIC CAPITAL LETTER ABKHASIAN DZE
+    "\u0501": "d",  # CYRILLIC SMALL LETTER KOMI DE
+    "\u050d": "g",  # CYRILLIC CAPITAL LETTER KOMI SJE
+    "\u051b": "q",  # CYRILLIC SMALL LETTER QA
+    "\u051d": "w",  # CYRILLIC SMALL LETTER WE
+    "\u0560": "rn",  # ARMENIAN SMALL LETTER TURNED AYB
+    "\u0561": "w",  # ARMENIAN SMALL LETTER AYB
+    "\u0563": "q",  # ARMENIAN SMALL LETTER GIM
+    "\u0566": "q",  # ARMENIAN SMALL LETTER ZA
+    "\u0570": "h",  # ARMENIAN SMALL LETTER HO
+    "\u0575": "j",  # ARMENIAN SMALL LETTER YI
+    "\u0578": "n",  # ARMENIAN SMALL LETTER VO
+    "\u057c": "n",  # ARMENIAN SMALL LETTER RA
+    "\u057d": "u",  # ARMENIAN SMALL LETTER SEH
+    "\u057f": "s",  # ARMENIAN CAPITAL LETTER TIWN
+    "\u0581": "g",  # ARMENIAN SMALL LETTER CO
+    "\u0582": "l",  # ARMENIAN SMALL LETTER YIWN
+    "\u0584": "f",  # ARMENIAN SMALL LETTER KEH
+    "\u0585": "o",  # ARMENIAN SMALL LETTER OH
+    "\u05c0": "l",  # HEBREW PUNCTUATION PASEQ
+    "\u05d5": "l",  # HEBREW LETTER VAV
+    "\u05d8": "v",  # HEBREW LETTER TET
+    "\u05df": "l",  # HEBREW LETTER FINAL NUN
+    "\u05e1": "o",  # HEBREW LETTER SAMEKH
+    "\u05f0": "ll",  # HEBREW LIGATURE YIDDISH DOUBLE VAV
+    "\u0627": "l",  # ARABIC LETTER ALEF
+    "\u0647": "o",  # ARABIC LETTER HEH
+    "\u0660": ".",  # ARABIC-INDIC DIGIT ZERO
+    "\u0661": "l",  # ARABIC-INDIC DIGIT ONE
+    "\u0665": "o",  # ARABIC-INDIC DIGIT FIVE
+    "\u0667": "v",  # ARABIC-INDIC DIGIT SEVEN
+    "\u06be": "o",  # ARABIC LETTER HEH DOACHASHMEE
+    "\u06c1": "o",  # ARABIC LETTER HEH GOAL
+    "\u06d4": "-",  # ARABIC FULL STOP
+    "\u06d5": "o",  # ARABIC LETTER AE
+    "\u06f0": ".",  # EXTENDED ARABIC-INDIC DIGIT ZERO
+    "\u06f1": "l",  # EXTENDED ARABIC-INDIC DIGIT ONE
+    "\u06f5": "o",  # EXTENDED ARABIC-INDIC DIGIT FIVE
+    "\u06f7": "v",  # EXTENDED ARABIC-INDIC DIGIT SEVEN
+    "\u0701": ".",  # SYRIAC SUPRALINEAR FULL STOP
+    "\u0702": ".",  # SYRIAC SUBLINEAR FULL STOP
+    "\u07c0": "o",  # NKO DIGIT ZERO
+    "\u07ca": "l",  # NKO LETTER A
+    "\u07cb": "o",  # NKO LETTER EE
+    "\u07cc": "y",  # NKO LETTER I
+    "\u07d3": "f",  # NKO LETTER BA
+    "\u07d5": "b",  # NKO LETTER TA
+    "\u07e0": "t",  # NKO LETTER NA WOLOSO
+    "\u0840": "o",  # MANDAIC LETTER HALQA
+    "\u0964": "l",  # DEVANAGARI DANDA
+    "\u0965": "ll",  # DEVANAGARI DOUBLE DANDA
+    "\u0966": "o",  # DEVANAGARI DIGIT ZERO
+    "\u0969": "3",  # DEVANAGARI DIGIT THREE
+    "\u09e6": "o",  # BENGALI DIGIT ZERO
+    "\u09ea": "8",  # BENGALI DIGIT FOUR
+    "\u09ed": "9",  # BENGALI DIGIT SEVEN
+    "\u0a66": "o",  # GURMUKHI DIGIT ZERO
+    "\u0a67": "9",  # GURMUKHI DIGIT ONE
+    "\u0a6a": "8",  # GURMUKHI DIGIT FOUR
+    "\u0ae6": "o",  # GUJARATI DIGIT ZERO
+    "\u0ae9": "3",  # GUJARATI DIGIT THREE
+    "\u0b03": "8",  # ORIYA SIGN VISARGA
+    "\u0b20": "o",  # ORIYA LETTER TTHA
+    "\u0b66": "o",  # ORIYA DIGIT ZERO
+    "\u0b68": "9",  # ORIYA DIGIT TWO
+    "\u0be6": "o",  # TAMIL DIGIT ZERO
+    "\u0c02": "o",  # TELUGU SIGN ANUSVARA
+    "\u0c66": "o",  # TELUGU DIGIT ZERO
+    "\u0c82": "o",  # KANNADA SIGN ANUSVARA
+    "\u0ce6": "o",  # KANNADA DIGIT ZERO
+    "\u0d02": "o",  # MALAYALAM SIGN ANUSVARA
+    "\u0d1f": "s",  # MALAYALAM LETTER TTA
+    "\u0d20": "o",  # MALAYALAM LETTER TTHA
+    "\u0d66": "o",  # MALAYALAM DIGIT ZERO
+    "\u0d6d": "9",  # MALAYALAM DIGIT SEVEN
+    "\u0d82": "o",  # SINHALA SIGN ANUSVARAYA
+    "\u0e50": "o",  # THAI DIGIT ZERO
+    "\u0ed0": "o",  # LAO DIGIT ZERO
+    "\u1004": "c",  # MYANMAR LETTER NGA
+    "\u101d": "o",  # MYANMAR LETTER WA
+    "\u1040": "o",  # MYANMAR DIGIT ZERO
+    "\u104a": "l",  # MYANMAR SIGN LITTLE SECTION
+    "\u104b": "ll",  # MYANMAR SIGN SECTION
+    "\u105a": "c",  # MYANMAR LETTER MON NGA
+    "\u10d5": "3",  # GEORGIAN MTAVRULI CAPITAL LETTER VIN
+    "\u10e7": "y",  # GEORGIAN LETTER QAR
+    "\u10f7": "2",  # GEORGIAN MTAVRULI CAPITAL LETTER YN
+    "\u10fd": "s",  # GEORGIAN LETTER AEN
+    "\u10ff": "o",  # GEORGIAN LETTER LABIAL SIGN
+    "\u110b": "o",  # HANGUL CHOSEONG IEUNG
+    "\u1147": "oo",  # HANGUL CHOSEONG SSANGIEUNG
+    "\u11bc": "o",  # HANGUL JONGSEONG IEUNG
+    "\u11ee": "oo",  # HANGUL JONGSEONG SSANGIEUNG
+    "\u1200": "u",  # ETHIOPIC SYLLABLE HA
+    "\u12d0": "o",  # ETHIOPIC SYLLABLE PHARYNGEAL A
+    "\u13a0": "d",  # CHEROKEE LETTER A
+    "\u13a1": "r",  # CHEROKEE LETTER E
+    "\u13a2": "t",  # CHEROKEE LETTER I
+    "\u13a5": "l",  # CHEROKEE LETTER V
+    "\u13a9": "y",  # CHEROKEE LETTER GI
+    "\u13aa": "a",  # CHEROKEE LETTER GO
+    "\u13ab": "j",  # CHEROKEE LETTER GU
+    "\u13ac": "e",  # CHEROKEE LETTER GV
+    "\u13b3": "w",  # CHEROKEE LETTER LA
+    "\u13b7": "m",  # CHEROKEE LETTER LU
+    "\u13bb": "h",  # CHEROKEE LETTER MI
+    "\u13bd": "y",  # CHEROKEE LETTER MU
+    "\u13c0": "g",  # CHEROKEE LETTER NAH
+    "\u13c2": "h",  # CHEROKEE LETTER NI
+    "\u13c3": "z",  # CHEROKEE LETTER NO
+    "\u13ce": "4",  # CHEROKEE LETTER SE
+    "\u13cf": "b",  # CHEROKEE LETTER SI
+    "\u13d2": "r",  # CHEROKEE LETTER SV
+    "\u13d4": "w",  # CHEROKEE LETTER TA
+    "\u13d5": "s",  # CHEROKEE LETTER DE
+    "\u13d9": "v",  # CHEROKEE LETTER DO
+    "\u13da": "s",  # CHEROKEE LETTER DU
+    "\u13de": "l",  # CHEROKEE LETTER TLE
+    "\u13df": "c",  # CHEROKEE LETTER TLI
+    "\u13e2": "p",  # CHEROKEE LETTER TLV
+    "\u13e6": "k",  # CHEROKEE LETTER TSO
+    "\u13e7": "d",  # CHEROKEE LETTER TSU
+    "\u13ee": "6",  # CHEROKEE LETTER WV
+    "\u13f3": "g",  # CHEROKEE LETTER YU
+    "\u13f4": "b",  # CHEROKEE LETTER YV
+    "\u142f": "v",  # CANADIAN SYLLABICS PE
+    "\u144c": "u",  # CANADIAN SYLLABICS TE
+    "\u146d": "p",  # CANADIAN SYLLABICS KI
+    "\u146f": "d",  # CANADIAN SYLLABICS KO
+    "\u1472": "b",  # CANADIAN SYLLABICS KA
+    "\u148d": "j",  # CANADIAN SYLLABICS CO
+    "\u14aa": "l",  # CANADIAN SYLLABICS MA
+    "\u14bf": "2",  # CANADIAN SYLLABICS SAYISI M
+    "\u1541": "x",  # CANADIAN SYLLABICS SAYISI YI
+    "\u157c": "h",  # CANADIAN SYLLABICS NUNAVUT H
+    "\u157d": "x",  # CANADIAN SYLLABICS HK
+    "\u1587": "r",  # CANADIAN SYLLABICS TLHI
+    "\u15af": "b",  # CANADIAN SYLLABICS AIVILIK B
+    "\u15b4": "f",  # CANADIAN SYLLABICS BLACKFOOT WE
+    "\u15c5": "a",  # CANADIAN SYLLABICS CARRIER GHO
+    "\u15de": "d",  # CANADIAN SYLLABICS CARRIER THE
+    "\u15ea": "d",  # CANADIAN SYLLABICS CARRIER PE
+    "\u15f0": "m",  # CANADIAN SYLLABICS CARRIER GO
+    "\u15f7": "b",  # CANADIAN SYLLABICS CARRIER KHE
+    "\u1616": "2",  # CANADIAN SYLLABICS CARRIER JO
+    "\u166d": "x",  # CANADIAN SYLLABICS CHI SIGN
+    "\u166e": "x",  # CANADIAN SYLLABICS FULL STOP
+    "\u16b7": "x",  # RUNIC LETTER GEBO GYFU G
+    "\u16c1": "l",  # RUNIC LETTER ISAZ IS ISS I
+    "\u16d0": "l",  # RUNIC LETTER SHORT-TWIG-TYR T
+    "\u16d5": "k",  # RUNIC LETTER OPEN-P
+    "\u16d6": "m",  # RUNIC LETTER EHWAZ EH E
+    "\u1702": "3",  # TAGALOG LETTER U
+    "\u172a": "7",  # HANUNOO LETTER BA
+    "\u174d": "-",  # BUHID LETTER RA
+    "\u1763": "x",  # TAGBANWA LETTER KA
+    "\u17e0": "o",  # KHMER DIGIT ZERO
+    "\u1a45": "o",  # TAI THAM LETTER WA
+    "\u1a80": "o",  # TAI THAM HORA DIGIT ZERO
+    "\u1a90": "o",  # TAI THAM THAM DIGIT ZERO
+    "\u1bea": "o",  # BATAK VOWEL SIGN I
+    "\u1bec": "x",  # BATAK VOWEL SIGN O
+    "\u1bf3": "-",  # BATAK PANONGONAN
+    "\u1cf5": "x",  # VEDIC SIGN JIHVAMULIYA
+    "\u1d04": "c",  # LATIN LETTER SMALL CAPITAL C
+    "\u1d0f": "o",  # LATIN LETTER SMALL CAPITAL O
+    "\u1d11": "o",  # LATIN SMALL LETTER SIDEWAYS O
+    "\u1d1c": "u",  # LATIN LETTER SMALL CAPITAL U
+    "\u1d20": "v",  # LATIN LETTER SMALL CAPITAL V
+    "\u1d21": "w",  # LATIN LETTER SMALL CAPITAL W
+    "\u1d22": "z",  # LATIN LETTER SMALL CAPITAL Z
+    "\u1d26": "r",  # GREEK LETTER SMALL CAPITAL GAMMA
+    "\u1d6b": "ue",  # LATIN SMALL LETTER UE
+    "\u1d83": "g",  # LATIN SMALL LETTER G WITH PALATAL HOOK
+    "\u1d8c": "y",  # LATIN SMALL LETTER V WITH PALATAL HOOK
+    "\u1e9d": "f",  # LATIN SMALL LETTER LONG S WITH HIGH STROKE
+    "\u1efb": "ll",  # LATIN CAPITAL LETTER MIDDLE-WELSH LL
+    "\u1eff": "y",  # LATIN SMALL LETTER Y WITH LOOP
+    "\u2010": "-",  # HYPHEN
+    "\u2012": "-",  # FIGURE DASH
+    "\u2013": "-",  # EN DASH
+    "\u2016": "ll",  # DOUBLE VERTICAL LINE
+    "\u2043": "-",  # HYPHEN BULLET
+    "\u20b6": "lt",  # LIVRE TOURNOIS SIGN
+    "\u212e": "e",  # ESTIMATED SYMBOL
+    "\u21bf": "l",  # UPWARDS HARPOON WITH BARB LEFTWARDS
+    "\u2212": "-",  # MINUS SIGN
+    "\u221e": "oo",  # INFINITY
+    "\u2223": "l",  # DIVIDES
+    "\u2225": "ll",  # PARALLEL TO
+    "\u2228": "v",  # LOGICAL OR
+    "\u222a": "u",  # UNION
+    "\u22a4": "t",  # DOWN TACK
+    "\u22c1": "v",  # N-ARY LOGICAL OR
+    "\u22c3": "u",  # N-ARY UNION
+    "\u22ff": "e",  # Z NOTATION BAG MEMBERSHIP
+    "\u2373": "l",  # APL FUNCTIONAL SYMBOL IOTA
+    "\u2374": "p",  # APL FUNCTIONAL SYMBOL RHO
+    "\u237a": "a",  # APL FUNCTIONAL SYMBOL ALPHA
+    "\u23fd": "l",  # POWER ON SYMBOL
+    "\u2502": "l",  # BOX DRAWINGS LIGHT VERTICAL
+    "\u2503": "l",  # BOX DRAWINGS HEAVY VERTICAL
+    "\u2573": "x",  # BOX DRAWINGS LIGHT DIAGONAL CROSS
+    "\u2796": "-",  # HEAVY MINUS SIGN
+    "\u27d9": "t",  # LARGE DOWN TACK
+    "\u292b": "x",  # RISING DIAGONAL CROSSING FALLING DIAGONAL
+    "\u292c": "x",  # FALLING DIAGONAL CROSSING RISING DIAGONAL
+    "\u29e2": "w",  # SHUFFLE PRODUCT
+    "\u2a2f": "x",  # VECTOR OR CROSS PRODUCT
+    "\u2c6c": "z",  # LATIN SMALL LETTER Z WITH DESCENDER
+    "\u2c83": "b",  # COPTIC CAPITAL LETTER VIDA
+    "\u2c85": "r",  # COPTIC SMALL LETTER GAMMA
+    "\u2c8d": "z",  # COPTIC SMALL LETTER ZATA
+    "\u2c8f": "h",  # COPTIC CAPITAL LETTER HATE
+    "\u2c93": "l",  # COPTIC SMALL LETTER IAUDA
+    "\u2c95": "k",  # COPTIC CAPITAL LETTER KAPA
+    "\u2c99": "m",  # COPTIC CAPITAL LETTER MI
+    "\u2c9b": "n",  # COPTIC CAPITAL LETTER NI
+    "\u2c9d": "3",  # COPTIC CAPITAL LETTER KSI
+    "\u2c9f": "o",  # COPTIC SMALL LETTER O
+    "\u2ca3": "p",  # COPTIC SMALL LETTER RO
+    "\u2ca5": "c",  # COPTIC SMALL LETTER SIMA
+    "\u2ca7": "t",  # COPTIC CAPITAL LETTER TAU
+    "\u2ca9": "y",  # COPTIC SMALL LETTER UA
+    "\u2cad": "x",  # COPTIC CAPITAL LETTER KHI
+    "\u2cbb": "-",  # COPTIC SMALL LETTER DIALECT-P NI
+    "\u2cbd": "w",  # COPTIC SMALL LETTER CRYPTOGRAMMIC NI
+    "\u2cc5": "3",  # COPTIC CAPITAL LETTER OLD COPTIC SHEI
+    "\u2ccb": "9",  # COPTIC SMALL LETTER DIALECT-P HORI
+    "\u2ccd": "3",  # COPTIC CAPITAL LETTER OLD COPTIC HORI
+    "\u2ccf": "p",  # COPTIC SMALL LETTER OLD COPTIC HA
+    "\u2cd1": "l",  # COPTIC CAPITAL LETTER L-SHAPED HA
+    "\u2cd3": "6",  # COPTIC SMALL LETTER OLD COPTIC HEI
+    "\u2cdd": "6",  # COPTIC CAPITAL LETTER OLD NUBIAN SHIMA
+    "\u2d19": "h",  # GEORGIAN CAPITAL LETTER CHIN
+    "\u2d1d": "s",  # GEORGIAN CAPITAL LETTER CHAR
+    "\u2d27": "2",  # GEORGIAN CAPITAL LETTER YN
+    "\u2d2d": "z",  # GEORGIAN SMALL LETTER AEN
+    "\u2d38": "v",  # TIFINAGH LETTER YADH
+    "\u2d39": "e",  # TIFINAGH LETTER YADD
+    "\u2d4a": "l",  # TIFINAGH LETTER YAZH
+    "\u2d4f": "l",  # TIFINAGH LETTER YAN
+    "\u2d54": "o",  # TIFINAGH LETTER YAR
+    "\u2d55": "q",  # TIFINAGH LETTER YARR
+    "\u2d5d": "x",  # TIFINAGH LETTER YATH
+    "\u3007": "o",  # IDEOGRAPHIC NUMBER ZERO
+    "\u3112": "t",  # BOPOMOFO LETTER X
+    "\u311a": "y",  # BOPOMOFO LETTER A
+    "\u4e05": "t",  # CJK UNIFIED IDEOGRAPH-4E05
+    "\u4e2b": "y",  # CJK UNIFIED IDEOGRAPH-4E2B
+    "\ua4d0": "b",  # LISU LETTER BA
+    "\ua4d1": "p",  # LISU LETTER PA
+    "\ua4d2": "d",  # LISU LETTER PHA
+    "\ua4d3": "d",  # LISU LETTER DA
+    "\ua4d4": "t",  # LISU LETTER TA
+    "\ua4d6": "g",  # LISU LETTER GA
+    "\ua4d7": "k",  # LISU LETTER KA
+    "\ua4d9": "j",  # LISU LETTER JA
+    "\ua4da": "c",  # LISU LETTER CA
+    "\ua4dc": "z",  # LISU LETTER DZA
+    "\ua4dd": "f",  # LISU LETTER TSA
+    "\ua4df": "m",  # LISU LETTER MA
+    "\ua4e0": "n",  # LISU LETTER NA
+    "\ua4e1": "l",  # LISU LETTER LA
+    "\ua4e2": "s",  # LISU LETTER SA
+    "\ua4e3": "r",  # LISU LETTER ZHA
+    "\ua4e6": "v",  # LISU LETTER HA
+    "\ua4e7": "h",  # LISU LETTER XA
+    "\ua4ea": "w",  # LISU LETTER WA
+    "\ua4eb": "x",  # LISU LETTER SHA
+    "\ua4ec": "y",  # LISU LETTER YA
+    "\ua4ee": "a",  # LISU LETTER A
+    "\ua4f0": "e",  # LISU LETTER E
+    "\ua4f2": "l",  # LISU LETTER I
+    "\ua4f3": "o",  # LISU LETTER O
+    "\ua4f4": "u",  # LISU LETTER U
+    "\ua4f8": ".",  # LISU LETTER TONE MYA TI
+    "\ua4fa": "..",  # LISU LETTER TONE MYA CYA
+    "\ua4fe": "-.",  # LISU PUNCTUATION COMMA
+    "\ua50b": "t",  # VAI SYLLABLE GBEE
+    "\ua516": "lll",  # VAI SYLLABLE SEE
+    "\ua543": "6",  # VAI SYLLABLE KI
+    "\ua557": "b",  # VAI SYLLABLE GBA
+    "\ua56f": "l",  # VAI SYLLABLE NA
+    "\ua576": "s",  # VAI SYLLABLE POO
+    "\ua589": "8",  # VAI SYLLABLE ZOO
+    "\ua5cb": "e",  # VAI SYLLABLE TO
+    "\ua60e": ".",  # VAI FULL STOP
+    "\ua645": "2",  # CYRILLIC CAPITAL LETTER REVERSED DZE
+    "\ua647": "l",  # CYRILLIC SMALL LETTER IOTA
+    "\ua699": "oo",  # CYRILLIC SMALL LETTER DOUBLE O
+    "\ua6c9": "z",  # BAMUM LETTER WUE
+    "\ua6df": "v",  # BAMUM LETTER KO
+    "\ua6ef": "2",  # BAMUM LETTER KOGHOM
+    "\ua729": "t3",  # LATIN CAPITAL LETTER TZ
+    "\ua731": "s",  # LATIN LETTER SMALL CAPITAL S
+    "\ua733": "aa",  # LATIN SMALL LETTER AA
+    "\ua735": "ao",  # LATIN SMALL LETTER AO
+    "\ua737": "au",  # LATIN SMALL LETTER AU
+    "\ua739": "av",  # LATIN SMALL LETTER AV
+    "\ua73b": "av",  # LATIN SMALL LETTER AV WITH HORIZONTAL BAR
+    "\ua73d": "ay",  # LATIN SMALL LETTER AY
+    "\ua74f": "oo",  # LATIN SMALL LETTER OO
+    "\ua75b": "2",  # LATIN CAPITAL LETTER R ROTUNDA
+    "\ua76b": "3",  # LATIN CAPITAL LETTER ET
+    "\ua76f": "9",  # LATIN SMALL LETTER CON
+    "\ua777": "tf",  # LATIN SMALL LETTER TUM
+    "\ua781": "l",  # LATIN SMALL LETTER TURNED L
+    "\ua799": "f",  # LATIN SMALL LETTER F WITH STROKE
+    "\ua79f": "u",  # LATIN SMALL LETTER VOLAPUK UE
+    "\ua7b5": "b",  # LATIN CAPITAL LETTER BETA
+    "\ua7fa": "w",  # LATIN LETTER SMALL CAPITAL TURNED M
+    "\ua7fe": "l",  # LATIN EPIGRAPHIC LETTER I LONGA
+    "\ua830": "l",  # NORTH INDIC FRACTION ONE QUARTER
+    "\ua8ce": "l",  # SAURASHTRA DANDA
+    "\ua8cf": "ll",  # SAURASHTRA DOUBLE DANDA
+    "\uaa5d": "l",  # CHAM PUNCTUATION DANDA
+    "\uaa7d": "-",  # MYANMAR SIGN TAI LAING TONE-5
+    "\uab32": "e",  # LATIN SMALL LETTER BLACKLETTER E
+    "\uab35": "f",  # LATIN SMALL LETTER LENIS F
+    "\uab3d": "o",  # LATIN SMALL LETTER BLACKLETTER O
+    "\uab43": "co",  # LATIN SMALL LETTER TURNED O OPEN-O
+    "\uab47": "r",  # LATIN SMALL LETTER R WITHOUT HANDLE
+    "\uab48": "r",  # LATIN SMALL LETTER DOUBLE R
+    "\uab4e": "u",  # LATIN SMALL LETTER U WITH SHORT RIGHT LEG
+    "\uab52": "u",  # LATIN SMALL LETTER U WITH LEFT HOOK
+    "\uab53": "x",  # LATIN CAPITAL LETTER CHI
+    "\uab5a": "y",  # LATIN SMALL LETTER Y WITH SHORT RIGHT LEG
+    "\uab63": "uo",  # LATIN SMALL LETTER UO
+    "\uab64": "a",  # LATIN SMALL LETTER INVERTED ALPHA
+    "\uabec": ".",  # MEETEI MAYEK LUM IYEK
+    "\U0001017e": "f",  # GREEK THREE OBOLS SIGN
+    "\U0001018b": "d",  # GREEK ONE QUARTER SIGN
+    "\U00010191": "-",  # ROMAN UNCIA SIGN
+    "\U00010282": "b",  # LYCIAN LETTER B
+    "\U00010286": "e",  # LYCIAN LETTER I
+    "\U00010287": "f",  # LYCIAN LETTER W
+    "\U0001028a": "l",  # LYCIAN LETTER J
+    "\U00010290": "x",  # LYCIAN LETTER MM
+    "\U00010292": "o",  # LYCIAN LETTER U
+    "\U00010295": "p",  # LYCIAN LETTER R
+    "\U00010296": "s",  # LYCIAN LETTER S
+    "\U00010297": "t",  # LYCIAN LETTER T
+    "\U000102a0": "a",  # CARIAN LETTER A
+    "\U000102a1": "b",  # CARIAN LETTER P2
+    "\U000102a2": "c",  # CARIAN LETTER D
+    "\U000102a5": "f",  # CARIAN LETTER R
+    "\U000102ab": "o",  # CARIAN LETTER O
+    "\U000102b0": "m",  # CARIAN LETTER S
+    "\U000102b1": "t",  # CARIAN LETTER C-18
+    "\U000102b2": "y",  # CARIAN LETTER U
+    "\U000102b4": "x",  # CARIAN LETTER X
+    "\U000102cf": "h",  # CARIAN LETTER E2
+    "\U000102f5": "z",  # COPTIC EPACT NUMBER THREE HUNDRED
+    "\U00010301": "b",  # OLD ITALIC LETTER BE
+    "\U00010302": "c",  # OLD ITALIC LETTER KE
+    "\U00010309": "l",  # OLD ITALIC LETTER I
+    "\U0001030f": "o",  # OLD ITALIC LETTER O
+    "\U00010311": "m",  # OLD ITALIC LETTER SHE
+    "\U00010315": "t",  # OLD ITALIC LETTER TE
+    "\U00010317": "x",  # OLD ITALIC LETTER EKS
+    "\U0001031a": "8",  # OLD ITALIC LETTER EF
+    "\U0001031c": "b",  # OLD ITALIC LETTER CHE
+    "\U00010320": "l",  # OLD ITALIC NUMERAL ONE
+    "\U00010322": "x",  # OLD ITALIC NUMERAL TEN
+    "\U0001042c": "o",  # DESERET SMALL LETTER LONG O
+    "\U0001043d": "c",  # DESERET SMALL LETTER CHEE
+    "\U00010443": "l",  # DESERET CAPITAL LETTER ETH
+    "\U00010448": "s",  # DESERET SMALL LETTER ZHEE
+    "\U000104dc": "r",  # OSAGE CAPITAL LETTER BRA
+    "\U000104ea": "o",  # OSAGE SMALL LETTER O
+    "\U000104f6": "u",  # OSAGE SMALL LETTER U
+    "\U000104fa": "7",  # OSAGE CAPITAL LETTER ZA
+    "\U00010507": "z",  # ELBASAN LETTER EI
+    "\U0001050e": "l",  # ELBASAN LETTER JE
+    "\U00010513": "n",  # ELBASAN LETTER NE
+    "\U00010516": "o",  # ELBASAN LETTER O
+    "\U00010518": "k",  # ELBASAN LETTER QE
+    "\U0001051b": "c",  # ELBASAN LETTER SE
+    "\U0001051d": "v",  # ELBASAN LETTER TE
+    "\U00010525": "f",  # ELBASAN LETTER GHE
+    "\U00010526": "l",  # ELBASAN LETTER GHAMMA
+    "\U00010527": "x",  # ELBASAN LETTER KHE
+    "\U00010926": "l",  # LYDIAN LETTER I
+    "\U0001092c": "o",  # LYDIAN LETTER O
+    "\U00010a50": ".",  # KHAROSHTHI PUNCTUATION DOT
+    "\U00010c13": "x",  # OLD TURKIC LETTER ORKHON AED
+    "\U00010c17": "o",  # OLD TURKIC LETTER YENISEI AY
+    "\U00010c1f": "v",  # OLD TURKIC LETTER YENISEI AL
+    "\U00010c20": "y",  # OLD TURKIC LETTER ORKHON AEL
+    "\U00010c21": "m",  # OLD TURKIC LETTER ORKHON ELT
+    "\U00010c3e": "l",  # OLD TURKIC LETTER ORKHON AES
+    "\U00010cc2": "x",  # OLD HUNGARIAN SMALL LETTER EB
+    "\U00010ce5": "l",  # OLD HUNGARIAN CAPITAL LETTER ESZ
+    "\U00010cfa": "l",  # OLD HUNGARIAN NUMBER ONE
+    "\U00010cfc": "x",  # OLD HUNGARIAN NUMBER TEN
+    "\U00010d07": "o",  # HANIFI ROHINGYA LETTER HA
+    "\U00011047": "l",  # BRAHMI DANDA
+    "\U00011048": "ll",  # BRAHMI DOUBLE DANDA
+    "\U000110c0": "l",  # KAITHI DANDA
+    "\U000110c1": "ll",  # KAITHI DOUBLE DANDA
+    "\U00011124": "o",  # CHAKMA LETTER WAA
+    "\U00011141": "l",  # CHAKMA DANDA
+    "\U00011142": "ll",  # CHAKMA DOUBLE DANDA
+    "\U000111c5": "l",  # SHARADA DANDA
+    "\U000111c6": "ll",  # SHARADA DOUBLE DANDA
+    "\U00011302": "o",  # GRANTHA SIGN ANUSVARA
+    "\U000113d4": "l",  # TULU-TIGALARI DANDA
+    "\U000113d5": "ll",  # TULU-TIGALARI DOUBLE DANDA
+    "\U00011445": "8",  # NEWA SIGN VISARGA
+    "\U0001144b": "l",  # NEWA DANDA
+    "\U0001144c": "ll",  # NEWA DOUBLE DANDA
+    "\U000114d0": "o",  # TIRHUTA DIGIT ZERO
+    "\U000115c5": "l",  # SIDDHAM SEPARATOR BAR
+    "\U00011641": "l",  # MODI DANDA
+    "\U00011642": "ll",  # MODI DOUBLE DANDA
+    "\U00011700": "rn",  # AHOM LETTER KA
+    "\U00011706": "v",  # AHOM LETTER PA
+    "\U0001170a": "w",  # AHOM LETTER JA
+    "\U0001170e": "w",  # AHOM LETTER LA
+    "\U0001170f": "w",  # AHOM LETTER SA
+    "\U000118c0": "v",  # WARANG CITI SMALL LETTER NGAA
+    "\U000118c1": "s",  # WARANG CITI SMALL LETTER A
+    "\U000118c2": "f",  # WARANG CITI SMALL LETTER WI
+    "\U000118c3": "l",  # WARANG CITI SMALL LETTER YU
+    "\U000118c4": "y",  # WARANG CITI SMALL LETTER YA
+    "\U000118c6": "7",  # WARANG CITI SMALL LETTER II
+    "\U000118c8": "o",  # WARANG CITI SMALL LETTER E
+    "\U000118c9": "z",  # WARANG CITI CAPITAL LETTER O
+    "\U000118ca": "3",  # WARANG CITI SMALL LETTER ANG
+    "\U000118cc": "9",  # WARANG CITI SMALL LETTER KO
+    "\U000118ce": "e",  # WARANG CITI CAPITAL LETTER YUJ
+    "\U000118cf": "4",  # WARANG CITI CAPITAL LETTER UC
+    "\U000118d2": "l",  # WARANG CITI CAPITAL LETTER TTE
+    "\U000118d5": "6",  # WARANG CITI SMALL LETTER AT
+    "\U000118d6": "9",  # WARANG CITI SMALL LETTER AM
+    "\U000118d7": "o",  # WARANG CITI SMALL LETTER BU
+    "\U000118d8": "u",  # WARANG CITI SMALL LETTER PU
+    "\U000118db": "5",  # WARANG CITI CAPITAL LETTER HORR
+    "\U000118dc": "y",  # WARANG CITI SMALL LETTER HAR
+    "\U000118e0": "o",  # WARANG CITI DIGIT ZERO
+    "\U000118e3": "rn",  # WARANG CITI DIGIT THREE
+    "\U000118e5": "z",  # WARANG CITI DIGIT FIVE
+    "\U000118e6": "w",  # WARANG CITI DIGIT SIX
+    "\U000118e9": "c",  # WARANG CITI DIGIT NINE
+    "\U000118ec": "x",  # WARANG CITI NUMBER THIRTY
+    "\U000118ef": "w",  # WARANG CITI NUMBER SIXTY
+    "\U000118f2": "c",  # WARANG CITI NUMBER NINETY
+    "\U00011abc": "z",  # CANADIAN SYLLABICS SPE
+    "\U00011abe": "n",  # CANADIAN SYLLABICS SPO
+    "\U00011c41": "l",  # BHAIKSUKI DANDA
+    "\U00011c42": "ll",  # BHAIKSUKI DOUBLE DANDA
+    "\U00011dda": "l",  # TOLONG SIKI SIGN HECAKA
+    "\U00011de0": "o",  # TOLONG SIKI DIGIT ZERO
+    "\U00011de1": "l",  # TOLONG SIKI DIGIT ONE
+    "\U000169c1": "9",  # BAMUM LETTER PHASE-E NZUQ
+    "\U000169fe": "8",  # BAMUM LETTER PHASE-E KI
+    "\U00016a19": "r",  # BAMUM LETTER PHASE-F NU
+    "\U00016ad6": "s",  # BASSA VAH LETTER GAH
+    "\U00016ae9": "o",  # BASSA VAH LETTER OO
+    "\U00016d63": "l",  # KIRAT RAI VOWEL SIGN AA
+    "\U00016e82": "4",  # MEDEFAIDRIN DIGIT TWO
+    "\U00016e8a": "7",  # MEDEFAIDRIN NUMBER TEN
+    "\U00016eaa": "l",  # BERIA ERFE CAPITAL LETTER LAKKO
+    "\U00016eb6": "b",  # BERIA ERFE CAPITAL LETTER UI
+    "\U00016f08": "v",  # MIAO LETTER VA
+    "\U00016f0a": "t",  # MIAO LETTER TA
+    "\U00016f16": "l",  # MIAO LETTER LA
+    "\U00016f28": "l",  # MIAO LETTER GHA
+    "\U00016f35": "r",  # MIAO LETTER ZHA
+    "\U00016f3a": "s",  # MIAO LETTER SA
+    "\U00016f3b": "3",  # MIAO LETTER ZA
+    "\U00016f40": "a",  # MIAO LETTER ZZYA
+    "\U00016f42": "u",  # MIAO LETTER WA
+    "\U00016f43": "y",  # MIAO LETTER AH
+    "\U0001ccd6": "a",  # OUTLINED LATIN CAPITAL LETTER A
+    "\U0001ccd7": "b",  # OUTLINED LATIN CAPITAL LETTER B
+    "\U0001ccd8": "c",  # OUTLINED LATIN CAPITAL LETTER C
+    "\U0001ccd9": "d",  # OUTLINED LATIN CAPITAL LETTER D
+    "\U0001ccda": "e",  # OUTLINED LATIN CAPITAL LETTER E
+    "\U0001ccdb": "f",  # OUTLINED LATIN CAPITAL LETTER F
+    "\U0001ccdc": "g",  # OUTLINED LATIN CAPITAL LETTER G
+    "\U0001ccdd": "h",  # OUTLINED LATIN CAPITAL LETTER H
+    "\U0001ccde": "l",  # OUTLINED LATIN CAPITAL LETTER I
+    "\U0001ccdf": "j",  # OUTLINED LATIN CAPITAL LETTER J
+    "\U0001cce0": "k",  # OUTLINED LATIN CAPITAL LETTER K
+    "\U0001cce1": "l",  # OUTLINED LATIN CAPITAL LETTER L
+    "\U0001cce2": "m",  # OUTLINED LATIN CAPITAL LETTER M
+    "\U0001cce3": "n",  # OUTLINED LATIN CAPITAL LETTER N
+    "\U0001cce4": "o",  # OUTLINED LATIN CAPITAL LETTER O
+    "\U0001cce5": "p",  # OUTLINED LATIN CAPITAL LETTER P
+    "\U0001cce6": "q",  # OUTLINED LATIN CAPITAL LETTER Q
+    "\U0001cce7": "r",  # OUTLINED LATIN CAPITAL LETTER R
+    "\U0001cce8": "s",  # OUTLINED LATIN CAPITAL LETTER S
+    "\U0001cce9": "t",  # OUTLINED LATIN CAPITAL LETTER T
+    "\U0001ccea": "u",  # OUTLINED LATIN CAPITAL LETTER U
+    "\U0001cceb": "v",  # OUTLINED LATIN CAPITAL LETTER V
+    "\U0001ccec": "w",  # OUTLINED LATIN CAPITAL LETTER W
+    "\U0001cced": "x",  # OUTLINED LATIN CAPITAL LETTER X
+    "\U0001ccee": "y",  # OUTLINED LATIN CAPITAL LETTER Y
+    "\U0001ccef": "z",  # OUTLINED LATIN CAPITAL LETTER Z
+    "\U0001ccf0": "o",  # OUTLINED DIGIT ZERO
+    "\U0001ccf1": "l",  # OUTLINED DIGIT ONE
+    "\U0001ccf2": "2",  # OUTLINED DIGIT TWO
+    "\U0001ccf3": "3",  # OUTLINED DIGIT THREE
+    "\U0001ccf4": "4",  # OUTLINED DIGIT FOUR
+    "\U0001ccf5": "5",  # OUTLINED DIGIT FIVE
+    "\U0001ccf6": "6",  # OUTLINED DIGIT SIX
+    "\U0001ccf7": "7",  # OUTLINED DIGIT SEVEN
+    "\U0001ccf8": "8",  # OUTLINED DIGIT EIGHT
+    "\U0001ccf9": "9",  # OUTLINED DIGIT NINE
+    "\U0001cefc": "v",  # ANGLE OPENING UP
+    "\U0001d100": "l",  # MUSICAL SYMBOL SINGLE BARLINE
+    "\U0001d134": "c",  # MUSICAL SYMBOL COMMON TIME
+    "\U0001d16d": ".",  # MUSICAL SYMBOL COMBINING AUGMENTATION DOT
+    "\U0001d1fe": "7",  # MUSICAL SYMBOL DIGIT SEVEN WITH LOW STROKE
+    "\U0001d206": "3",  # GREEK VOCAL NOTATION SYMBOL-7
+    "\U0001d207": "b",  # GREEK VOCAL NOTATION SYMBOL-8
+    "\U0001d20c": "w",  # GREEK VOCAL NOTATION SYMBOL-13
+    "\U0001d20d": "v",  # GREEK VOCAL NOTATION SYMBOL-14
+    "\U0001d212": "7",  # GREEK VOCAL NOTATION SYMBOL-19
+    "\U0001d213": "f",  # GREEK VOCAL NOTATION SYMBOL-20
+    "\U0001d216": "r",  # GREEK VOCAL NOTATION SYMBOL-23
+    "\U0001d22a": "l",  # GREEK INSTRUMENTAL NOTATION SYMBOL-23
+    "\U0001d262": "ll",  # MUSICAL SYMBOL HEAVY DOUBLE BARLINE
+    "\U0001d373": "t",  # IDEOGRAPHIC TALLY MARK TWO
+    "\U0001d377": "l",  # TALLY MARK ONE
+    "\U0001df5a": "a",  # LATIN SMALL LETTER HALF A
+    "\U0001df5d": "le",  # LATIN SMALL LETTER IE
+    "\U0001df5e": "ol",  # LATIN SMALL LETTER OI DIGRAPH
+    "\U0001df5f": "ou",  # LATIN SMALL LETTER OU DIGRAPH
+    "\U0001df64": "th",  # LATIN SMALL LETTER REVERSED T-H DIGRAPH
+    "\U0001df65": "wh",  # LATIN SMALL LETTER WH DIGRAPH
+    "\U0001df6a": "a",  # LATIN CAPITAL LETTER PHONOTYPIC ROUNDTOP A
+    "\U0001df7d": "w",  # LATIN SMALL LETTER U WITH NOTCH AT BOTTOM
+    "\U0001df81": "e",  # LATIN CAPITAL LETTER E WITH BENT TOPBAR
+    "\U0001e140": "o",  # NYIAKENG PUACHUE HMONG DIGIT ZERO
+    "\U0001e141": "l",  # NYIAKENG PUACHUE HMONG DIGIT ONE
+    "\U0001e145": "v",  # NYIAKENG PUACHUE HMONG DIGIT FIVE
+    "\U0001e2f0": "o",  # WANCHO DIGIT ZERO
+    "\U0001e2f2": "9",  # WANCHO DIGIT TWO
+    "\U0001e8c7": "l",  # MENDE KIKAKUI DIGIT ONE
+    "\U0001e8cb": "8",  # MENDE KIKAKUI DIGIT FIVE
+    "\U0001ecae": ".",  # INDIC SIYAQ FRACTION ONE HALF
+    "\U0001ed01": "l",  # OTTOMAN SIYAQ NUMBER ONE
+    "\U0001f700": "qe",  # ALCHEMICAL SYMBOL FOR QUINTESSENCE
+    "\U0001f707": "ar",  # ALCHEMICAL SYMBOL FOR AQUA REGIA-2
+    "\U0001f74c": "c",  # ALCHEMICAL SYMBOL FOR CALX
+    "\U0001f75c": "sss",  # ALCHEMICAL SYMBOL FOR STRATUM SUPER STRATUM
+    "\U0001f768": "t",  # ALCHEMICAL SYMBOL FOR CRUCIBLE-4
+    "\U0001f76b": "mb",  # ALCHEMICAL SYMBOL FOR BATH OF MARY
+    "\U0001f76c": "vb",  # ALCHEMICAL SYMBOL FOR BATH OF VAPOURS
+}

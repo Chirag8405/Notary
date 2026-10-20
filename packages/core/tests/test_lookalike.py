@@ -1,11 +1,14 @@
 from typing import get_args
 
 import pytest
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from notary_core._confusables_data import SKELETON
 from notary_core.lookalike import (
+    CONFUSABLES,
     LOOKALIKE_CONFIG,
+    MULTI_CONFUSABLES,
     is_lookalike,
     nearest_known,
     normalize_for_match,
@@ -322,3 +325,123 @@ def test_is_lookalike_and_nearest_known_never_raise(
     else:
         assert nearest[0] in known
         assert all(0 <= i < len(candidate) for i in nearest[1])
+
+
+# --- Unicode confusables data (issue #299) -----------------------------------------------
+
+
+def _norm(s: str) -> str:
+    return normalize_for_match(HOST, s)
+
+
+_REVERSE: dict[str, list[str]] = {}
+for _key, _value in sorted(SKELETON.items()):
+    if len(_value) == 1:
+        _REVERSE.setdefault(_value, []).append(_key)
+# Letters the table never rewrites and that no sequence rule touches (not r, n, v, c, l, i).
+_STABLE_LETTERS = "abdefghjkmopqstuwxyz"
+
+
+@pytest.mark.attack("A8")
+@pytest.mark.parametrize(
+    ("lookalike", "genuine"),
+    [
+        ("\u0440\u0430\u0443\u0440\u0430\u04cf.com", "paypal.com"),  # Cyrillic, palochka as l
+        ("\u0440\u0430ypa\u04cf.com", "paypal.com"),
+        ("\u03c1ay\u03c1al.com", "paypal.com"),  # Greek rho
+        ("g\u03bf\u03bfgle.com", "google.com"),  # Greek omicron twice
+        ("\u0261oogle.com", "google.com"),  # Latin script g, listed by Unicode only
+        ("g\u0585\u0585gle.com", "google.com"),  # Armenian oh
+        ("\uff50\uff41\uff59\uff50\uff41\uff4c.\uff43\uff4f\uff4d", "paypal.com"),  # fullwidth
+        ("\U0001d429\U0001d41a\U0001d432\U0001d429\U0001d41a\U0001d425.com", "paypal.com"),  # bold
+        ("my\u2010bank.com", "my-bank.com"),  # hyphen lookalike
+        ("exampl\u0435.com", "example.com"),  # Cyrillic e
+    ],
+)
+def test_script_and_width_lookalikes_of_a_domain(lookalike: str, genuine: str) -> None:
+    assert _norm(lookalike) == _norm(genuine)
+
+
+@pytest.mark.attack("A8")
+def test_name_lookalikes_share_a_skeleton() -> None:
+    genuine = normalize_for_match("identifier", "Alice Smith")
+    for variant in (
+        "A\u04cfice Smith",  # palochka for l
+        "\u0410lice Smith",  # Cyrillic capital A
+        "Al\u0456ce Smith",  # Cyrillic i
+        "Alice Sm\u0456th",
+        "\uff21lice Smith",  # fullwidth A
+        "Alic\u0435 \u0455mith",  # Cyrillic e and dze
+    ):
+        assert normalize_for_match("identifier", variant) == genuine, variant
+
+
+@pytest.mark.attack("A8")
+def test_homoglyph_domain_name_and_email_are_flagged() -> None:
+    domain = is_lookalike(HOST, "p\u0430yp\u0430\u04cf.com", ["paypal.com"])
+    assert domain is not None
+    assert (domain.distance, domain.confusable_equal) == (0, True)
+    name = is_lookalike("identifier", "\u0410lic\u0435 Smith", ["Alice Smith"])
+    assert name is not None
+    assert name.confusable_equal is True
+    email = is_lookalike("email", "al\u0456ce@example.com", ["alice@example.com"])
+    assert email is not None
+    assert email.confusable_equal is True
+
+
+@pytest.mark.attack("A8")
+def test_distinct_names_and_domains_stay_distinct() -> None:
+    assert _norm("paypal.com") != _norm("paypa.com")
+    assert _norm("example.com") != _norm("example.org")
+    assert is_lookalike("identifier", "Bob Jones", ["Alice Smith"]) is None
+
+
+@pytest.mark.attack("A8")
+def test_exact_units_still_ignore_the_confusables_table() -> None:
+    for unit in ("iban", "amount"):
+        assert normalize_for_match(unit, "\u043e") != normalize_for_match(unit, "o")
+        assert normalize_for_match(unit, "1") != normalize_for_match(unit, "l")
+        assert normalize_for_match(unit, "0") != normalize_for_match(unit, "o")
+    cyrillic_e = is_lookalike("iban", IBAN.replace("DE", "D\u0415"), [IBAN])
+    assert cyrillic_e is not None  # one edit, not a fold
+    assert cyrillic_e.confusable_equal is False
+
+
+@pytest.mark.attack("A8")
+@given(
+    st.text(alphabet=st.sampled_from(sorted(SKELETON)) | st.sampled_from("abc01 .-"), max_size=24)
+)
+def test_normalize_is_idempotent_over_table_characters(s: str) -> None:
+    for unit in get_args(DecisionUnit):
+        once = normalize_for_match(unit, s)
+        assert normalize_for_match(unit, once) == once
+
+
+@pytest.mark.attack("A8")
+@given(st.data())
+def test_identical_skeletons_compare_equal(data: st.DataObject) -> None:
+    base = data.draw(st.text(alphabet=_STABLE_LETTERS, min_size=8, max_size=16))
+    variant = "".join(data.draw(st.sampled_from([ch, *_REVERSE.get(ch, [])])) for ch in base)
+    assert _norm(variant) == _norm(base) == base
+    if variant != base:
+        match = is_lookalike(HOST, variant, [base])
+        assert match is not None
+        assert (match.distance, match.confusable_equal) == (0, True)
+
+
+@pytest.mark.attack("A8")
+@given(st.text(alphabet=st.characters(min_codepoint=33, max_codepoint=126)))
+def test_ascii_input_unchanged_apart_from_case_and_documented_rules(s: str) -> None:
+    folded = s.casefold()
+    assume(not any(ch in CONFUSABLES for ch in folded))
+    assume(not any(old in folded for old, _new in MULTI_CONFUSABLES))
+    assert _norm(s) == folded
+
+
+@pytest.mark.attack("A8")
+def test_ascii_confusable_characters_are_exactly_the_documented_set() -> None:
+    assert {ch for ch in CONFUSABLES if ch.isascii()} == {"0", "1", "5", "i", "|"}
+    assert [_norm(ch) for ch in "015i|"] == ["o", "l", "s", "l", "l"]
+    # The sequence rules run in their own direction: upstream's m -> rn is not applied.
+    assert "m" not in CONFUSABLES
+    assert _norm("rn") == _norm("m") == "m"
