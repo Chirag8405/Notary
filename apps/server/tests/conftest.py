@@ -11,6 +11,11 @@ _MARKER_IDS = {"invariant": VALID_INVARIANTS, "attack": VALID_ATTACKS}
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "invariant(id): test covers invariant I1-I6")
     config.addinivalue_line("markers", "attack(id): test covers attack A1-A14")
+    config.addinivalue_line(
+        "markers",
+        "needs_hijacked_agent: asserts the agent proposed the injected payment; replays the "
+        "scripted cassette set only (a real model often is not hijacked, see test_cassette_sets)",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

@@ -111,6 +111,10 @@ class Settings(NotaryModel):
     in a run's `control.json` outside it is refused. Unset: `.notary/mcp-control` of the server's
     working directory, which is the proxy's default when both start from the repo root."""
 
+    cassette_dir: Path | None = None
+    """The directory `cassette` mode and the arena read cassettes from (`NOTARY_CASSETTE_DIR`).
+    Unset: the committed scripted set. Point it at a real-model set to replay that one."""
+
     @staticmethod
     def from_env(environ: Mapping[str, str]) -> "Settings":
         """Read `NOTARY_ANCHOR_DB`, `NOTARY_ENDORSEMENT_TIMEOUT`, `NOTARY_ARENA_MAX_ROUNDS` and the
@@ -118,7 +122,7 @@ class Settings(NotaryModel):
         `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
         `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`), `NOTARY_MCP_RUNS_DIR` (empty is unset),
         `NOTARY_MCP_APPROVALS` and `NOTARY_MCP_COMPILE` (only `1` turns them on) and
-        `NOTARY_MCP_CONTROL_DIR` (empty is unset).
+        `NOTARY_MCP_CONTROL_DIR` and `NOTARY_CASSETTE_DIR` (empty is unset).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -145,6 +149,9 @@ class Settings(NotaryModel):
         mcp_control_dir = environ.get("NOTARY_MCP_CONTROL_DIR")
         if mcp_control_dir:
             values["mcp_control_dir"] = Path(mcp_control_dir)
+        cassette_dir = environ.get("NOTARY_CASSETTE_DIR")
+        if cassette_dir:
+            values["cassette_dir"] = Path(cassette_dir)
         for name, field, parse in _LIMIT_VARIABLES:
             raw = environ.get(name)
             if raw is not None:
@@ -174,15 +181,16 @@ def _number[N: (int, float)](name: str, raw: str, parse: Callable[[str], N]) -> 
 def cassette_note(model: str) -> str:
     """Appended to the `run_finished` summary of a cassette run: who produced the answers.
 
-    The committed cassettes say `scripted-v1`: a scripted agent wrote them, no model did."""
-    kind = "scripted agent" if model.startswith("scripted") else f"model {model}"
+    The committed cassettes say `scripted-v1`: a scripted agent wrote them, no model did. The
+    synthetic test sets (`synthetic-...`) are scripted too."""
+    kind = "scripted agent" if model.startswith(("scripted", "synthetic")) else f"model {model}"
     return f"cassette replay: recorded from a {kind} ({model})"
 
 
-def load_cassette_client(name: str) -> CassetteClient:
+def load_cassette_client(name: str, directory: Path | None = None) -> CassetteClient:
     """A replay client for `name`; a missing file is an error, never a fallback."""
     try:
-        return CassetteClient(load_cassette(name))
+        return CassetteClient(load_cassette(name, directory))
     except FileNotFoundError:
         raise RunUnavailableError(CLOSE_CASSETTE_MISS, "cassette not found") from None
 
@@ -237,11 +245,11 @@ class RunStreamer:
             max_approvals=scenario.contract.budget.max_approvals,
         )
 
-    def lane_runner(self) -> LaneRunner:
+    def lane_runner(self, directory: Path | None = None) -> LaneRunner:
         """For the REST endpoints: replays the lane's cassette and rejects every escalation."""
 
         def run(scenario: Scenario, lane: Lane, run_id: str) -> Iterator[Event]:
-            client = load_cassette_client(f"{scenario.scenario_id}.{lane}")
+            client = load_cassette_client(f"{scenario.scenario_id}.{lane}", directory)
             return self.stream(
                 scenario, lane, run_id, client, reject_all, run_note=cassette_note(client.model)
             )
@@ -259,13 +267,14 @@ def _scenario(name: str) -> Scenario:
 class CassetteSource:
     """Stage run: replays the recorded LLM responses of `<scenario>.<lane>`, byte for byte."""
 
-    def __init__(self, streamer: RunStreamer) -> None:
+    def __init__(self, streamer: RunStreamer, directory: Path | None = None) -> None:
         self._streamer = streamer
+        self._directory = directory
 
     def events(self, request: RunRequest) -> Iterator[Event]:
         scenario = _scenario(request.scenario)
         run_id = golden_run_id(request.scenario, request.lane)
-        client = load_cassette_client(f"{request.scenario}.{request.lane}")
+        client = load_cassette_client(f"{request.scenario}.{request.lane}", self._directory)
         endorsements = self._streamer.socket_endorsements(scenario, run_id, request.owner)
         return self._streamer.stream(
             scenario,
@@ -322,9 +331,9 @@ class LiveSource:
         )
 
 
-def arena_attackers() -> AttackerFactory:
+def arena_attackers(directory: Path | None = None) -> AttackerFactory:
     def attacker(lane: Lane) -> LlmClient:
-        return load_cassette_client(f"arena.{lane}")
+        return load_cassette_client(f"arena.{lane}", directory)
 
     return attacker
 
@@ -359,7 +368,7 @@ def build_app(
     streamer = RunStreamer(broker=broker, anchors=anchors)
     sources: dict[RunMode, RunSource] = {
         "golden": GoldenSource(),
-        "cassette": CassetteSource(streamer),
+        "cassette": CassetteSource(streamer, settings.cassette_dir),
         "live": LiveSource(
             streamer,
             available=settings.live_available,
@@ -379,9 +388,9 @@ def build_app(
     return create_app(
         event_delay=event_delay,
         sources=sources,
-        lane_runner=streamer.lane_runner(),
+        lane_runner=streamer.lane_runner(settings.cassette_dir),
         anchors=anchors,
-        attacker_llm=arena_attackers(),
+        attacker_llm=arena_attackers(settings.cassette_dir),
         arena_max_rounds=settings.arena_max_rounds,
         broker=broker,
         hijacked=HijackedSessions(

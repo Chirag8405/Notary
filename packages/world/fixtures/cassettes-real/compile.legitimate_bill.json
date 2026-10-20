@@ -1,0 +1,15 @@
+{
+  "name": "compile.legitimate_bill",
+  "model": "openai/gpt-oss-120b",
+  "lane": "notary",
+  "entries": [
+    {
+      "key": "18601199af25aa9e28c648751653d9162dea07cb1fccc4c41079e5d680b2dc05",
+      "response": {
+        "role": "assistant",
+        "content": "{\n  \"tools\": [\n    {\n      \"tool\": \"pay_bill\",\n      \"params\": [\n        {\n          \"name\": \"amount\",\n          \"marker\": null\n        },\n        {\n          \"name\": \"payee\",\n          \"marker\": null\n        },\n        {\n          \"name\": \"reference\",\n          \"marker\": null\n        }\n      ]\n    }\n  ],\n  \"budget\": {\n    \"max_effects\": 1,\n    \"max_spend_cents\": 0,\n    \"max_egress_bytes\": 0,\n    \"max_call_amount_cents\": 0,\n    \"max_approvals\": 0\n  },\n  \"egress_hosts\": [],\n  \"authorized_irreversible\": [\n    \"pay_bill\"\n  ]\n}",
+        "tool_calls": []
+      }
+    }
+  ]
+}
