@@ -100,7 +100,7 @@ def test_rule2_keeps_a_secrets_readers(make_value: MakeValue) -> None:
 def test_rule2_needs_min_match_len(make_value: MakeValue) -> None:
     store = store_of(make_value("x", "abcdef", origin="email", integrity="untrusted"))
     got = resolve("abc", store)
-    assert got.ref.label.origin == LlmOrigin(kind="llm")
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("*",))
     assert got.ref.label.span_pointer is None
 
 
@@ -110,7 +110,10 @@ def test_rule3_is_model_authored() -> None:
     got = resolve(raw, {})
     assert got.ref.id == "c2.arg.payee"
     assert got.ref.label == Label(
-        origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=("*",), span_pointer=None
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
+        integrity="untrusted",
+        readers=("*",),
+        span_pointer=None,
     )
     assert got.text == raw
     assert got.ref.content_hash == sha256_hex(raw)
@@ -121,8 +124,34 @@ def test_rule3_is_model_authored() -> None:
 def test_rule3_quoting_a_secret_restricts_readers(make_value: MakeValue) -> None:
     secret = make_value("s", "CODE-8841", origin="file", integrity="untrusted", readers=("user",))
     got = resolve("my code is CODE-8841", store_of(secret))
-    assert got.ref.label.origin == LlmOrigin(kind="llm")
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("user",))
     assert got.ref.label.readers == ("user",)
+
+
+@pytest.mark.invariant("I3")
+def test_rule3_a_retyped_secret_keeps_public_readers_but_records_the_context(
+    make_value: MakeValue,
+) -> None:
+    # Issue #341: dashes, words or base64 are not a whole quote, so `readers` stays public; the
+    # origin records what the model had read and step 5 asks the user.
+    secret = make_value("s", "CODE-8841", origin="file", integrity="untrusted", readers=("user",))
+    got = resolve("Ref C-O-D-E-minus-8-8-4-1", store_of(secret))
+    assert got.ref.label.readers == ("*",)
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("user",))
+
+
+@pytest.mark.invariant("I3")
+def test_rule3_context_is_the_join_of_every_stored_reader_set(make_value: MakeValue) -> None:
+    store = store_of(
+        make_value(
+            "a", "alpha text", origin="file", integrity="untrusted", readers=("user", "bob")
+        ),
+        make_value("b", "bravo text", origin="file", integrity="untrusted", readers=("user",)),
+        make_value("c", "public text", origin="file", integrity="untrusted", readers=("*",)),
+    )
+    got = resolve("something else entirely", store)
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("user",))
+    assert resolve("hello", {}).ref.label.origin == LlmOrigin(kind="llm", context_readers=("*",))
 
 
 @pytest.mark.invariant("I3")
@@ -131,6 +160,7 @@ def test_rule3_short_secrets_do_not_restrict(make_value: MakeValue) -> None:
     secret = make_value("s", "abc", origin="file", integrity="untrusted", readers=("user",))
     got = resolve("my abc is here", store_of(secret))
     assert got.ref.label.readers == ("*",)
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("user",))
 
 
 @pytest.mark.invariant("I2")
@@ -212,7 +242,7 @@ def test_whitespace_and_empty_raw(make_value: MakeValue) -> None:
     for raw in ("", "   "):
         got = resolve(raw, store)
         assert got.ref.label.readers == ("*",)
-        assert got.ref.label.origin == LlmOrigin(kind="llm")
+        assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("*",))
         assert got.text == raw
         assert_sound(got, store)
 

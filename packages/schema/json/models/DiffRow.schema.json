@@ -45,13 +45,20 @@
     "LlmOrigin": {
       "additionalProperties": false,
       "properties": {
+        "context_readers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "kind": {
           "const": "llm",
           "type": "string"
         }
       },
       "required": [
-        "kind"
+        "kind",
+        "context_readers"
       ],
       "title": "LlmOrigin",
       "type": "object"

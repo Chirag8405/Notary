@@ -46,6 +46,7 @@ ReasonCode = Literal[
     "LEDGER_NOT_FOUND",
     "CONF_READER_VIOLATION",
     "CONF_URL_NOT_ALLOWED",
+    "CONF_CONTEXT_ESCALATE",
     "BUDGET_AMOUNT",
     "BUDGET_SENDS",
     "BUDGET_EGRESS_BYTES",
@@ -70,6 +71,7 @@ CODE_CHECK: dict[ReasonCode, CheckName | None] = {
     "LEDGER_NOT_FOUND": "corroboration",
     "CONF_READER_VIOLATION": "confidentiality",
     "CONF_URL_NOT_ALLOWED": "confidentiality",
+    "CONF_CONTEXT_ESCALATE": "confidentiality",
     "BUDGET_AMOUNT": "budget",
     "BUDGET_SENDS": "budget",
     "BUDGET_EGRESS_BYTES": "budget",
@@ -80,7 +82,11 @@ CODE_CHECK: dict[ReasonCode, CheckName | None] = {
 PASS_CODES: frozenset[ReasonCode] = frozenset(
     {"STEP_PASS", "READ_ONLY_UNGATED", "LEDGER_EXACT_MATCH"}
 )
-ESCALATE_CODE: ReasonCode = "LEDGER_NOVEL_ESCALATE"
+ESCALATE_CODES: frozenset[ReasonCode] = frozenset(
+    {"LEDGER_NOVEL_ESCALATE", "CONF_CONTEXT_ESCALATE"}
+)
+"""The only codes an `escalate` outcome may carry: a new value (step 4) or text written after a
+private read (step 5)."""
 
 
 class ToolCallProposal(NotaryModel):
@@ -106,9 +112,9 @@ class Reason(NotaryModel):
             if self.code not in PASS_CODES:
                 raise ValueError(f"outcome pass requires a pass code, got {self.code}")
         elif self.outcome == "escalate":
-            if self.code != ESCALATE_CODE:
-                raise ValueError(f"outcome escalate requires {ESCALATE_CODE}, got {self.code}")
-        elif self.code in PASS_CODES or self.code == ESCALATE_CODE:
+            if self.code not in ESCALATE_CODES:
+                raise ValueError(f"outcome escalate requires an escalate code, got {self.code}")
+        elif self.code in PASS_CODES or self.code in ESCALATE_CODES:
             raise ValueError(f"outcome fail cannot use code {self.code}")
         return self
 
@@ -131,9 +137,9 @@ class StepOutcome(NotaryModel):
             raise ValueError("diff_card is only allowed for ESCALATE")
         if self.verdict == "ALLOW" and self.code not in PASS_CODES:
             raise ValueError("ALLOW requires a pass code")
-        if self.verdict == "ESCALATE" and self.code != ESCALATE_CODE:
-            raise ValueError(f"ESCALATE requires {ESCALATE_CODE}")
-        if self.verdict == "BLOCK" and (self.code in PASS_CODES or self.code == ESCALATE_CODE):
+        if self.verdict == "ESCALATE" and self.code not in ESCALATE_CODES:
+            raise ValueError("ESCALATE requires an escalate code")
+        if self.verdict == "BLOCK" and (self.code in PASS_CODES or self.code in ESCALATE_CODES):
             raise ValueError("BLOCK requires a failing code")
         return self
 

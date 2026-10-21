@@ -674,6 +674,10 @@ def mcp_config(task: McpTask, setup: Materialized, *, defended: bool) -> JsonObj
             str(setup.config_path),
             "--audit-dir",
             str(setup.audit_dir),
+            # Nobody answers a card in a measurement: an escalation is rejected at once, not
+            # held until the approval timeout.
+            "--control",
+            "none",
         ]
     else:
         command = list(setup.config.server.command)

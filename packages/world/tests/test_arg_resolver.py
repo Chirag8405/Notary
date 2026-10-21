@@ -115,7 +115,7 @@ def test_rule2_from_the_user_request_is_trusted() -> None:
 def test_rule2_needs_min_match_len() -> None:
     store = {"x": value("x", "abcdef")}
     got = resolve("abc", store)
-    assert got.ref.label.origin == LlmOrigin(kind="llm")
+    assert got.ref.label.origin == LlmOrigin(kind="llm", context_readers=("*",))
     assert got.ref.label.span_pointer is None
 
 
@@ -133,10 +133,16 @@ def test_rule3_inherits_readers_of_quoted_secrets() -> None:
     raw = f"Summary: {SECRET_2FA_CODE}"
     got = resolve(raw, store)
     assert got.ref.label == Label(
-        origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=("user",), span_pointer=None
+        origin=LlmOrigin(kind="llm", context_readers=("user",)),
+        integrity="untrusted",
+        readers=("user",),
+        span_pointer=None,
     )
     assert got.text == raw
-    assert resolve("hello world", store).ref.label.readers == ("*",)
+    # Not a whole quote: the readers stay public, the origin records what the model had read.
+    other = resolve("hello world", store).ref.label
+    assert other.readers == ("*",)
+    assert other.origin == LlmOrigin(kind="llm", context_readers=("user",))
 
 
 @pytest.mark.invariant("I6")

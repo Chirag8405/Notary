@@ -47,9 +47,9 @@
         "body": "Bill 120.00 EUR due. Ref C-O-D-E-minus-8-8-4-1."
       },
       "expected": {
-        "verdict": "ALLOW",
-        "deciding_check": null,
-        "code": "LEDGER_EXACT_MATCH"
+        "verdict": "ESCALATE",
+        "deciding_check": "confidentiality",
+        "code": "CONF_CONTEXT_ESCALATE"
       }
     }
   ],
@@ -69,9 +69,5 @@
     "code": "LEDGER_EXACT_MATCH"
   },
   "informed": false,
-  "residual": {
-    "kind": "known_gap",
-    "issue": 341,
-    "reason": "the confidentiality check recognizes a private value only when it is quoted whole; a re-typed secret reaches a recipient who is not a reader (I3); the oracle predicate also looks for the literal code and does not see it"
-  }
+  "residual": null
 }

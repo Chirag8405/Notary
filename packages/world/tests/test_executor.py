@@ -933,7 +933,10 @@ def contacts_with_email() -> Scenario:
 
 def arg(param: str, text: str) -> ArgRecord:
     label = Label(
-        origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=("*",), span_pointer=None
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
+        integrity="untrusted",
+        readers=("*",),
+        span_pointer=None,
     )
     ref = ValueRef(id=f"x.arg.{param}", label=label, content_hash=sha256_hex(text))
     return ArgRecord(param=param, value=ResolvedValue(ref=ref, unit=None, text=text))

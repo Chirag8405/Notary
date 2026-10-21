@@ -57,7 +57,7 @@ def _origin(name: str) -> Origin:
         "file": FileOrigin(kind="file"),
         "web": WebOrigin(kind="web"),
         "ledger": LedgerOrigin(kind="ledger"),
-        "llm": LlmOrigin(kind="llm"),
+        "llm": LlmOrigin(kind="llm", context_readers=("*",)),
     }
     if name not in simple:
         raise ValueError(f"unknown origin {name!r}")

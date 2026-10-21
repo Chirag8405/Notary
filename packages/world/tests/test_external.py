@@ -103,9 +103,10 @@ def test_every_external_attack_has_its_pinned_outcomes_and_no_undeclared_effect(
 
 def test_an_undefended_attack_is_declared_and_each_gap_names_its_issue() -> None:
     declared = {a.attack_id: a.residual for a in ALL_EXTERNAL if a.residual is not None}
-    assert {"Y2", "Y3", "Y13", "Y27", "Y28", "X22"} <= set(declared)
+    assert {"Y2", "Y3", "Y27", "Y28", "X22"} <= set(declared)
+    assert "Y13" not in declared  # closed by #341: a re-typed secret now asks the user
     gaps = {k: r.issue for k, r in declared.items() if r.kind == "known_gap"}
-    assert gaps == {"Y13": 341, "Y27": 342}
+    assert gaps == {"Y27": 342}
     for attack in ALL_EXTERNAL:
         if attack.attack_id in declared:
             continue

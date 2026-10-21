@@ -16,7 +16,10 @@
           "id": "c2.arg.body",
           "label": {
             "origin": {
-              "kind": "llm"
+              "kind": "llm",
+              "context_readers": [
+                "*"
+              ]
             },
             "integrity": "untrusted",
             "readers": [
@@ -38,7 +41,10 @@
           "id": "c2.arg.subject",
           "label": {
             "origin": {
-              "kind": "llm"
+              "kind": "llm",
+              "context_readers": [
+                "*"
+              ]
             },
             "integrity": "untrusted",
             "readers": [
@@ -60,7 +66,10 @@
           "id": "c2.arg.to",
           "label": {
             "origin": {
-              "kind": "llm"
+              "kind": "llm",
+              "context_readers": [
+                "*"
+              ]
             },
             "integrity": "untrusted",
             "readers": [
@@ -87,7 +96,10 @@
               "id": "c2.arg.body",
               "label": {
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "readers": [
@@ -101,7 +113,10 @@
               "id": "c2.arg.subject",
               "label": {
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "readers": [
@@ -115,7 +130,10 @@
               "id": "c2.arg.to",
               "label": {
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "readers": [

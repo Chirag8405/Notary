@@ -178,7 +178,7 @@ describe("ContentInspector synthetic cases", () => {
     ]);
     expect(tag({ kind: "file" })[0]).toBe("untrusted: came from file content");
     expect(tag({ kind: "web" })[0]).toBe("untrusted: came from web content");
-    expect(tag({ kind: "llm" })[0]).toBe("untrusted: written by the model");
+    expect(tag({ kind: "llm", context_readers: ["*"] })[0]).toBe("untrusted: written by the model");
     expect(tag({ kind: "user" })[0]).toBe("untrusted: from user");
   });
 

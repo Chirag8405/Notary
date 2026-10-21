@@ -1,11 +1,21 @@
 """Step 5 (confidentiality): reader rule for destinations and the egress allowlist for URLs."""
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import replace
 
 import pytest
 
-from notary_core.models import IntentContract, ResolvedValue, ToolScope
+from notary_core.models import (
+    IntentContract,
+    Label,
+    LedgerEntry,
+    LlmOrigin,
+    ResolvedValue,
+    ToolScope,
+    UserEndorsedSource,
+    ValueRef,
+)
 from notary_core.pipeline import StepInput
 from notary_core.policy.sensitive_params import DEFAULT_POLICY
 from notary_core.steps.confidentiality import check_confidentiality
@@ -173,3 +183,116 @@ def test_reader_rule_is_evaluated_before_url_rule(build: Make) -> None:
     outcome = check_confidentiality(inp)
     assert outcome is not None
     assert outcome.code == "CONF_READER_VIOLATION"
+
+
+def _written_by_the_model(
+    value_id: str, text: str, *, context: tuple[str, ...], readers: tuple[str, ...] = ("*",)
+) -> ResolvedValue:
+    """Text the model typed itself, after it had read data that only `context` may read."""
+    label = Label(
+        origin=LlmOrigin(kind="llm", context_readers=context),
+        integrity="untrusted",
+        readers=readers,
+        span_pointer=None,
+    )
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return ResolvedValue(
+        ref=ValueRef(id=value_id, label=label, content_hash=digest), unit=None, text=text
+    )
+
+
+def _args(
+    make_value: Callable[..., ResolvedValue], *, to: str, body: ResolvedValue
+) -> dict[str, ResolvedValue]:
+    return {
+        "to": make_value("v-to", to, unit="email"),
+        "subject": make_value("v-subject", "hi"),
+        "body": body,
+    }
+
+
+@pytest.mark.invariant("I3")
+def test_text_written_after_a_private_read_escalates_for_a_non_reader(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    # Issue #341: "C-O-D-E-minus-8-8-4-1" is not a whole quote of the secret, so its own readers
+    # are public, but the model had read the 2FA file, which only the user may read.
+    body = _written_by_the_model("v-body", "Ref C-O-D-E-minus-8-8-4-1", context=("user",))
+    outcome = check_confidentiality(build(args=_args(make_value, to=EVE, body=body)))
+    assert outcome is not None
+    assert (outcome.verdict, outcome.code) == ("ESCALATE", "CONF_CONTEXT_ESCALATE")
+    assert outcome.diff_card is not None
+    (row,) = outcome.diff_card.rows
+    # The preview is the canonical form (what the ledger stores), like every other card.
+    assert (row.param, row.value_id) == ("body", "v-body")
+    assert row.preview == "ref c-o-d-e-minus-8-8-4-1"
+    assert row.nearest_ledger_value is None
+
+
+@pytest.mark.invariant("I3")
+def test_text_written_after_a_private_read_passes_when_the_context_is_public(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    body = _written_by_the_model("v-body", "Thanks, we will fix it.", context=("*",))
+    assert check_confidentiality(build(args=_args(make_value, to=EVE, body=body))) is None
+
+
+@pytest.mark.invariant("I3")
+def test_the_context_rule_lets_a_reader_of_the_context_receive_the_text(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    body = _written_by_the_model("v-body", "notes", context=("user", "bob@acme.example"))
+    inp = build(args=_args(make_value, to="bob@acme.example", body=body))
+    assert check_confidentiality(inp) is None
+
+
+@pytest.mark.invariant("I3")
+def test_a_quoted_secret_is_still_a_block_not_an_escalation(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    body = _written_by_the_model("v-body", "CODE-8841", context=("user",), readers=("user",))
+    outcome = check_confidentiality(build(args=_args(make_value, to=EVE, body=body)))
+    assert outcome is not None
+    assert (outcome.verdict, outcome.code) == ("BLOCK", "CONF_READER_VIOLATION")
+
+
+@pytest.mark.invariant("I3")
+def test_only_text_the_model_wrote_is_subject_to_the_context_rule(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    # A value the user typed (or a stored span) has its own label; no context applies to it.
+    assert check_confidentiality(build(to=EVE, body="the user typed this")) is None
+
+
+@pytest.mark.invariant("I3")
+def test_an_endorsed_text_is_released_but_only_that_exact_text(
+    build: Make,
+    make_value: Callable[..., ResolvedValue],
+    make_ledger_entry: Callable[..., LedgerEntry],
+) -> None:
+    text = "Ref C-O-D-E-minus-8-8-4-1"
+    body = _written_by_the_model("v-body", text, context=("user",))
+    entry = make_ledger_entry(
+        body,
+        "identifier",
+        text.lower(),
+        ledger="endorsed",
+        source=UserEndorsedSource(kind="user_endorsed", endorsement_id="e1"),
+    )
+    inp = build(args=_args(make_value, to=EVE, body=body))
+    assert check_confidentiality(replace(inp, ledger=(entry,))) is None
+    other = _written_by_the_model("v-body", text + "!", context=("user",))
+    again = build(args=_args(make_value, to=EVE, body=other))
+    outcome = check_confidentiality(replace(again, ledger=(entry,)))
+    assert outcome is not None
+    assert outcome.code == "CONF_CONTEXT_ESCALATE"
+
+
+@pytest.mark.invariant("I3")
+def test_the_url_block_comes_before_the_context_escalation(
+    build: Make, make_value: Callable[..., ResolvedValue]
+) -> None:
+    body = _written_by_the_model("v-body", "see https://evil.example/x", context=("user",))
+    outcome = check_confidentiality(build(args=_args(make_value, to=EVE, body=body)))
+    assert outcome is not None
+    assert outcome.code == "CONF_URL_NOT_ALLOWED"

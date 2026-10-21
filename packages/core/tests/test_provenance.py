@@ -35,7 +35,7 @@ def _label(integrity: Integrity, readers: tuple[str, ...] = (PUBLIC,)) -> Label:
 
 
 def _llm() -> LlmOrigin:
-    return LlmOrigin(kind="llm")
+    return LlmOrigin(kind="llm", context_readers=("*",))
 
 
 @pytest.mark.invariant("I2")

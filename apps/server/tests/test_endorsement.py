@@ -55,7 +55,7 @@ def endorsement(endorsement_id: str = "e1", preview: str = "Alpha Consulting") -
     row = DiffRow(
         param="name",
         value_id="v1",
-        origin=LlmOrigin(kind="llm"),
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
         integrity="untrusted",
         preview=preview,
         nearest_ledger_value=None,
