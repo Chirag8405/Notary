@@ -61,36 +61,36 @@ interface LightText {
 }
 
 const ATTACKER: Record<LightState, LightText> = {
-  bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-red-100 text-red-900" },
+  bad: { glyph: "✗", label: "Attacker goal reached", classes: "bg-bad-soft text-bad-strong" },
   neutral: {
     glyph: "-",
     label: "Attacker goal unknown",
-    classes: "bg-neutral-100 text-neutral-700",
+    classes: "bg-muted text-muted-foreground",
   },
   good: {
     glyph: "✓",
     label: "Attacker goal not reached",
-    classes: "bg-green-100 text-green-900",
+    classes: "bg-ok-soft text-ok-strong",
   },
   pending: {
     glyph: "–",
     label: "Attacker goal unknown",
-    classes: "bg-neutral-100 text-neutral-700",
+    classes: "bg-muted text-muted-foreground",
   },
 };
 
 const USER: Record<LightState, LightText> = {
-  good: { glyph: "✓", label: "User goal achieved", classes: "bg-green-100 text-green-900" },
-  bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-red-100 text-red-900" },
+  good: { glyph: "✓", label: "User goal achieved", classes: "bg-ok-soft text-ok-strong" },
+  bad: { glyph: "✗", label: "User goal not achieved", classes: "bg-bad-soft text-bad-strong" },
   neutral: {
     glyph: "-",
     label: "Bill not paid: you rejected it, blocked safely",
-    classes: "bg-slate-100 text-slate-800",
+    classes: "bg-muted text-foreground",
   },
   pending: {
     glyph: "–",
     label: "User goal pending",
-    classes: "bg-neutral-100 text-neutral-700",
+    classes: "bg-muted text-muted-foreground",
   },
 };
 
@@ -139,7 +139,7 @@ function SideBySide({ lanes }: { lanes: readonly LaneInput[] }) {
           >
             <h3 className="font-semibold">{laneHeading(input.lane, input.view.classifier)}</h3>
             <p>
-              <span data-status={input.status} className="rounded bg-neutral-100 px-1 text-xs">
+              <span data-status={input.status} className="rounded bg-muted px-1 text-xs">
                 {input.status}
               </span>
             </p>
@@ -147,7 +147,7 @@ function SideBySide({ lanes }: { lanes: readonly LaneInput[] }) {
               <p className="text-muted-foreground">Waiting for the run{"…"}</p>
             ) : null}
             {input.status === "error" ? (
-              <p role="alert" className="text-red-700">
+              <p role="alert" className="text-bad-strong">
                 {input.error ?? "error"}
               </p>
             ) : null}

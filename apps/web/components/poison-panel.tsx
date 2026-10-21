@@ -6,6 +6,13 @@ import { laneLabel } from "@notary/ui";
 import { useMemo, useRef, useState } from "react";
 
 import { ErrorBanner } from "@/components/error-banner";
+import { OutcomeBanner } from "@/components/outcome-banner";
+import { Disclosure } from "@/components/disclosure";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { LaneChoice } from "@/components/lane-choice";
+import { StepCard } from "@/components/step-card";
 import type { PanelProps } from "@/components/playground-panels";
 import { RunResult } from "@/components/run-result";
 import { Button } from "@/components/ui/button";
@@ -19,6 +26,7 @@ import {
   laneVerdictText,
 } from "@/lib/poison-form";
 import type { PoisonForm, PoisonLane, PoisonVector } from "@/lib/poison-form";
+import { laneOutcome } from "@/lib/guided";
 import { describePlaygroundError } from "@/lib/playground-state";
 
 type Status = "idle" | "running" | "done" | "error";
@@ -26,7 +34,7 @@ type Status = "idle" | "running" | "done" | "error";
 export const STANDING_NOTE =
   'The server replays recorded runs. Only the sample has one; any other payload answers "no recorded run".';
 
-const FIELD = "rounded-md border border-input bg-background px-3 py-2 text-sm";
+const SELECT = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs";
 
 function isVector(value: string): value is PoisonVector {
   return POISON_VECTORS.some((vector) => vector === value);
@@ -77,126 +85,167 @@ export function PoisonPanel({ apiUrl }: PanelProps) {
   }
 
   return (
-    <section className="space-y-4" aria-label="Poison the world">
-      <form
-        className="space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          run();
-        }}
+    <section className="space-y-6" aria-label="Poison the world">
+      <StepCard
+        step={1}
+        title="Plant the attack"
+        hint="Choose where the poison hides, what it says, and which defences to test."
       >
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((preset) => (
-            <Button
-              key={preset.id}
-              type="button"
-              variant="outline"
-              className="h-9 text-sm"
-              onClick={() => {
-                setForm(preset.form);
-              }}
-            >
-              {preset.title}
-            </Button>
-          ))}
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="poison-vector">Vector</label>
-          <select
-            id="poison-vector"
-            className={`${FIELD} h-9 w-fit py-0`}
-            value={form.vector}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (isVector(value)) setForm((current) => ({ ...current, vector: value }));
-            }}
-          >
-            {POISON_VECTORS.map((vector) => (
-              <option key={vector} value={vector}>
-                {vector}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="poison-payload">Payload</label>
-          <textarea
-            id="poison-payload"
-            rows={3}
-            className={FIELD}
-            value={form.payload}
-            onChange={(event) => {
-              const value = event.target.value;
-              setForm((current) => ({ ...current, payload: value }));
-            }}
-          />
-          <span data-testid="payload-count" className="text-xs text-muted-foreground">
-            {form.payload.length} / {MAX_PAYLOAD_CHARS}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="poison-task">Task</label>
-          <input
-            id="poison-task"
-            type="text"
-            className={FIELD}
-            value={form.task}
-            onChange={(event) => {
-              const value = event.target.value;
-              setForm((current) => ({ ...current, task: value }));
-            }}
-          />
-        </div>
-        <fieldset className="flex flex-wrap gap-4">
-          <legend className="sr-only">Lanes</legend>
-          {POISON_LANES.map((lane) => (
-            <label key={lane} className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.lanes.includes(lane)}
+        <form
+          className="space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            run();
+          }}
+        >
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Start from an example</p>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  type="button"
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => {
+                    setForm(preset.form);
+                  }}
+                >
+                  {preset.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+            <div className="space-y-2">
+              <Label htmlFor="poison-vector">Vector</Label>
+              <select
+                id="poison-vector"
+                className={SELECT}
+                value={form.vector}
                 onChange={(event) => {
-                  toggleLane(lane, event.target.checked);
+                  const value = event.target.value;
+                  if (isVector(value)) setForm((current) => ({ ...current, vector: value }));
+                }}
+              >
+                {POISON_VECTORS.map((vector) => (
+                  <option key={vector} value={vector}>
+                    {vector}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Where the poison is hidden.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="poison-task">Task</Label>
+              <Input
+                id="poison-task"
+                type="text"
+                value={form.task}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setForm((current) => ({ ...current, task: value }));
                 }}
               />
-              {laneLabel(lane, null)}
-            </label>
-          ))}
-        </fieldset>
-        <Button type="submit" className="h-9 text-sm" disabled={status === "running"}>
-          {status === "running" ? "Running..." : "Run"}
-        </Button>
-        <p className="text-xs text-muted-foreground">{STANDING_NOTE}</p>
-      </form>
-      <ErrorBanner message={error} />
-      {response === null ? null : (
-        <div className="space-y-4" aria-label="Poison results">
-          <table className="text-left" aria-label="Verdicts">
-            <thead>
-              <tr>
-                <th className="pr-4">Lane</th>
-                <th>Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {response.runs.map((run) => (
-                <tr key={run.run_id} data-lane={run.lane}>
-                  <th scope="row" className="pr-4 font-medium">
-                    {laneLabel(run.lane, null)}
-                  </th>
-                  <td>{laneVerdictText(run.attacker_goal_reached, run.user_goal_achieved)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {response.runs.map((run) => (
-              <div key={run.run_id} data-run-lane={run.lane}>
-                <RunResult title={laneLabel(run.lane, null)} events={run.events} />
-              </div>
-            ))}
+              <p className="text-xs text-muted-foreground">What the user asks the agent to do.</p>
+            </div>
           </div>
-        </div>
-      )}
+          <div className="space-y-2">
+            <Label htmlFor="poison-payload">Payload</Label>
+            <Textarea
+              id="poison-payload"
+              rows={3}
+              value={form.payload}
+              onChange={(event) => {
+                const value = event.target.value;
+                setForm((current) => ({ ...current, payload: value }));
+              }}
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>The hidden text the attacker plants.</span>
+              <span data-testid="payload-count">
+                {form.payload.length} / {MAX_PAYLOAD_CHARS}
+              </span>
+            </div>
+          </div>
+          <fieldset className="space-y-2">
+            <legend className="sr-only">Lanes</legend>
+            <p aria-hidden="true" className="text-sm font-medium">
+              Defences to test
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {POISON_LANES.map((lane) => (
+                <LaneChoice
+                  key={lane}
+                  checked={form.lanes.includes(lane)}
+                  onChange={(checked) => {
+                    toggleLane(lane, checked);
+                  }}
+                >
+                  {laneLabel(lane, null)}
+                </LaneChoice>
+              ))}
+            </div>
+          </fieldset>
+          <div className="flex flex-wrap items-center gap-4">
+            <Button type="submit" size="lg" disabled={status === "running"}>
+              {status === "running" ? "Running..." : "Run"}
+            </Button>
+            <p className="text-xs text-muted-foreground">{STANDING_NOTE}</p>
+          </div>
+        </form>
+        <ErrorBanner message={error} />
+      </StepCard>
+      <StepCard
+        step={2}
+        title="See what each defence did"
+        hint="The same poisoned input goes to every defence you ticked."
+      >
+        {response === null ? (
+          <p className="text-muted-foreground">Press Run to see the results.</p>
+        ) : (
+          <div className="space-y-4" aria-label="Poison results">
+            <div className="grid items-start gap-4 lg:grid-cols-3">
+              {response.runs.map((run) => (
+                <div key={run.run_id} data-run-lane={run.lane} className="space-y-3">
+                  <OutcomeBanner
+                    compact
+                    outcome={laneOutcome(run.attacker_goal_reached, run.user_goal_achieved)}
+                  />
+                  <details className="rounded-lg border px-3 py-2">
+                    <summary className="cursor-pointer text-sm font-medium select-none">
+                      Technical replay: {laneLabel(run.lane, null)}
+                    </summary>
+                    <div className="mt-3">
+                      <RunResult title={laneLabel(run.lane, null)} events={run.events} />
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+            <Disclosure title="Compare as a table">
+              <table className="w-full max-w-md text-left text-sm" aria-label="Verdicts">
+                <thead>
+                  <tr>
+                    <th className="pr-4">Lane</th>
+                    <th>Verdict</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {response.runs.map((run) => (
+                    <tr key={run.run_id} data-lane={run.lane}>
+                      <th scope="row" className="pr-4 font-medium">
+                        {laneLabel(run.lane, null)}
+                      </th>
+                      <td>{laneVerdictText(run.attacker_goal_reached, run.user_goal_achieved)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Disclosure>
+          </div>
+        )}
+      </StepCard>
     </section>
   );
 }

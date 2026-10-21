@@ -122,6 +122,35 @@ uv run --no-sync python packages/eval/scripts/agentdojo_report.py /tmp/dojo/repo
 
   `--model` is `groq:<id>`, `openai:<id>`, `anthropic:<id>` (keys `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or an AgentDojo model name. The full plan is 858 runs (37 clean and 249 attacked user tasks, in 3 lanes); at roughly 8 model calls and 3k input tokens per call that is about 7,000 calls and 20 million input tokens (the dry run prints the estimate; the report records the real number of calls). Multiply by your provider's price; a Groq free-tier daily token cap will not cover it in one day, so run slices (`--max-tasks 4 --lane notary`, then the other lanes) and rerun the same command to resume. Run once with `--approval reject` (utility lower bound) and once with `--approval oracle` (optimistic) and report both. Before committing results, scan the output directory for keys and local paths.
 
+### Longer adaptive-attacker run
+
+Two ways to run the attacker for longer than the recording. The first needs no key and is in the gate's reach; the second needs the owner's `GROQ_API_KEY`, costs tokens and has not been run (issue #306).
+
+- **Deeper fuzz, no key.** The fuzz harness is the adversarial "LLM" of the attacker model (any tool call, any argument, chosen from the world's values, shrunk to a minimal program on a violation). The `ci` profile is what the gate runs; the `full` profile explores longer programs: `uv run --no-sync notary fuzz --profile full --examples 1000 --seed 0` (about 6 minutes per seed on one core; use seeds 0 to 9 for an overnight run; exit 1 and the minimized program on a violation).
+- **External attack library, no key.** `uv run --no-sync notary attack --external` replays the 58 attacks of the X and Y series (docs/threat-model.md, "External attack library") against the real monitor in a few seconds and exits 1 on any unpinned outcome or undeclared attacker effect.
+- **Long LLM attacker, key needed.** `apps/server/scripts/arena_live.py` plays the arena with a Groq attacker (`DEFAULT_MODEL`) against a Groq agent on each lane for `--rounds` rounds: the attacker picks a vector and a payload, sees only "reached or not" and the BLOCK reason codes, and adapts. It prints counts per lane (rounds, invalid moves, goal reached, first success) and never the payload text. The NOTARY lane must show 0 (exit 1 otherwise).
+
+```
+uv run --no-sync python apps/server/scripts/arena_live.py --dry-run                # the plan, no call
+uv run --no-sync python apps/server/scripts/arena_live.py --confirm-live --lanes notary --rounds 20 --out arena.json --markdown arena.md
+uv run --no-sync python apps/server/scripts/arena_live.py --confirm-live --rounds 30   # all three lanes
+```
+
+Expected cost (an estimate, not a measurement; confirm in the Groq console after the first 5 rounds): one round is one attacker call (a prompt that grows with the history, about 1,000 tokens at round 10) plus one agent run per lane (a few model calls with the tool list, in the order of 5,000 to 8,000 tokens). `--rounds 20 --lanes notary` is then about 150,000 tokens, `--rounds 30` on three lanes about 700,000. Groq's on-demand tier allows 200,000 tokens per model per day (see "Model-dependence eval"), so the full run needs several keys or days: start with the NOTARY lane, and note that a hijacked agent is rare with `gpt-oss-120b` (it never followed the swapped IBAN), so the undefended lane may show few successes whatever the attacker writes; `--agent-model openai/gpt-oss-20b` follows injections more often. Record the date, both models, the rounds and the seed with any number you quote; live runs are not reproducible and are not a test.
+
+## Landing page and guided demo (`apps/web`, routes `/` and `/demo`)
+
+`/` is a landing page (what NOTARY is, how it works, the three answers) with a **Start the demo** button; it no longer redirects into the Trust X-ray. `/demo?step=attack|pause|normal|try` is a four-step guided path on the cassette stack, in plain words (`apps/web/lib/plain-language.ts` maps verdicts, reason codes, tools and parameters; the technical codes stay in a tooltip):
+
+| Step     | What it shows                                                                                                                                                         |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attack` | the undefended and classifier-only agents pay the attacker; one outcome banner per lane                                                                               |
+| `pause`  | the NOTARY lane pauses on the swapped IBAN; a dialog shows it beside the usual account and offers "Use the account I normally use", "No, stop this", "Approve anyway" |
+| `normal` | the legitimate bill is allowed with no question                                                                                                                       |
+| `try`    | links to the playground (Hijacked Mode, attack library, arena) and the Trust X-ray                                                                                    |
+
+The outcome banner (`summarizeOutcome` in `apps/web/lib/guided.ts`) only maps the oracle's two booleans and the run's end to words. The Trust X-ray (`/x-ray`) is the advanced view; the header links to it. It follows the same layout: a "Step n of 4" count with a progress bar, a "What to watch" card, the approval card first, then the result banner, "What changed" and "In plain words", with the technical record (contract, provenance graph, content inspector, decision stream, oracle) under a collapsible "The evidence" and Back/Next at the foot. The playground modes are laid out as numbered step cards (`StepCard`), with a one-sentence intro per mode (`MODE_INTRO`), plain result banners (`laneOutcome`, `attemptOutcome` in `apps/web/lib/guided.ts`), and the raw replays under "Technical replay". Secondary detail starts closed behind a labelled row (`Disclosure` in `apps/web/components/disclosure.tsx`, and "What to watch" on the Trust X-ray): the technical evidence, the "Why it stops" text on each attack card, "Or build your own call", the technical details of a hijacked session, and the arena's seed. The content stays in the page while closed. The plain `/x-ray` address (no `mode`) opens the recorded run (`cassette`), because the fixed replay (`golden`) cannot answer an approval: its socket closes when the replay ends. A named mode is always honoured, and a golden run with a card shows a notice with a button to switch to the recorded run. Status colours are shared tokens (`ok`, `warn`, `bad`, `info` in `globals.css`) so every card reads in light and dark.
+
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
 
 | Region | Content                                                                                                                                                                                                                                                                                                                                          |
@@ -258,6 +287,8 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 | `notary fuzz [--examples N] [--seed S] [--profile ci\|full]`                     | Fuzz the real monitor with an adversarial LLM, checking I1-I6 after every step; prints the minimized program on a violation                                                                                           |
 | `notary replay FILE [--anchor ANCHOR.json \| --expect-head H --expect-length N]` | Print the events of a saved run (`RUN.json`) or a proxy chain (`<run>.chain.jsonl`, one audit entry per line) and verify its audit chain; the anchors detect tail truncation, which the chain alone cannot            |
 | `notary bench [--out DIR] [--seed S]`                                            | Run A1-A14 and B1-B4 with no defence and with the real monitor; prints attacks that succeeded and controls completed per lane, and with `--out` writes `none.json` and `notary.json` (`packages/eval` results export) |
+
+`notary attack --external` (or `notary attack X5` / `Y13`) runs the external attack library of docs/threat-model.md ("External attack library") instead; it is not part of `--all` or CP1.
 
 `--monitor` defaults to `real`; `fake` replays the fixtures' expected verdicts and exists only to test the harness. A real-monitor mismatch is never hidden: the two known deviations (A3, A6) keep `attack A3`, `attack A6` and `attack --all` at exit 1 until CP1 resolves them.
 

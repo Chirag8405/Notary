@@ -16,8 +16,8 @@ export function ObjectiveCards({ objectives }: ObjectiveCardsProps) {
           data-reached={objective.reached ? "true" : "false"}
           className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${
             objective.reached
-              ? "border-red-400 bg-red-50 text-red-900"
-              : "border-green-400 bg-green-50 text-green-900"
+              ? "border-bad bg-bad-soft text-bad-strong"
+              : "border-ok bg-ok-soft text-ok-strong"
           }`}
         >
           <span>{objective.title}</span>

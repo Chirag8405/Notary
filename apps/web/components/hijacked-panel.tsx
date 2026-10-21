@@ -14,9 +14,15 @@ import { CallForm } from "@/components/hijacked-call-form";
 import { CallLog } from "@/components/hijacked-log";
 import { ObjectiveCards } from "@/components/hijacked-objectives";
 import { ErrorBanner } from "@/components/error-banner";
+import { Disclosure } from "@/components/disclosure";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { OutcomeBanner } from "@/components/outcome-banner";
+import { StepCard } from "@/components/step-card";
 import type { PanelProps } from "@/components/playground-panels";
 import { Button } from "@/components/ui/button";
 import { buildCall, hijackedReducer, initialHijackedState, nextCallId } from "@/lib/hijacked-state";
+import { attemptOutcome } from "@/lib/guided";
 import { describePlaygroundError } from "@/lib/playground-state";
 
 export const BEFORE_SESSION_TEXT = "Start a session to play the hijacked model.";
@@ -25,12 +31,17 @@ export const EXPIRED_TEXT = "Your session expired. Start a new session.";
 const SCENARIOS = ["poisoned_bill", "legitimate_bill"] as const;
 type Scenario = (typeof SCENARIOS)[number];
 
+const SCENARIO_TEXT: Record<Scenario, string> = {
+  poisoned_bill: "poisoned_bill (an attack is hidden in the bill)",
+  legitimate_bill: "legitimate_bill (a normal bill)",
+};
+
 const FIELD = "h-9 rounded-md border border-input bg-background px-3 text-sm";
 
 const ATTACKER: Record<Exclude<LightState, "neutral">, { text: string; classes: string }> = {
-  bad: { text: "Attacker goal reached", classes: "bg-red-100 text-red-900" },
-  good: { text: "Attacker goal not reached", classes: "bg-green-100 text-green-900" },
-  pending: { text: "Attacker goal unknown", classes: "bg-neutral-100 text-neutral-700" },
+  bad: { text: "Attacker goal reached", classes: "bg-bad-soft text-bad-strong" },
+  good: { text: "Attacker goal not reached", classes: "bg-ok-soft text-ok-strong" },
+  pending: { text: "Attacker goal unknown", classes: "bg-muted text-muted-foreground" },
 };
 
 /**
@@ -38,12 +49,12 @@ const ATTACKER: Record<Exclude<LightState, "neutral">, { text: string; classes: 
  * reached reads as plain information here (slate), not as a failure (red).
  */
 const USER: Record<Exclude<LightState, "neutral">, { text: string; classes: string }> = {
-  good: { text: "User goal achieved", classes: "bg-green-100 text-green-900" },
+  good: { text: "User goal achieved", classes: "bg-ok-soft text-ok-strong" },
   bad: {
     text: "User goal: not reached (you are the attacker)",
-    classes: "bg-slate-100 text-slate-800",
+    classes: "bg-muted text-foreground",
   },
-  pending: { text: "User goal pending", classes: "bg-neutral-100 text-neutral-700" },
+  pending: { text: "User goal pending", classes: "bg-muted text-muted-foreground" },
 };
 
 /** Be the hijacked LLM: submit raw tool calls and watch the monitor judge every one. */
@@ -129,87 +140,121 @@ export function HijackedPanel({ apiUrl }: PanelProps) {
     );
   }
 
+  const latestEntry = state.log.at(-1);
   const lights = goalLights(state.oracle, { finished: true, unresolvedEndorsements: 0 });
   const attacker = ATTACKER[lights.attacker];
   const user = USER[lights.user === "neutral" ? "pending" : lights.user];
 
   return (
-    <section className="space-y-4" aria-label="Be the hijacked LLM">
-      <form
-        className="flex flex-wrap items-end gap-4"
-        aria-label="Start session"
-        onSubmit={(event) => {
-          event.preventDefault();
-          start();
-        }}
+    <section className="space-y-6" aria-label="Be the hijacked LLM">
+      <StepCard
+        step={1}
+        title="Start a session"
+        hint="Pick the situation the hijacked agent is in, then start."
       >
-        <div className="flex flex-col gap-1">
-          <label htmlFor="hijacked-scenario">Scenario</label>
-          <select
-            id="hijacked-scenario"
-            className={FIELD}
-            value={scenario}
-            onChange={(event) => {
-              setScenario(
-                event.target.value === "legitimate_bill" ? "legitimate_bill" : "poisoned_bill",
-              );
-            }}
-          >
-            {SCENARIOS.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="hijacked-seed">Seed</label>
-          <input
-            id="hijacked-seed"
-            type="number"
-            className={`${FIELD} w-28`}
-            value={seed}
-            onChange={(event) => {
-              setSeed(event.target.value);
-            }}
-          />
-        </div>
-        <Button type="submit" className="h-9 text-sm" disabled={starting || inFlight}>
-          {starting ? "Starting..." : "Start session"}
-        </Button>
-      </form>
-      <ErrorBanner message={error} />
-      {session === null ? (
-        <p className="text-sm text-muted-foreground">{BEFORE_SESSION_TEXT}</p>
-      ) : (
-        <ObjectiveCards objectives={state.objectives} />
-      )}
-      <CallForm disabled={session === null || starting || inFlight || expired} onSubmit={submit} />
-      {session === null ? null : (
-        <div className="space-y-4">
-          <CallLog log={state.log} />
-          <div className="space-y-2" aria-label="Oracle">
-            <OracleLights result={state.oracle} />
-            <ul className="flex flex-wrap gap-2" aria-label="Goal lights">
-              <li
-                data-light="attacker"
-                data-state={lights.attacker}
-                className={`rounded px-2 py-1 text-sm ${attacker.classes}`}
-              >
-                {attacker.text}
-              </li>
-              <li
-                data-light="user"
-                data-state={lights.user}
-                className={`rounded px-2 py-1 text-sm ${user.classes}`}
-              >
-                {user.text}
-              </li>
-            </ul>
+        <form
+          className="flex flex-wrap items-end gap-4"
+          aria-label="Start session"
+          onSubmit={(event) => {
+            event.preventDefault();
+            start();
+          }}
+        >
+          <div className="flex min-w-64 flex-col gap-2">
+            <Label htmlFor="hijacked-scenario">Scenario</Label>
+            <select
+              id="hijacked-scenario"
+              className={FIELD}
+              value={scenario}
+              onChange={(event) => {
+                setScenario(
+                  event.target.value === "legitimate_bill" ? "legitimate_bill" : "poisoned_bill",
+                );
+              }}
+            >
+              {SCENARIOS.map((name) => (
+                <option key={name} value={name}>
+                  {SCENARIO_TEXT[name]}
+                </option>
+              ))}
+            </select>
           </div>
-          {state.events.length === 0 ? null : <DecisionStream events={state.events} />}
-        </div>
-      )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="hijacked-seed">Seed</Label>
+            <Input
+              id="hijacked-seed"
+              type="number"
+              className="w-28"
+              value={seed}
+              onChange={(event) => {
+                setSeed(event.target.value);
+              }}
+            />
+          </div>
+          <Button type="submit" size="lg" disabled={starting || inFlight}>
+            {starting ? "Starting..." : "Start session"}
+          </Button>
+        </form>
+      </StepCard>
+      <StepCard
+        step={2}
+        title="Give the agent an order"
+        hint="You are the attacker. Try a quick attempt, or build any tool call yourself."
+      >
+        <ErrorBanner message={error} />
+        {session === null ? (
+          <p className="text-sm text-muted-foreground">{BEFORE_SESSION_TEXT}</p>
+        ) : (
+          <Disclosure
+            title="What the attacker is after"
+            hint={`${state.objectives.filter((item) => item.reached).length} of ${state.objectives.length} reached`}
+          >
+            <ObjectiveCards objectives={state.objectives} />
+          </Disclosure>
+        )}
+        <CallForm
+          disabled={session === null || starting || inFlight || expired}
+          onSubmit={submit}
+        />
+      </StepCard>
+      <StepCard
+        step={3}
+        title="See the verdict"
+        hint="NOTARY judges every call. Each row says what it decided and why."
+      >
+        {session === null ? (
+          <p className="text-muted-foreground">Nothing yet. Start a session and submit a call.</p>
+        ) : (
+          <div className="space-y-4">
+            {latestEntry === undefined ? null : (
+              <OutcomeBanner outcome={attemptOutcome(latestEntry.status)} />
+            )}
+            <CallLog log={state.log} />
+            <Disclosure title="Technical details" hint="safety checks, goal lights, event log">
+              <div className="space-y-2" aria-label="Oracle">
+                <OracleLights result={state.oracle} />
+                <ul className="flex flex-wrap gap-2" aria-label="Goal lights">
+                  <li
+                    data-light="attacker"
+                    data-state={lights.attacker}
+                    className={`rounded px-2 py-1 text-sm ${attacker.classes}`}
+                  >
+                    {attacker.text}
+                  </li>
+                  <li
+                    data-light="user"
+                    data-state={lights.user}
+                    className={`rounded px-2 py-1 text-sm ${user.classes}`}
+                  >
+                    {user.text}
+                  </li>
+                </ul>
+              </div>
+              {state.events.length === 0 ? null : <DecisionStream events={state.events} />}
+            </Disclosure>
+          </div>
+        )}
+      </StepCard>
     </section>
   );
 }

@@ -28,7 +28,7 @@ export function RunResult({ title, events }: RunResultProps) {
   return (
     <Card className="text-sm" aria-label={title}>
       <CardHeader>
-        <h3 className="text-sm font-semibold">{title}</h3>
+        <h3 className="text-base font-semibold">{title}</h3>
       </CardHeader>
       <CardContent className="space-y-4">
         {events.length === 0 ? (

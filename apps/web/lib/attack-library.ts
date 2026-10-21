@@ -1,4 +1,5 @@
 import type { AttackCase, AttackRunResponse, CheckSummary } from "@notary/client";
+import { reasonTextFor, verdictText } from "@/lib/plain-language";
 
 /**
  * Pure helpers of the "Attack library" panel: the card hints and how the server's check results
@@ -31,6 +32,14 @@ export function describeOutcome(outcome: CheckSummary["expected"] | null): strin
   return [outcome.verdict, outcome.deciding_check, outcome.code]
     .filter((part) => part !== null)
     .join(" ");
+}
+
+/** The expected outcome as a sentence: what NOTARY does, and why. */
+export function plainOutcome(outcome: CheckSummary["expected"] | null): string {
+  if (outcome === null) return "Nothing is expected.";
+  const verdict = verdictText(outcome.verdict).label;
+  const why = outcome.code === null ? null : reasonTextFor(outcome.code);
+  return why === null ? verdict : `${verdict}: ${why}`;
 }
 
 export interface CheckRow {

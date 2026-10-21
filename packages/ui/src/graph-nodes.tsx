@@ -49,22 +49,22 @@ export function executedNote(node: GateNode): string | null {
 }
 
 const TONE_CLASS: Record<NodeTone, string> = {
-  user: "border-green-500 bg-green-50 text-green-900",
-  ledger: "border-blue-500 bg-blue-50 text-blue-900",
-  tool: "border-amber-500 bg-amber-50 text-amber-900",
-  other: "border-neutral-400 bg-neutral-50 text-neutral-800",
+  user: "border-ok bg-ok-soft text-ok-strong",
+  ledger: "border-info bg-info-soft text-info-strong",
+  tool: "border-warn bg-warn-soft text-warn-strong",
+  other: "border-border bg-muted text-foreground",
 };
 
 const GATE_CLASS: Record<GateState, string> = {
-  allow: "border-green-600 bg-green-100 text-green-900",
-  escalate: "border-yellow-500 bg-yellow-100 text-yellow-900",
-  block: "border-red-600 bg-red-100 text-red-900",
-  ungated: "border-neutral-400 bg-neutral-100 text-neutral-700",
-  pending: "border-dashed border-neutral-400 bg-white text-neutral-700",
+  allow: "border-ok bg-ok-soft text-ok-strong",
+  escalate: "border-warn bg-warn-soft text-warn-strong",
+  block: "border-bad bg-bad-soft text-bad-strong",
+  ungated: "border-border bg-muted text-muted-foreground",
+  pending: "border-dashed border-border bg-card text-muted-foreground",
 };
 
-const RING = "ring-2 ring-indigo-500 ring-offset-1";
-const FLAGGED = "outline outline-2 outline-red-500";
+const RING = "ring-2 ring-foreground ring-offset-1";
+const FLAGGED = "outline outline-2 outline-bad";
 
 /** A value on the canvas: coloured by origin, outlined when a classifier flagged it. */
 export function ValueNodeView({ data }: NodeProps<ValueFlowNode>) {
@@ -118,7 +118,7 @@ export function GateNodeView({ data }: NodeProps<GateFlowNode>) {
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <div className="truncate font-semibold">{node.tool}</div>
       <div>
-        <span className="rounded bg-white/60 px-1 text-[11px] uppercase">{node.state}</span>
+        <span className="rounded bg-card/60 px-1 text-[11px] uppercase">{node.state}</span>
         {node.reasonCode === null ? null : (
           <span className="ml-1 font-mono text-[11px]">{node.reasonCode}</span>
         )}
@@ -150,8 +150,8 @@ export function ModelEdgeView(props: EdgeProps<ModelFlowEdge>) {
   const centerY = (sourceY + targetY) / 2;
   const labelStyle = { transform: `translate(-50%, -50%) translate(${centerX}px, ${centerY}px)` };
   const labelClass = edge.severed
-    ? "pointer-events-none absolute rounded bg-red-100 px-1 font-mono text-[10px] text-red-800"
-    : "pointer-events-none absolute rounded bg-white px-1 text-[10px] text-muted-foreground";
+    ? "pointer-events-none absolute rounded bg-bad-soft px-1 font-mono text-[10px] text-bad-strong"
+    : "pointer-events-none absolute rounded bg-card px-1 text-[10px] text-muted-foreground";
 
   const labelNode =
     label === "" ? null : (
@@ -194,7 +194,7 @@ export function ModelEdgeView(props: EdgeProps<ModelFlowEdge>) {
   const [x2, y2] = at(0.6);
   const [first] = getStraightPath({ sourceX, sourceY, targetX: x1, targetY: y1 });
   const [second] = getStraightPath({ sourceX: x2, sourceY: y2, targetX, targetY });
-  const stub = { stroke: "#dc2626", strokeWidth: 2 };
+  const stub = { stroke: "var(--bad)", strokeWidth: 2 };
   return (
     <>
       <BaseEdge id={`${id}:a`} path={first} className="notary-severed-stub" style={stub} />

@@ -28,19 +28,19 @@ const BADGE =
 const WAITING = "Waiting for events…";
 
 const CHIP_CLASS: Record<ArgChip["originKind"], string> = {
-  user: "border-green-500 bg-green-50 text-green-900",
-  ledger: "border-blue-500 bg-blue-50 text-blue-900",
-  tool: "border-amber-500 bg-amber-50 text-amber-900",
-  email: "border-amber-500 bg-amber-50 text-amber-900",
-  file: "border-amber-500 bg-amber-50 text-amber-900",
-  web: "border-amber-500 bg-amber-50 text-amber-900",
-  llm: "border-neutral-400 bg-neutral-50 text-neutral-800",
+  user: "border-ok bg-ok-soft text-ok-strong",
+  ledger: "border-info bg-info-soft text-info-strong",
+  tool: "border-warn bg-warn-soft text-warn-strong",
+  email: "border-warn bg-warn-soft text-warn-strong",
+  file: "border-warn bg-warn-soft text-warn-strong",
+  web: "border-warn bg-warn-soft text-warn-strong",
+  llm: "border-border bg-muted text-foreground",
 };
 
 const VERDICT_CLASS = {
-  ALLOW: "bg-green-100 text-green-900",
-  ESCALATE: "bg-yellow-100 text-yellow-900",
-  BLOCK: "bg-red-100 text-red-900",
+  ALLOW: "bg-ok-soft text-ok-strong",
+  ESCALATE: "bg-warn-soft text-warn-strong",
+  BLOCK: "bg-bad-soft text-bad-strong",
 } as const;
 
 export function DecisionStream(props: DecisionStreamProps) {
@@ -56,7 +56,7 @@ function EventList({ events }: { events: readonly Event[] }) {
     <ol className="space-y-1 font-mono text-sm" aria-label="Decision stream">
       {events.map((event) => (
         <li key={event.seq} data-event-type={event.type} className="flex gap-2">
-          <span className="text-neutral-400">{String(event.seq).padStart(3, "0")}</span>
+          <span className="text-muted-foreground">{String(event.seq).padStart(3, "0")}</span>
           <span className="font-semibold">{event.type}</span>
           <span>{describeEvent(event)}</span>
         </li>
@@ -104,10 +104,12 @@ function DecisionRows({
             {...(anomaly ? { "data-anomaly": "executed after block" } : {})}
             aria-current={row.callId === selectedCallId ? "true" : undefined}
             onClick={() => onSelect?.({ callId: row.callId })}
-            className={`space-y-1 rounded border p-2 ${row.callId === selectedCallId ? "ring-2 ring-indigo-500" : ""}`}
+            className={`space-y-1 rounded border p-2 ${row.callId === selectedCallId ? "ring-2 ring-foreground" : ""}`}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-neutral-400">{String(row.seq).padStart(3, "0")}</span>
+              <span className="font-mono text-muted-foreground">
+                {String(row.seq).padStart(3, "0")}
+              </span>
               <button
                 type="button"
                 data-row-select
@@ -200,10 +202,10 @@ function DecisionRows({
               </p>
             )}
             {anomaly ? (
-              <p className="text-xs font-semibold text-red-700">executed after block</p>
+              <p className="text-xs font-semibold text-bad-strong">executed after block</p>
             ) : null}
             {awaiting ? (
-              <p data-awaiting className="text-xs font-semibold text-yellow-800">
+              <p data-awaiting className="text-xs font-semibold text-warn-strong">
                 awaiting your confirmation
               </p>
             ) : null}
