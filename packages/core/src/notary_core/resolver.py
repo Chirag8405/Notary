@@ -61,11 +61,11 @@ class ArgumentResolver:
     1. A stored value with the same text (or the same canonical form in `unit`) is reused as is.
     2. Text found inside a stored value is labeled like that value, with a span pointing at it.
     3. Anything else is model-authored: untrusted, with the readers of every stored value it
-       quotes whole.
+       quotes whole and, in its origin, the readers of the whole store (`context_readers`).
 
     Known limits: matching ignores readers (reuse and span-source selection pick by integrity and
-    id, so hardening is a later lane-A task), and a secret is detected only when it is quoted
-    whole; encoded or mixed text gets public readers.
+    id, so hardening is a later lane-A task), and only a whole quote is a BLOCK: text that might
+    re-type a secret is an ESCALATE in step 5.
     """
 
     def __call__(
@@ -104,7 +104,9 @@ class ArgumentResolver:
                 ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(text))
                 return ResolvedValue(ref=ref, unit=unit, text=text)
         # Rule 3: model-authored text, kept unstripped. Quoting a stored value whole restricts the
-        # readers to the join of theirs; encoded or mixed text is not recognized (known limit).
+        # readers to the join of theirs. Text that does not quote one may still re-type a secret
+        # (dashes, words, base64), so the origin also records the readers of the whole store and
+        # step 5 asks the user before such text goes to a non-reader.
         readers = normalize_readers(
             join_all_readers(
                 v.ref.label.readers
@@ -112,8 +114,12 @@ class ArgumentResolver:
                 if len(v.text.strip()) >= MIN_MATCH_LEN and v.text.strip() in raw
             )
         )
+        context = normalize_readers(join_all_readers(v.ref.label.readers for v in values))
         label = Label(
-            origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=readers, span_pointer=None
+            origin=LlmOrigin(kind="llm", context_readers=context),
+            integrity="untrusted",
+            readers=readers,
+            span_pointer=None,
         )
         ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(raw))
         return ResolvedValue(ref=ref, unit=unit, text=raw)

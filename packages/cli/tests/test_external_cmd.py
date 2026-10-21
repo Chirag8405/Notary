@@ -21,10 +21,14 @@ def test_the_whole_library_passes_and_prints_one_summary_line() -> None:
 
 
 def test_one_attack_shows_provenance_prediction_and_residual() -> None:
-    result = runner.invoke(app, ["attack", "Y13"])
+    result = runner.invoke(app, ["attack", "Y27"])
     assert result.exit_code == 0, result.output
-    assert "predicted (before the first run): ALLOW/-/LEDGER_EXACT_MATCH" in result.output
-    assert "residual: known_gap #341" in result.output
+    assert "residual: known_gap #342" in result.output
+    missed = runner.invoke(app, ["attack", "Y13"])
+    assert missed.exit_code == 0, missed.output
+    assert "predicted (before the first run): ALLOW/-/LEDGER_EXACT_MATCH" in missed.output
+    assert "CONF_CONTEXT_ESCALATE" in missed.output
+    assert "residual" not in missed.output
     published = runner.invoke(app, ["attack", "X1"])
     assert "MIT" in published.output
     assert "adapted" in published.output

@@ -332,10 +332,18 @@
           "const": "llm",
           "title": "Kind",
           "type": "string"
+        },
+        "context_readers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Context Readers",
+          "type": "array"
         }
       },
       "required": [
-        "kind"
+        "kind",
+        "context_readers"
       ],
       "title": "LlmOrigin",
       "type": "object"

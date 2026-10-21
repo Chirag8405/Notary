@@ -7,7 +7,7 @@ import { z } from "zod";
 export const ArenaStartCommandSchema = z.object({ "lanes": z.array(z.enum(["undefended","classifier","notary"])), "rounds": z.number().int().gte(1).lte(100), "scenario": z.string(), "seed": z.number().int().gte(0), "type": z.literal("arena_start") }).strict().describe("Attacker arena: an LLM attacker iterates `rounds` per lane.");
 export type ArenaStartCommand = z.infer<typeof ArenaStartCommandSchema>;
 
-export const ExpectedOutcomeSchema = z.object({ "code": z.union([z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), z.null()]), "deciding_check": z.union([z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), z.null()]), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
+export const ExpectedOutcomeSchema = z.object({ "code": z.union([z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","CONF_CONTEXT_ESCALATE","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), z.null()]), "deciding_check": z.union([z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), z.null()]), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();
 export type ExpectedOutcome = z.infer<typeof ExpectedOutcomeSchema>;
 
 export const AttackCaseSchema = z.object({ "category": z.enum(["instruction_override","authority_impersonation","data_only_poisoning","action_induction","exfiltration","staged_long_horizon","obfuscation","lookalike","trust_laundering","tool_poisoning","approval_phishing","side_channel","text_to_text_deception","denial_of_utility"]), "expected": ExpectedOutcomeSchema, "id": z.enum(["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11","A12","A13","A14"]), "payload": z.string() }).strict();
@@ -22,7 +22,7 @@ export type FileOrigin = z.infer<typeof FileOriginSchema>;
 export const LedgerOriginSchema = z.object({ "kind": z.literal("ledger") }).strict();
 export type LedgerOrigin = z.infer<typeof LedgerOriginSchema>;
 
-export const LlmOriginSchema = z.object({ "kind": z.literal("llm") }).strict();
+export const LlmOriginSchema = z.object({ "context_readers": z.array(z.string()), "kind": z.literal("llm") }).strict();
 export type LlmOrigin = z.infer<typeof LlmOriginSchema>;
 
 export const ToolOriginSchema = z.object({ "kind": z.literal("tool"), "name": z.string() }).strict();
@@ -58,7 +58,7 @@ export type DiffRow = z.infer<typeof DiffRowSchema>;
 export const DiffCardSchema = z.object({ "rows": z.array(DiffRowSchema) }).strict();
 export type DiffCard = z.infer<typeof DiffCardSchema>;
 
-export const ReasonSchema = z.object({ "check": z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), "code": z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), "detail": z.string(), "outcome": z.enum(["pass","escalate","fail"]) }).strict();
+export const ReasonSchema = z.object({ "check": z.enum(["scope","irreversibility","origin","corroboration","confidentiality","budget"]), "code": z.enum(["STEP_PASS","READ_ONLY_UNGATED","SCOPE_TOOL_NOT_IN_CONTRACT","SCOPE_MANIFEST_MISMATCH","SCOPE_PARAM_NOT_IN_CONTRACT","IRREVERSIBLE_NOT_AUTHORIZED","ORIGIN_UNTRUSTED","ORIGIN_UNSOURCED","ORIGIN_LITERAL_MISMATCH","ORIGIN_SOURCE_MISMATCH","LEDGER_EXACT_MATCH","LEDGER_LOOKALIKE","LEDGER_NOVEL_ESCALATE","LEDGER_NOT_FOUND","CONF_READER_VIOLATION","CONF_URL_NOT_ALLOWED","CONF_CONTEXT_ESCALATE","BUDGET_AMOUNT","BUDGET_SENDS","BUDGET_EGRESS_BYTES","BUDGET_APPROVALS_EXHAUSTED"]), "detail": z.string(), "outcome": z.enum(["pass","escalate","fail"]) }).strict();
 export type Reason = z.infer<typeof ReasonSchema>;
 
 export const DecisionSchema = z.object({ "diff_card": z.union([DiffCardSchema, z.null()]), "reasons": z.array(ReasonSchema), "verdict": z.enum(["ALLOW","ESCALATE","BLOCK"]) }).strict();

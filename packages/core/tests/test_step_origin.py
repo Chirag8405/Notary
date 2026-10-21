@@ -103,8 +103,8 @@ def test_helpers() -> None:
     assert origin_matches_source(contacts, "contacts")
     assert not origin_matches_source(contacts, "tool")
     assert origin_matches_source(UserOrigin(kind="user"), "user")
-    assert origin_matches_source(LlmOrigin(kind="llm"), "llm")
-    assert not origin_matches_source(LlmOrigin(kind="llm"), "user")
+    assert origin_matches_source(LlmOrigin(kind="llm", context_readers=("*",)), "llm")
+    assert not origin_matches_source(LlmOrigin(kind="llm", context_readers=("*",)), "user")
 
 
 def test_origin_kinds_cover_every_origin_class() -> None:
@@ -372,7 +372,7 @@ def test_derived_untrusted_value_stays_untrusted(
         make_label(origin="tool:calendar", integrity="trusted"),
         make_label(origin="file", integrity="endorsed"),
     )
-    derived = derive_label(inputs, LlmOrigin(kind="llm"))
+    derived = derive_label(inputs, LlmOrigin(kind="llm", context_readers=("*",)))
     assert derived.integrity == "untrusted"
     value = ResolvedValue(
         ref=ValueRef(id="v-payee", label=derived, content_hash=_sha(IBAN)), unit="iban", text=IBAN

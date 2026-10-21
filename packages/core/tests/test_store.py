@@ -186,11 +186,11 @@ def test_derive_takes_lowest_integrity_and_narrowest_readers(make_value: ValueFa
         value_id="d1",
         text=IBAN_TEXT,
         unit="iban",
-        origin=LlmOrigin(kind="llm"),
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
         span_source=email.ref.id,
     )
     assert derived.ref.label == Label(
-        origin=LlmOrigin(kind="llm"),
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
         integrity="untrusted",
         readers=("user",),
         span_pointer=SpanPointer(source_value_id="email", start=7, end=29),
@@ -207,7 +207,7 @@ def test_derive_never_gains_integrity(make_value: ValueFactory) -> None:
     trusted = make_value("t", "abcd", integrity="trusted")
     endorsed = make_value("e", "efgh", integrity="endorsed")
     untrusted = make_value("u", "ijkl", integrity="untrusted")
-    llm = LlmOrigin(kind="llm")
+    llm = LlmOrigin(kind="llm", context_readers=("*",))
 
     def integrity_of(*inputs: ResolvedValue) -> str:
         return derive_value(
@@ -235,7 +235,7 @@ def test_derive_without_span(make_value: ValueFactory) -> None:
 @pytest.mark.attack("A6")
 def test_derive_rejects_bad_input(make_value: ValueFactory) -> None:
     email, secret = email_and_secret(make_value)
-    llm = LlmOrigin(kind="llm")
+    llm = LlmOrigin(kind="llm", context_readers=("*",))
     with pytest.raises(ValueError, match="needs at least one input"):
         derive_value([], value_id="d", text="x", unit=None, origin=llm)
     with pytest.raises(ValueError, match="must be one of the inputs"):
@@ -252,7 +252,12 @@ def test_derive_rejects_bad_input(make_value: ValueFactory) -> None:
 def test_derive_uses_the_first_occurrence(make_value: ValueFactory) -> None:
     source = make_value("s", "ab ab ab", origin="email", integrity="untrusted")
     derived = derive_value(
-        [source], value_id="d", text="ab", unit=None, origin=LlmOrigin(kind="llm"), span_source="s"
+        [source],
+        value_id="d",
+        text="ab",
+        unit=None,
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
+        span_source="s",
     )
     assert derived.ref.label.span_pointer == SpanPointer(source_value_id="s", start=0, end=2)
 
@@ -271,7 +276,7 @@ def test_derived_value_is_accepted_by_the_origin_step(
         value_id="d",
         text=IBAN_TEXT,
         unit=None,
-        origin=LlmOrigin(kind="llm"),
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
         span_source=email.ref.id,
     )
     store = InMemoryValueStore([email, derived])
@@ -292,7 +297,7 @@ def test_derivation_is_deterministic(make_value: ValueFactory) -> None:
             value_id="d",
             text=IBAN_TEXT,
             unit="iban",
-            origin=LlmOrigin(kind="llm"),
+            origin=LlmOrigin(kind="llm", context_readers=("*",)),
             span_source=email.ref.id,
         )
 

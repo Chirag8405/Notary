@@ -53,6 +53,8 @@ export const REASON_TEXT: Readonly<Record<Code, string>> = {
   LEDGER_NOT_FOUND: "This is not among the things you know.",
   CONF_READER_VIOLATION: "Private data would be sent to someone who should not see it.",
   CONF_URL_NOT_ALLOWED: "The address it would contact is not allowed.",
+  CONF_CONTEXT_ESCALATE:
+    "The agent wrote this after reading private data, and the recipient may not see that data.",
   BUDGET_AMOUNT: "The amount is over your limit.",
   BUDGET_SENDS: "It would send more messages than your limit.",
   BUDGET_EGRESS_BYTES: "It would send more data than your limit.",

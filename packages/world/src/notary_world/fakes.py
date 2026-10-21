@@ -31,6 +31,7 @@ from notary_core.models import (
     ToolOrigin,
     ValueRef,
 )
+from notary_core.models.decision import ESCALATE_CODES
 from notary_world.models import ScriptedCall
 
 DEFAULT_BLOCK_CODE: dict[CheckName, ReasonCode] = {
@@ -77,7 +78,7 @@ def decision_for(expected: ExpectedOutcome, diff_card: DiffCard | None = None) -
     escalate = Reason(
         check=expected.deciding_check,
         outcome="escalate",
-        code="LEDGER_NOVEL_ESCALATE",
+        code=expected.code if expected.code in ESCALATE_CODES else "LEDGER_NOVEL_ESCALATE",
         detail="fake monitor",
     )
     after = tuple(_pass(c) for c in CHECK_ORDER[deciding + 1 :])

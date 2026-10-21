@@ -21,7 +21,10 @@
           "id": "c1.arg.amount",
           "label": {
             "origin": {
-              "kind": "llm"
+              "kind": "llm",
+              "context_readers": [
+                "*"
+              ]
             },
             "integrity": "untrusted",
             "readers": [
@@ -43,7 +46,10 @@
           "id": "c1.arg.payee",
           "label": {
             "origin": {
-              "kind": "llm"
+              "kind": "llm",
+              "context_readers": [
+                "*"
+              ]
             },
             "integrity": "untrusted",
             "readers": [
@@ -70,7 +76,10 @@
               "id": "c1.arg.amount",
               "label": {
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "readers": [
@@ -84,7 +93,10 @@
               "id": "c1.arg.payee",
               "label": {
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "readers": [
@@ -149,7 +161,10 @@
                 "param": "payee",
                 "value_id": "c1.arg.payee",
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "preview": "DE00ATTACKER0000000001",
@@ -182,7 +197,10 @@
                 "param": "payee",
                 "value_id": "c1.arg.payee",
                 "origin": {
-                  "kind": "llm"
+                  "kind": "llm",
+                  "context_readers": [
+                    "*"
+                  ]
                 },
                 "integrity": "untrusted",
                 "preview": "DE00ATTACKER0000000001",

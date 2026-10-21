@@ -43,6 +43,10 @@ class LedgerOrigin(NotaryModel):
 
 class LlmOrigin(NotaryModel):
     kind: Literal["llm"]
+    context_readers: tuple[str, ...]
+    """The readers of everything the model had read when it wrote this value (the join of the
+    readers of the whole store). A model that read a secret may re-type it in any form, so this is
+    what step 5 compares a destination with, beside the value's own readers."""
 
 
 Origin = Annotated[

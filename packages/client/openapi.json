@@ -884,6 +884,7 @@
                   "LEDGER_NOT_FOUND",
                   "CONF_READER_VIOLATION",
                   "CONF_URL_NOT_ALLOWED",
+                  "CONF_CONTEXT_ESCALATE",
                   "BUDGET_AMOUNT",
                   "BUDGET_SENDS",
                   "BUDGET_EGRESS_BYTES",
@@ -1539,6 +1540,13 @@
       "LlmOrigin": {
         "additionalProperties": false,
         "properties": {
+          "context_readers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Readers",
+            "type": "array"
+          },
           "kind": {
             "const": "llm",
             "title": "Kind",
@@ -1546,7 +1554,8 @@
           }
         },
         "required": [
-          "kind"
+          "kind",
+          "context_readers"
         ],
         "title": "LlmOrigin",
         "type": "object"
@@ -1919,6 +1928,7 @@
               "LEDGER_NOT_FOUND",
               "CONF_READER_VIOLATION",
               "CONF_URL_NOT_ALLOWED",
+              "CONF_CONTEXT_ESCALATE",
               "BUDGET_AMOUNT",
               "BUDGET_SENDS",
               "BUDGET_EGRESS_BYTES",

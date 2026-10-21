@@ -223,9 +223,9 @@ class DefaultArgResolver:
 
     Rule 1 reuses a stored value with the same text or canonical form, Rule 2 labels a span of a
     stored value with that value's label, Rule 3 labels anything else as model-authored text.
-    Known limit: a secret is detected only when it is quoted whole or when the raw text is a
-    substring of one stored value; encoded or mixed text gets public readers. The real Gateway
-    replaces this behind the same protocol.
+    Rule 3 also records the readers of the whole store in the origin (`context_readers`), like the
+    real resolver, so step 5 can ask before text that may re-type a secret goes to a non-reader.
+    The real Gateway replaces this behind the same protocol.
     """
 
     def __call__(
@@ -266,8 +266,12 @@ class DefaultArgResolver:
                 if len(v.text.strip()) >= MIN_MATCH_LEN and v.text.strip() in raw
             )
         )
+        context = normalize_readers(join_all_readers(v.ref.label.readers for v in values))
         label = Label(
-            origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=readers, span_pointer=None
+            origin=LlmOrigin(kind="llm", context_readers=context),
+            integrity="untrusted",
+            readers=readers,
+            span_pointer=None,
         )
         ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(raw))
         return ResolvedValue(ref=ref, unit=unit, text=raw)

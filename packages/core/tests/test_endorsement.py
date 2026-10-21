@@ -43,7 +43,7 @@ def name_row(preview: str = "alpha consulting") -> DiffRow:
     return DiffRow(
         param="name",
         value_id=NAME_ID,
-        origin=LlmOrigin(kind="llm"),
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
         integrity="untrusted",
         preview=preview,
         nearest_ledger_value=None,

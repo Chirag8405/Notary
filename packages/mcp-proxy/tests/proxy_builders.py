@@ -274,7 +274,10 @@ def endorsed_entry(
 
 def plain_value(value_id: str, text: str) -> ResolvedValue:
     label = Label(
-        origin=LlmOrigin(kind="llm"), integrity="untrusted", readers=("*",), span_pointer=None
+        origin=LlmOrigin(kind="llm", context_readers=("*",)),
+        integrity="untrusted",
+        readers=("*",),
+        span_pointer=None,
     )
     ref = ValueRef(id=value_id, label=label, content_hash=sha256_hex(text))
     return ResolvedValue(ref=ref, unit=None, text=text)
