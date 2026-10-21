@@ -31,7 +31,9 @@ from notary_world.labeling import world_labeling_policy
 from notary_world.scenarios import Scenario
 from notary_world.tools import world_policy
 
-FRESH_SESSION = SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+FRESH_SESSION = SessionState(
+    spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+)
 
 
 def proxy_config_for(scenario: Scenario, *, command: Sequence[str]) -> ProxyConfig:

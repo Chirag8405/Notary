@@ -26,7 +26,9 @@ def make_input() -> StepInput:
         proposal=ToolCallProposal(call_id="c1", tool="pay", manifest_hash=sha("pay"), args={}),
         values={},
         ledger=(),
-        session=SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
+        session=SessionState(
+            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+        ),
         scope=tool,
         policy=DEFAULT_POLICY,
         prior_escalated=False,

@@ -284,7 +284,9 @@ def test_extracted_payee_still_needs_the_ledger() -> None:
         call_id="c2", tool="pay_bill", manifest_hash=manifest, args={"payee": payee.ref}
     )
     store = {src.ref.id: src, payee.ref.id: payee}
-    session = SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+    session = SessionState(
+        spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+    )
     decision = decide(contract, proposal, store, (), session)
     assert decision.verdict == "BLOCK"
     assert decision.reasons[-1].code == "LEDGER_NOT_FOUND"

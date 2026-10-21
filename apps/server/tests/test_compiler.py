@@ -435,7 +435,9 @@ def stored(value_id: str, text: str) -> ResolvedValue:
 def test_compiled_contract_is_accepted_by_the_monitor() -> None:
     contract = compiled(BILL_REPLY).contract
     pay = next(m for m in BILL if m.name == "pay_bill")
-    session = SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+    session = SessionState(
+        spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+    )
 
     def judge(iban: str):
         payee = stored("c2.arg.payee", iban).model_copy(update={"unit": "iban"})

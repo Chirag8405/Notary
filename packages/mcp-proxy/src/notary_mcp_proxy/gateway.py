@@ -52,7 +52,7 @@ from notary_core.monitor import Monitor
 from notary_core.pinning import PinReport, compare_pins, observed_hash, pin_manifests
 from notary_core.policy.sensitive_params import DEFAULT_POLICY, PolicyTable, param_policy
 from notary_core.resolver import ArgResolver, canonical_args
-from notary_core.session import with_approval, with_effect
+from notary_core.session import with_approval, with_effect, with_escalation
 from notary_core.store import InMemoryValueStore
 from notary_mcp_proxy.backend import BackendResult, ToolBackend
 
@@ -161,7 +161,7 @@ class Gateway:
         self._lane: Lane = lane
         self._policy = policy
         self._session = session or SessionState(
-            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0
+            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
         )
         self._store: ValueStore = store if store is not None else InMemoryValueStore()
         self._audit_append = audit_append
@@ -496,6 +496,7 @@ class Gateway:
         self._escalations[endorsement_id] = _Pending(
             call=call, endorsement=endorsement, proposal=proposal, decision=decision, resolved=False
         )
+        self._session = with_escalation(self._session)
         requested = self.emit(
             lambda run, lane, seq: EndorsementRequested(
                 type="endorsement_requested",

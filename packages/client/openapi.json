@@ -888,7 +888,8 @@
                   "BUDGET_AMOUNT",
                   "BUDGET_SENDS",
                   "BUDGET_EGRESS_BYTES",
-                  "BUDGET_APPROVALS_EXHAUSTED"
+                  "BUDGET_APPROVALS_EXHAUSTED",
+                  "BUDGET_ESCALATIONS_EXHAUSTED"
                 ],
                 "type": "string"
               },
@@ -1932,7 +1933,8 @@
               "BUDGET_AMOUNT",
               "BUDGET_SENDS",
               "BUDGET_EGRESS_BYTES",
-              "BUDGET_APPROVALS_EXHAUSTED"
+              "BUDGET_APPROVALS_EXHAUSTED",
+              "BUDGET_ESCALATIONS_EXHAUSTED"
             ],
             "title": "Code",
             "type": "string"

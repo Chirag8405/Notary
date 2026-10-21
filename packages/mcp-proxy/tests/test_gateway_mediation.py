@@ -479,3 +479,19 @@ def test_every_backend_call_follows_a_logged_allow_property(
             assert (decision.call_id, decision.decision.verdict) == (call_id, "ALLOW")
     assert len(backend.calls) == len(backend.probed)
     assert verify_chain(gateway.chain)
+
+
+@pytest.mark.attack("A11")
+def test_a_card_flood_is_cut_off_after_three_cards_per_approval_even_when_rejected() -> None:
+    """Issue #342: the gateway counts the cards it raised, rejected ones included."""
+    gateway = make_gateway(RecordingBackend())
+    names = ("Apple", "Bridge", "Crystal", "Dolphin", "Eagle", "Forest", "Glacier", "Harbor")
+    names += ("Island", "Jungle", "Kitchen")
+    statuses: list[str] = []
+    for index, name in enumerate(names, start=1):
+        outcome = gateway.propose(add_contact(f"f{index}", name))
+        statuses.append(outcome.status)
+        if outcome.status == "escalated":
+            assert outcome.endorsement_id is not None
+            gateway.reject(outcome.endorsement_id)
+    assert statuses == ["escalated"] * 9 + ["blocked"] * 2

@@ -23,7 +23,9 @@ CONTRACT = IntentContract(
     egress_hosts=(),
     authorized_irreversible=(),
 )
-SESSION = SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+SESSION = SessionState(
+    spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+)
 
 
 def test_fake_monitor_satisfies_the_monitor_protocol() -> None:

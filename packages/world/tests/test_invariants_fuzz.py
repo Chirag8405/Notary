@@ -204,7 +204,9 @@ def test_mutants_are_valid_monitors(name: str):
         manifest_hash=default_manifest_hash("read_inbox"),
         args={},
     )
-    session = SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+    session = SessionState(
+        spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+    )
     decision = MUTANTS[name]()(contract, proposal, {}, (), session)
     assert decision.verdict in ("ALLOW", "ESCALATE", "BLOCK")
     if name == "allow_all":

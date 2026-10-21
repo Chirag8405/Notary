@@ -6,6 +6,10 @@ from notary_core.pipeline import StepInput
 from notary_core.policy.sensitive_params import effective_effect, param_policy
 from notary_core.units import canonicalize_amount, to_cents
 
+MAX_ESCALATIONS_PER_APPROVAL: int = 3
+"""Cards the monitor may raise per approval in the budget. With `max_approvals` = 3 that is 9
+cards; the 10th escalation is a BLOCK. Rejected cards count too, which is what bounds a flood."""
+
 
 def _block(code: ReasonCode, detail: str) -> StepOutcome:
     return StepOutcome(verdict="BLOCK", code=code, detail=detail, diff_card=None)
@@ -23,7 +27,9 @@ def _arguments(inp: StepInput, kind: str) -> list[ResolvedValue | None]:
 def check_budget(inp: StepInput) -> StepOutcome | None:
     """BLOCK when an amount, effect count or egress volume exceeds the budget.
 
-    Also turns an earlier ESCALATE into a BLOCK once the approval budget is exhausted. Anything
+    Also turns an earlier ESCALATE into a BLOCK once the approval budget is exhausted, or once the
+    cards already raised (approved or not) reach `MAX_ESCALATIONS_PER_APPROVAL` per approval, so
+    a flood of cards cannot go on for ever (A11). Anything
     that cannot be measured exactly fails closed. Details are constant strings (A12).
     """
     budget = inp.contract.budget
@@ -56,4 +62,9 @@ def check_budget(inp: StepInput) -> StepOutcome | None:
 
     if inp.prior_escalated and session.approvals_used >= budget.max_approvals:
         return _block("BUDGET_APPROVALS_EXHAUSTED", "approval budget is exhausted")
+    if (
+        inp.prior_escalated
+        and session.escalations_used >= budget.max_approvals * MAX_ESCALATIONS_PER_APPROVAL
+    ):
+        return _block("BUDGET_ESCALATIONS_EXHAUSTED", "escalation budget is exhausted")
     return None

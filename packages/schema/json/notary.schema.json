@@ -669,7 +669,8 @@
                 "BUDGET_AMOUNT",
                 "BUDGET_SENDS",
                 "BUDGET_EGRESS_BYTES",
-                "BUDGET_APPROVALS_EXHAUSTED"
+                "BUDGET_APPROVALS_EXHAUSTED",
+                "BUDGET_ESCALATIONS_EXHAUSTED"
               ],
               "type": "string"
             },
@@ -1266,7 +1267,8 @@
             "BUDGET_AMOUNT",
             "BUDGET_SENDS",
             "BUDGET_EGRESS_BYTES",
-            "BUDGET_APPROVALS_EXHAUSTED"
+            "BUDGET_APPROVALS_EXHAUSTED",
+            "BUDGET_ESCALATIONS_EXHAUSTED"
           ],
           "type": "string"
         },
@@ -1438,6 +1440,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "escalations_used": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "spent_cents": {
           "minimum": 0,
           "type": "integer"
@@ -1447,7 +1453,8 @@
         "spent_cents",
         "effects_used",
         "egress_bytes_used",
-        "approvals_used"
+        "approvals_used",
+        "escalations_used"
       ],
       "title": "SessionState",
       "type": "object"

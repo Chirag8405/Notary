@@ -218,12 +218,14 @@ def make_session() -> Callable[..., SessionState]:
         effects_used: int = 0,
         egress_bytes_used: int = 0,
         approvals_used: int = 0,
+        escalations_used: int = 0,
     ) -> SessionState:
         return SessionState(
             spent_cents=spent_cents,
             effects_used=effects_used,
             egress_bytes_used=egress_bytes_used,
             approvals_used=approvals_used,
+            escalations_used=escalations_used,
         )
 
     return factory

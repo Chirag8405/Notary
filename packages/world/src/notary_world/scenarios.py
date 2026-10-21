@@ -118,7 +118,9 @@ def golden_run_id(scenario_id: str, lane: str) -> str:
 
 
 def _fresh_session() -> SessionState:
-    return SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+    return SessionState(
+        spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+    )
 
 
 def _bill_calls(payee: str) -> tuple[RawToolCall, ...]:

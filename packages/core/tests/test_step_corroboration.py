@@ -123,7 +123,9 @@ def _input(
         ),
         values={value.ref.id: value for value in args.values()},
         ledger=ledger,
-        session=SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
+        session=SessionState(
+            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+        ),
         scope=scope,
         policy=policy,
         prior_escalated=False,
