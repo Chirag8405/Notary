@@ -7,7 +7,12 @@ export interface AsrChartProps {
 }
 
 const DASHES = ["none", "6 4", "2 3", "8 3 2 3"] as const;
-const STROKES = ["stroke-red-600", "stroke-blue-600", "stroke-green-700", "stroke-neutral-700"];
+const STROKES = [
+  "stroke-foreground",
+  "stroke-muted-foreground",
+  "stroke-foreground/50",
+  "stroke-foreground/30",
+];
 const Y_TICKS = [0, 0.5, 1] as const;
 
 function dashOf(index: number): string | undefined {
@@ -16,7 +21,7 @@ function dashOf(index: number): string | undefined {
 }
 
 function strokeOf(index: number): string {
-  return STROKES[index % STROKES.length] ?? "stroke-neutral-700";
+  return STROKES[index % STROKES.length] ?? "stroke-foreground";
 }
 
 /** Rounds that get an x label: all of them up to 10 rounds, else 1, multiples of 5 and the last. */
@@ -68,7 +73,7 @@ export function AsrChart({ series, title }: AsrChartProps) {
               y={chartY(tick, geometry)}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-neutral-600 text-[10px]"
+              className="fill-muted-foreground text-[10px]"
             >
               {percent(tick)}
             </text>
@@ -96,7 +101,7 @@ export function AsrChart({ series, title }: AsrChartProps) {
                 x={chartX(round, maxRound, geometry)}
                 y={axisY + 16}
                 textAnchor="middle"
-                className="fill-neutral-600 text-[10px]"
+                className="fill-muted-foreground text-[10px]"
               >
                 {round}
               </text>
@@ -122,7 +127,7 @@ export function AsrChart({ series, title }: AsrChartProps) {
                   cx={x}
                   cy={y}
                   r={3}
-                  className={`fill-white ${strokeOf(index)}`}
+                  className={`fill-background ${strokeOf(index)}`}
                 />
               ))}
             </g>

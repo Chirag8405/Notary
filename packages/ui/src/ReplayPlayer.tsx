@@ -43,7 +43,7 @@ export function ReplayPlayer({
               onClick={() => {
                 onPositionChange(stepPosition(position, length, step));
               }}
-              className="rounded border border-neutral-300 px-2 py-1 text-sm disabled:opacity-50"
+              className="rounded border border-border px-2 py-1 text-sm disabled:opacity-50"
             >
               {text}
             </button>

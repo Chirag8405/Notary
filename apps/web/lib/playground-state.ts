@@ -18,6 +18,14 @@ export const MODE_TITLES: Readonly<Record<PlaygroundMode, string>> = {
   arena: "Attacker arena",
 };
 
+/** What each mode is for, in one plain sentence (shown above the mode's steps). */
+export const MODE_INTRO: Readonly<Record<PlaygroundMode, string>> = {
+  poison: "Hide an attack in an email and see which defences fall for it.",
+  hijacked: "You are the attacker. Order the agent around and see what NOTARY lets through.",
+  library: "Fourteen known kinds of attack, each one click away.",
+  arena: "Watch an attacker try again and again against each defence.",
+};
+
 type Raw = string | string[] | undefined;
 
 /** Whitelist the page's query: anything unknown falls back to the default. */

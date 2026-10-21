@@ -2,7 +2,7 @@
 export function ErrorBanner({ message }: { message: string | null }) {
   if (message === null) return null;
   return (
-    <div role="alert" className="text-red-700">
+    <div role="alert" className="text-bad-strong">
       {message}
     </div>
   );

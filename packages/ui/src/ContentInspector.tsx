@@ -63,7 +63,7 @@ export function ContentInspector({ view, valueId }: ContentInspectorProps) {
       {found.integrity === "untrusted" ? (
         <p
           data-testid="untrusted-tag"
-          className="inline-block rounded bg-amber-100 px-1 text-xs font-semibold text-amber-900"
+          className="inline-block rounded bg-warn-soft px-1 text-xs font-semibold text-warn-strong"
         >
           {untrustedTag(found.originKind)}
         </p>

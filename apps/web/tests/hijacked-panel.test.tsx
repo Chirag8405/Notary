@@ -196,7 +196,7 @@ describe("HijackedPanel", () => {
     expect(light("attacker")).toBe("Attacker goal not reached");
     // The judge is the attacker: the unpaid bill is information (slate), not a failure (red).
     expect(light("user")).toBe("User goal: not reached (you are the attacker)");
-    expect(document.querySelector('[data-light="user"]')?.className).toContain("slate");
+    expect(document.querySelector('[data-light="user"]')?.className).toContain("bg-muted");
     // The judge plays the attacker: there is nothing to approve.
     expect(screen.queryByRole("button", { name: /approve|confirm/i })).toBeNull();
   });
@@ -276,7 +276,7 @@ describe("HijackedPanel", () => {
     const card = document.querySelector<HTMLElement>('[data-objective="pay_attacker"]');
     expect(card?.dataset.reached).toBe("true");
     expect(card?.textContent).toContain("REACHED");
-    expect(card?.className).toContain("red");
+    expect(card?.className).toContain("bad");
     expect(cardStates().filter(([, reached]) => reached === "true")).toHaveLength(1);
   });
 
