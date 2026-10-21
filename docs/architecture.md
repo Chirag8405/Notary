@@ -102,14 +102,14 @@ Overall: any failing step -> BLOCK; else any escalating step -> ESCALATE; else A
 
 Each maps to a test; coverage table is in [threat-model.md](threat-model.md#coverage-map).
 
-| ID  | Invariant                                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I1  | Complete mediation: no effect outside the gateway                                                                                                                                     |
-| I2  | Integrity: no attacker-only value reaches a guarded parameter without ledger match or explicit user endorsement                                                                       |
-| I3  | Confidentiality: no labeled data reaches a principal outside its readers; text the model wrote after a private read reaches a non-reader only after the user approved that exact text |
-| I4  | Ledger closure: ledger changes only via user-authored or user-endorsed writes                                                                                                         |
-| I5  | Contract monotonicity: nothing at runtime widens the contract                                                                                                                         |
-| I6  | Model independence: I1-I5 hold for ANY sequence of tool calls the LLM emits                                                                                                           |
+| ID  | Invariant                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------------------------- |
+| I1  | Complete mediation: no effect outside the gateway                                                               |
+| I2  | Integrity: no attacker-only value reaches a guarded parameter without ledger match or explicit user endorsement |
+| I3  | Confidentiality: no labeled data reaches a principal outside its readers                                        |
+| I4  | Ledger closure: ledger changes only via user-authored or user-endorsed writes                                   |
+| I5  | Contract monotonicity: nothing at runtime widens the contract                                                   |
+| I6  | Model independence: I1-I5 hold for ANY sequence of tool calls the LLM emits                                     |
 
 The oracle reports I1-I6 as `InvariantResult` (`id`: `I1`..`I6`, `passed`, `detail`) in `OracleResult`.
 
