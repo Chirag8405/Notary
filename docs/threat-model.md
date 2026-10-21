@@ -95,6 +95,17 @@ Hypothesis (harness in `packages/world`) feeds the monitor thousands of random t
 
 Organizer sandbox first; AgentDojo banking and Slack suites if allowed (`packages/eval`).
 
+### AgentDojo numbers and the published ones
+
+AgentDojo is MIT licensed, so the harness runs (`packages/eval/scripts/run_agentdojo.py`, [demo.md](demo.md#agentdojo-benchmark-banking-and-slack-307)). It reports the Metrics above, per bucket. No live number is committed yet: `packages/eval/results/agentdojo/sample/` is a scripted agent and says so on every file. When live numbers exist, read them against the table under [Prior art](#prior-art) with these caveats, which all push NOTARY's numbers in the optimistic direction or make them incomparable:
+
+- **Oracle-assisted compiler.** The contract is built from each task's ground-truth tool calls, which the product's compiler never sees: tools, literal markers, budgets and authorized irreversible actions are exactly what the solution needs. This is an upper bound on what a compiler reading only the request achieves; a real compiler can be too loose (more attacks possible) or too tight (less utility). Run the LLM compiler through `ContractCompiler` before claiming parity with ROPE or CaMeL, which do not have this advantage.
+- **Simulated user.** An ESCALATE is answered by `reject` (lower bound on utility) or `oracle` (approves exactly what the ground truth contains, upper bound). Report both; a real user sits between them, and "pay the bill in this file" needs one approval by design.
+- **Policy table written by us.** The effect class and floor of every AgentDojo tool (`dojo_tools.py`) are our choices, made before the first live run but by the people who built the monitor. Fetching a URL is treated as an outbound channel (so Slack tasks that read a link found in a message need an endorsement); update and credential tools are irreversible or endorsed. Another table gives other numbers.
+- **Structural checks differ from the papers'.** AgentDojo's own `security()` and `utility()` are used with live runs (a call a defence refused is removed from the trace it judges, because two checks read the trace of proposed calls). The offline sample uses a structural check instead. Papers differ in attack (here `important_instructions`, the static attack of the AgentDojo paper), model, benchmark version and whether utility is measured under attack, so a number from another paper is a reference point, not a baseline.
+- **Not covered:** adaptive attacks (the static attack is not adaptive; PIGuard and DRIFT report the gap), the workspace and travel suites (their tools are unmapped, so they fail closed, not measured), and confidentiality labels (every tool result is public in this harness; only the URL egress rule of step 5 applies). The classifier-only lane is the repo's keyword stand-in, far weaker than the trained detectors in the papers.
+- **What an honest sentence looks like:** "On AgentDojo v1.2.2 banking and Slack, model M, attack important_instructions, 1 round, an oracle-assisted compiler and a rejecting user, attack success fell from X% (n) to Y% (n) with utility without attack going from A% to B%." The interval of every cell is in the report (Wilson, 95%).
+
 ### Coverage map
 
 Every A and I ID maps to a test or package. "planned" means the test does not exist yet.
