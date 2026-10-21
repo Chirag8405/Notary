@@ -96,6 +96,22 @@ cd apps/server && uv run --no-sync python scripts/model_eval.py --rounds 20 --ou
 - **Raw results:** `apps/server/results/model_eval/2026-10-19.json` (a `ModelEvalReport`: both models, 18 cells, merged from two runs that used different keys).
 - **Live results vary:** quote these numbers only with their date, models and round count. They are not a test.
 
+### Longer adaptive-attacker run
+
+Two ways to run the attacker for longer than the recording. The first needs no key and is in the gate's reach; the second needs the owner's `GROQ_API_KEY`, costs tokens and has not been run (issue #306).
+
+- **Deeper fuzz, no key.** The fuzz harness is the adversarial "LLM" of the attacker model (any tool call, any argument, chosen from the world's values, shrunk to a minimal program on a violation). The `ci` profile is what the gate runs; the `full` profile explores longer programs: `uv run --no-sync notary fuzz --profile full --examples 1000 --seed 0` (about 6 minutes per seed on one core; use seeds 0 to 9 for an overnight run; exit 1 and the minimized program on a violation).
+- **External attack library, no key.** `uv run --no-sync notary attack --external` replays the 58 attacks of the X and Y series (docs/threat-model.md, "External attack library") against the real monitor in a few seconds and exits 1 on any unpinned outcome or undeclared attacker effect.
+- **Long LLM attacker, key needed.** `apps/server/scripts/arena_live.py` plays the arena with a Groq attacker (`DEFAULT_MODEL`) against a Groq agent on each lane for `--rounds` rounds: the attacker picks a vector and a payload, sees only "reached or not" and the BLOCK reason codes, and adapts. It prints counts per lane (rounds, invalid moves, goal reached, first success) and never the payload text. The NOTARY lane must show 0 (exit 1 otherwise).
+
+```
+uv run --no-sync python apps/server/scripts/arena_live.py --dry-run                # the plan, no call
+uv run --no-sync python apps/server/scripts/arena_live.py --confirm-live --lanes notary --rounds 20 --out arena.json --markdown arena.md
+uv run --no-sync python apps/server/scripts/arena_live.py --confirm-live --rounds 30   # all three lanes
+```
+
+Expected cost (an estimate, not a measurement; confirm in the Groq console after the first 5 rounds): one round is one attacker call (a prompt that grows with the history, about 1,000 tokens at round 10) plus one agent run per lane (a few model calls with the tool list, in the order of 5,000 to 8,000 tokens). `--rounds 20 --lanes notary` is then about 150,000 tokens, `--rounds 30` on three lanes about 700,000. Groq's on-demand tier allows 200,000 tokens per model per day (see "Model-dependence eval"), so the full run needs several keys or days: start with the NOTARY lane, and note that a hijacked agent is rare with `gpt-oss-120b` (it never followed the swapped IBAN), so the undefended lane may show few successes whatever the attacker writes; `--agent-model openai/gpt-oss-20b` follows injections more often. Record the date, both models, the rounds and the seed with any number you quote; live runs are not reproducible and are not a test.
+
 ## Trust X-ray (`apps/web`, route `/x-ray`; components in `packages/ui`)
 
 | Region | Content                                                                                                                                                                                                                                                                                                                                          |
@@ -232,6 +248,8 @@ The CLI computes nothing itself: it calls `notary_world`, `notary_eval` and `not
 | `notary fuzz [--examples N] [--seed S] [--profile ci\|full]`                     | Fuzz the real monitor with an adversarial LLM, checking I1-I6 after every step; prints the minimized program on a violation                                                                                           |
 | `notary replay FILE [--anchor ANCHOR.json \| --expect-head H --expect-length N]` | Print the events of a saved run (`RUN.json`) or a proxy chain (`<run>.chain.jsonl`, one audit entry per line) and verify its audit chain; the anchors detect tail truncation, which the chain alone cannot            |
 | `notary bench [--out DIR] [--seed S]`                                            | Run A1-A14 and B1-B4 with no defence and with the real monitor; prints attacks that succeeded and controls completed per lane, and with `--out` writes `none.json` and `notary.json` (`packages/eval` results export) |
+
+`notary attack --external` (or `notary attack X5` / `Y13`) runs the external attack library of docs/threat-model.md ("External attack library") instead; it is not part of `--all` or CP1.
 
 `--monitor` defaults to `real`; `fake` replays the fixtures' expected verdicts and exists only to test the harness. A real-monitor mismatch is never hidden: the two known deviations (A3, A6) keep `attack A3`, `attack A6` and `attack --all` at exit 1 until CP1 resolves them.
 

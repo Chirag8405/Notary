@@ -15,6 +15,12 @@ from typing import Annotated, NamedTuple, NoReturn
 import typer
 from pydantic import Field, JsonValue, TypeAdapter, ValidationError
 
+from notary_cli.external import (
+    external_ok,
+    render_external_list,
+    render_external_report,
+    render_external_table,
+)
 from notary_cli.render import (
     render_attack_list,
     render_attack_report,
@@ -28,6 +34,13 @@ from notary_core.models import AuditEntry, Event, NotaryModel, Sha256Hex
 from notary_eval import DEFENCES, export_results, run_library
 from notary_world.attacks import ALL_ATTACKS, ALL_CONTROLS, AttackNotFoundError
 from notary_world.executor import RunRecord
+from notary_world.external import (
+    ALL_EXTERNAL,
+    ExternalNotFoundError,
+    ExternalResult,
+    get_external,
+    run_external,
+)
 from notary_world.fuzz import FuzzProfile, run_fuzz
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="NOTARY command line.")
@@ -269,13 +282,57 @@ def _save(save_dir: str, report: AttackReport, record: RunRecord, *, quiet: bool
         typer.echo(f"saved {save_dir.rstrip('/')}/{name}", err=quiet)
 
 
+def _attack_external(
+    attack_id: str | None,
+    list_only: bool,
+    run_all: bool,
+    external: bool,
+    as_json: bool,
+    monitor: MonitorOption,
+) -> None:
+    """`attack --external` (all), `attack --external --list` or `attack X5` / `attack Y13`."""
+    if run_all or monitor is MonitorOption.fake:
+        _usage_error("--external runs the real monitor only and is not part of --all")
+    if list_only:
+        typer.echo(render_external_list(ALL_EXTERNAL), nl=False)
+        return
+    if (attack_id is None) != external:
+        _usage_error("give --external or one external id (X1.., Y1..)")
+    try:
+        ids = [a.attack_id for a in ALL_EXTERNAL] if attack_id is None else [attack_id]
+        pairs = [(get_external(i), run_external(i)[0]) for i in ids]
+    except ExternalNotFoundError:
+        _usage_error(f"unknown external attack id: {attack_id}")
+    if as_json:
+        results: list[ExternalResult] = [result for _, result in pairs]
+        typer.echo(
+            json.dumps([r.model_dump(mode="json") for r in results], indent=2) + "\n", nl=False
+        )
+    elif attack_id is None:
+        typer.echo(render_external_table(pairs), nl=False)
+    else:
+        typer.echo(render_external_report(*pairs[0]), nl=False)
+    if not all(external_ok(attack, result) for attack, result in pairs):
+        raise typer.Exit(code=1)
+
+
 @app.command()
 def attack(
     attack_id: Annotated[
-        str | None, typer.Argument(help="A1..A14 (attack) or B1..B4 (benign control).")
+        str | None,
+        typer.Argument(
+            help="A1..A14 (attack), B1..B4 (benign control) or X1.., Y1.. (external library)."
+        ),
     ] = None,
     list_only: Annotated[bool, typer.Option("--list", help="List the attack library.")] = False,
     run_all: Annotated[bool, typer.Option("--all", help="Run A1..A14 then B1..B4.")] = False,
+    external: Annotated[
+        bool,
+        typer.Option(
+            "--external",
+            help="The external library (X: published sets, Y: second author), not part of CP1.",
+        ),
+    ] = False,
     monitor: Annotated[
         MonitorOption, typer.Option("--monitor", help="real is the default; fake replays fixtures.")
     ] = MonitorOption.real,
@@ -289,6 +346,10 @@ def attack(
     Exit codes: 0 every outcome matches; 1 at least one MISMATCH (known real-monitor deviations
     count); 2 usage error or unknown id.
     """
+    wants_external = external or (attack_id or "").upper().startswith(("X", "Y"))
+    if wants_external:
+        _attack_external(attack_id, list_only, run_all, external, as_json, monitor)
+        return
     if int(attack_id is not None) + int(list_only) + int(run_all) != 1:
         _usage_error("give an attack id, --list or --all")
     if list_only:
