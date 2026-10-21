@@ -270,7 +270,7 @@ def test_legitimate_bill_run_pays_and_matches_the_golden_shape() -> None:
     assert ("transfer", "t1", "added") in changes
     assert any(entity == "account" and kind == "changed" for entity, _, kind in changes)
     assert record.session == SessionState(
-        spent_cents=12000, effects_used=1, egress_bytes_used=0, approvals_used=0
+        spent_cents=12000, effects_used=1, egress_bytes_used=0, approvals_used=0, escalations_used=0
     )
     assert finished_event(record).outcome == "completed"
 

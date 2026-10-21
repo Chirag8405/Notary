@@ -21,9 +21,13 @@ def test_the_whole_library_passes_and_prints_one_summary_line() -> None:
 
 
 def test_one_attack_shows_provenance_prediction_and_residual() -> None:
-    result = runner.invoke(app, ["attack", "Y27"])
+    result = runner.invoke(app, ["attack", "Y3"])
     assert result.exit_code == 0, result.output
-    assert "residual: known_gap #342" in result.output
+    assert "residual: out_of_scope" in result.output
+    flood = runner.invoke(app, ["attack", "Y27"])
+    assert flood.exit_code == 0, flood.output
+    assert "BUDGET_ESCALATIONS_EXHAUSTED" in flood.output
+    assert "residual" not in flood.output
     missed = runner.invoke(app, ["attack", "Y13"])
     assert missed.exit_code == 0, missed.output
     assert "predicted (before the first run): ALLOW/-/LEDGER_EXACT_MATCH" in missed.output

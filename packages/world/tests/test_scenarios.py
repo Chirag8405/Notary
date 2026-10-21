@@ -136,6 +136,7 @@ def test_scenarios_start_with_a_fresh_session():
             "effects_used": 0,
             "egress_bytes_used": 0,
             "approvals_used": 0,
+            "escalations_used": 0,
         }
 
 

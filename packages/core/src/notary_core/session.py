@@ -10,6 +10,7 @@ def with_effect(session: SessionState, *, spent_cents: int, egress_bytes: int) -
         effects_used=session.effects_used + 1,
         egress_bytes_used=session.egress_bytes_used + egress_bytes,
         approvals_used=session.approvals_used,
+        escalations_used=session.escalations_used,
     )
 
 
@@ -20,4 +21,16 @@ def with_approval(session: SessionState) -> SessionState:
         effects_used=session.effects_used,
         egress_bytes_used=session.egress_bytes_used,
         approvals_used=session.approvals_used + 1,
+        escalations_used=session.escalations_used,
+    )
+
+
+def with_escalation(session: SessionState) -> SessionState:
+    """A new state after the monitor raised a card for the user (whatever the user answers)."""
+    return SessionState(
+        spent_cents=session.spent_cents,
+        effects_used=session.effects_used,
+        egress_bytes_used=session.egress_bytes_used,
+        approvals_used=session.approvals_used,
+        escalations_used=session.escalations_used + 1,
     )

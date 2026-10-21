@@ -173,6 +173,36 @@ def test_no_escalation_no_approval_check(build: Make) -> None:
     assert check_budget(build(prior_escalated=False, approvals_used=3)) is None
 
 
+@pytest.mark.attack("A11")
+def test_a_card_flood_becomes_a_block_after_three_cards_per_approval(build: Make) -> None:
+    # max_approvals is 3, so 9 cards may be raised, whatever became of them; the 10th is a BLOCK.
+    assert check_budget(build(prior_escalated=True, escalations_used=8)) is None
+    outcome = check_budget(build(prior_escalated=True, escalations_used=9))
+    assert outcome is not None
+    assert (outcome.verdict, outcome.code) == ("BLOCK", "BUDGET_ESCALATIONS_EXHAUSTED")
+
+
+@pytest.mark.attack("A11")
+def test_the_card_cap_scales_with_the_approval_budget(build: Make) -> None:
+    small = _budget(max_approvals=1)
+    assert check_budget(build(budget=small, prior_escalated=True, escalations_used=2)) is None
+    outcome = check_budget(build(budget=small, prior_escalated=True, escalations_used=3))
+    assert outcome is not None
+    assert outcome.code == "BUDGET_ESCALATIONS_EXHAUSTED"
+
+
+@pytest.mark.attack("A11")
+def test_the_card_cap_only_applies_to_a_call_that_escalates(build: Make) -> None:
+    assert check_budget(build(prior_escalated=False, escalations_used=50)) is None
+
+
+@pytest.mark.attack("A11")
+def test_exhausted_approvals_are_reported_before_exhausted_cards(build: Make) -> None:
+    outcome = check_budget(build(prior_escalated=True, approvals_used=3, escalations_used=50))
+    assert outcome is not None
+    assert outcome.code == "BUDGET_APPROVALS_EXHAUSTED"
+
+
 @pytest.mark.attack("A12")
 def test_block_responses_are_uniform(build: Make) -> None:
     first = check_budget(build(body="A" * 2000))

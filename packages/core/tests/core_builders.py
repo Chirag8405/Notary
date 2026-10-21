@@ -101,7 +101,9 @@ def step_input(
         ),
         values={} if values is None else values,
         ledger=(),
-        session=SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
+        session=SessionState(
+            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+        ),
         scope=next((t for t in tools if t.tool == tool), None),
         policy=policy,
         prior_escalated=False,

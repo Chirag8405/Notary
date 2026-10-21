@@ -201,7 +201,9 @@ def _budget(*, effects: int, egress: int) -> EffectBudget:
 
 
 def _fresh() -> SessionState:
-    return SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0)
+    return SessionState(
+        spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+    )
 
 
 def slack_digest_scenario(seed: int = 0) -> Scenario:

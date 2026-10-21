@@ -51,6 +51,7 @@ ReasonCode = Literal[
     "BUDGET_SENDS",
     "BUDGET_EGRESS_BYTES",
     "BUDGET_APPROVALS_EXHAUSTED",
+    "BUDGET_ESCALATIONS_EXHAUSTED",
 ]
 """Machine-readable reason for a step result. Each code belongs to exactly one check."""
 
@@ -76,6 +77,7 @@ CODE_CHECK: dict[ReasonCode, CheckName | None] = {
     "BUDGET_SENDS": "budget",
     "BUDGET_EGRESS_BYTES": "budget",
     "BUDGET_APPROVALS_EXHAUSTED": "budget",
+    "BUDGET_ESCALATIONS_EXHAUSTED": "budget",
 }
 """None = valid for any check."""
 

@@ -56,7 +56,7 @@ from notary_core.monitor import Monitor, decide
 from notary_core.policy.sensitive_params import PolicyTable
 from notary_core.provenance import INTEGRITY_ORDER, join_all_readers, normalize_readers
 from notary_core.resolver import ArgumentResolver
-from notary_core.session import with_approval, with_effect
+from notary_core.session import with_approval, with_effect, with_escalation
 from notary_core.units import canonicalize
 from notary_world.labeling import world_labeling_policy
 from notary_world.scenarios import Scenario
@@ -416,7 +416,9 @@ def start_run(
         contract=contract,
         ledger=entries,
         session=session
-        or SessionState(spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0),
+        or SessionState(
+            spent_cents=0, effects_used=0, egress_bytes_used=0, approvals_used=0, escalations_used=0
+        ),
         store=(request_value,),
         chain=(),
         calls=(),
@@ -570,6 +572,7 @@ def _escalate(engine: RunEngine, judged: _Judged) -> tuple[RunEngine, CallOutcom
         engine,
         escalations=(*engine.escalations, escalation),
         pending=(*engine.pending, (endorsement_id, judged.call, judged.proposal)),
+        session=with_escalation(engine.session),
     )
     engine = _emit(
         engine,

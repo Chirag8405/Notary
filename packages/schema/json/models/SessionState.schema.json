@@ -14,6 +14,10 @@
       "minimum": 0,
       "type": "integer"
     },
+    "escalations_used": {
+      "minimum": 0,
+      "type": "integer"
+    },
     "spent_cents": {
       "minimum": 0,
       "type": "integer"
@@ -23,7 +27,8 @@
     "spent_cents",
     "effects_used",
     "egress_bytes_used",
-    "approvals_used"
+    "approvals_used",
+    "escalations_used"
   ],
   "title": "SessionState",
   "type": "object"

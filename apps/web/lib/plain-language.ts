@@ -59,6 +59,7 @@ export const REASON_TEXT: Readonly<Record<Code, string>> = {
   BUDGET_SENDS: "It would send more messages than your limit.",
   BUDGET_EGRESS_BYTES: "It would send more data than your limit.",
   BUDGET_APPROVALS_EXHAUSTED: "You have no approvals left for this task.",
+  BUDGET_ESCALATIONS_EXHAUSTED: "The agent has already asked you too many times in this task.",
 };
 
 /** The sentence for a reason code given as plain text (a log line); null for a code not known. */

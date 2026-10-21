@@ -12,3 +12,6 @@ class SessionState(NotaryModel):
     effects_used: Annotated[int, Field(ge=0)]
     egress_bytes_used: Annotated[int, Field(ge=0)]
     approvals_used: Annotated[int, Field(ge=0)]
+    escalations_used: Annotated[int, Field(ge=0)]
+    """Cards raised so far, whatever became of them (approved, rejected, timed out). Bounds a card
+    flood: see `MAX_ESCALATIONS_PER_APPROVAL` in the budget step."""

@@ -140,7 +140,13 @@ def test_budget_and_session_fields_are_non_negative() -> None:
     with pytest.raises(ValidationError):
         EffectBudget.model_validate({**budget().model_dump(), "max_approvals": -1})
     with pytest.raises(ValidationError):
-        SessionState(spent_cents=-1, effects_used=0, egress_bytes_used=0, approvals_used=0)
+        SessionState(
+            spent_cents=-1,
+            effects_used=0,
+            egress_bytes_used=0,
+            approvals_used=0,
+            escalations_used=0,
+        )
 
 
 def test_contract_json_round_trip() -> None:
@@ -279,4 +285,10 @@ def test_contract_rejects_authorized_irreversible_for_unknown_tool() -> None:
 
 def test_session_state_non_negative() -> None:
     with pytest.raises(ValidationError):
-        SessionState(spent_cents=0, effects_used=-1, egress_bytes_used=0, approvals_used=0)
+        SessionState(
+            spent_cents=0,
+            effects_used=-1,
+            egress_bytes_used=0,
+            approvals_used=0,
+            escalations_used=0,
+        )
