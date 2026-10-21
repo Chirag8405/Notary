@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" role="img" aria-label="User tasks solved (higher is better)" width="760" height="420">
+<style>text{font-family:system-ui,sans-serif}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19}.ink{fill:#f0efec}.mute{fill:#c3c2b7}.grid{stroke:#34332f}.rule{stroke:#c3c2b7}.s-undefended{fill:#3987e5}.s-classifier{fill:#d95926}.s-notary{fill:#199e70}}</style>
+<rect class="bg" width="760" height="420" fill="#fcfcfb"/>
+<text class="ink" fill="#0b0b0b" x="56.0" y="26.0" font-size="16" text-anchor="start">User tasks solved (higher is better)</text>
+<text class="mute" fill="#52514e" x="56.0" y="44.0" font-size="12" text-anchor="start">AgentDojo v1.2.2, groq:openai/gpt-oss-120b, 2026-10-21, escalations: reject</text>
+<rect class="s-undefended" x="56" y="54" width="10" height="10" rx="2" fill="#2a78d6"/><text class="mute" fill="#52514e" x="71.0" y="63.0" font-size="11" text-anchor="start">Undefended</text>
+<rect class="s-classifier" x="286" y="54" width="10" height="10" rx="2" fill="#eb6834"/><text class="mute" fill="#52514e" x="301.0" y="63.0" font-size="11" text-anchor="start">Classifier-only (keyword stand-in)</text>
+<rect class="s-notary" x="516" y="54" width="10" height="10" rx="2" fill="#1baf7a"/><text class="mute" fill="#52514e" x="531.0" y="63.0" font-size="11" text-anchor="start">NOTARY</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="356.0" y2="356.0"/><text class="mute" fill="#52514e" x="48.0" y="360.0" font-size="11" text-anchor="end">0%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="293.0" y2="293.0"/><text class="mute" fill="#52514e" x="48.0" y="297.0" font-size="11" text-anchor="end">25%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="230.0" y2="230.0"/><text class="mute" fill="#52514e" x="48.0" y="234.0" font-size="11" text-anchor="end">50%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="167.0" y2="167.0"/><text class="mute" fill="#52514e" x="48.0" y="171.0" font-size="11" text-anchor="end">75%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="104.0" y2="104.0"/><text class="mute" fill="#52514e" x="48.0" y="108.0" font-size="11" text-anchor="end">100%</text>
+<path class="s-undefended" d="M157.0,356.0 V202.5 Q157.0,198.5 161.0,198.5 H199.0 Q203.0,198.5 203.0,202.5 V356.0 Z" fill="#2a78d6"><title>Undefended: 62.5% (5/8)</title></path>
+<line class="rule" x1="180.0" x2="180.0" y1="279.0" y2="138.5" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="180.0" y="133.5" font-size="11" text-anchor="middle">62%</text>
+<path class="s-classifier" d="M205.0,356.0 V234.0 Q205.0,230.0 209.0,230.0 H247.0 Q251.0,230.0 251.0,234.0 V356.0 Z" fill="#eb6834"><title>Classifier-only (keyword stand-in): 50.0% (4/8)</title></path>
+<line class="rule" x1="228.0" x2="228.0" y1="301.8" y2="158.2" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="228.0" y="153.2" font-size="11" text-anchor="middle">50%</text>
+<path class="s-notary" d="M253.0,356.0 V234.0 Q253.0,230.0 257.0,230.0 H295.0 Q299.0,230.0 299.0,234.0 V356.0 Z" fill="#1baf7a"><title>NOTARY: 50.0% (4/8)</title></path>
+<line class="rule" x1="276.0" x2="276.0" y1="301.8" y2="158.2" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="276.0" y="153.2" font-size="11" text-anchor="middle">50%</text>
+<text class="mute" fill="#52514e" x="228.0" y="376.0" font-size="12" text-anchor="middle">no attack</text>
+<path class="s-undefended" d="M501.0,356.0 V193.5 Q501.0,189.5 505.0,189.5 H543.0 Q547.0,189.5 547.0,193.5 V356.0 Z" fill="#2a78d6"><title>Undefended: 66.1% (37/56)</title></path>
+<line class="rule" x1="524.0" x2="524.0" y1="222.4" y2="161.8" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="524.0" y="156.8" font-size="11" text-anchor="middle">66%</text>
+<path class="s-classifier" d="M549.0,356.0 V207.0 Q549.0,203.0 553.0,203.0 H591.0 Q595.0,203.0 595.0,207.0 V356.0 Z" fill="#eb6834"><title>Classifier-only (keyword stand-in): 60.7% (34/56)</title></path>
+<line class="rule" x1="572.0" x2="572.0" y1="236.0" y2="173.5" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="572.0" y="168.5" font-size="11" text-anchor="middle">61%</text>
+<path class="s-notary" d="M597.0,356.0 V315.0 Q597.0,311.0 601.0,311.0 H639.0 Q643.0,311.0 643.0,315.0 V356.0 Z" fill="#1baf7a"><title>NOTARY: 17.9% (10/56)</title></path>
+<line class="rule" x1="620.0" x2="620.0" y1="330.8" y2="280.8" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="620.0" y="275.8" font-size="11" text-anchor="middle">18%</text>
+<text class="mute" fill="#52514e" x="572.0" y="376.0" font-size="12" text-anchor="middle">under attack</text>
+<text class="mute" fill="#52514e" x="56.0" y="410.0" font-size="10" text-anchor="start">Whiskers: 95% Wilson interval. Bars show the runs counted; errored runs are excluded.</text></svg>

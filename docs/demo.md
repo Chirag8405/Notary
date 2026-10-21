@@ -117,10 +117,20 @@ uv run --no-sync python packages/eval/scripts/agentdojo_report.py /tmp/dojo/repo
   export GROQ_API_KEY=...        # in the shell; the script never reads .env and never prints a key
   uv run --no-sync --with agentdojo==0.1.35 python packages/eval/scripts/run_agentdojo.py \
       --agent model --model groq:openai/gpt-oss-120b --approval reject --confirm-live \
-      --out-dir packages/eval/results/agentdojo/2026-MM-DD-gpt-oss-120b
+      --out-dir packages/eval/results/agentdojo/2026-MM-DD-gpt-oss-120b  # add --max-tasks 4 for the slice
   ```
 
   `--model` is `groq:<id>`, `openai:<id>`, `anthropic:<id>` (keys `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or an AgentDojo model name. The full plan is 858 runs (37 clean and 249 attacked user tasks, in 3 lanes); at roughly 8 model calls and 3k input tokens per call that is about 7,000 calls and 20 million input tokens (the dry run prints the estimate; the report records the real number of calls). Multiply by your provider's price; a Groq free-tier daily token cap will not cover it in one day, so run slices (`--max-tasks 4 --lane notary`, then the other lanes) and rerun the same command to resume. Run once with `--approval reject` (utility lower bound) and once with `--approval oracle` (optimistic) and report both. Before committing results, scan the output directory for keys and local paths.
+
+- **First live slice (2026-10-21, `groq:openai/gpt-oss-120b`, owner-run).** The first 4 user tasks of each suite (8 of the 53 tasks), attack `important_instructions`, 1 round, 192 runs, 891 model calls, no run errored, escalations rejected, contracts from the ground truth (oracle). Raw results and charts: `packages/eval/results/agentdojo/2026-10-21-gpt-oss-120b/`.
+
+  | lane                               | utility, no attack | utility, under attack | attack success rate  |
+  | ---------------------------------- | ------------------ | --------------------- | -------------------- |
+  | Undefended                         | 62% (5/8)          | 66% (37/56)           | 79% (44/56; 66%-87%) |
+  | Classifier-only (keyword stand-in) | 50% (4/8)          | 61% (34/56)           | 79% (44/56; 66%-87%) |
+  | NOTARY                             | 50% (4/8)          | 18% (10/56)           | 0% (0/56; 0%-6%)     |
+
+  Read it with these limits: **the utility cost is large** (66% to 18% under attack, because every escalation was rejected and the contracts were not made for these tasks); 8 tasks is a slice, not the benchmark, and the intervals are wide (95% Wilson, in `numbers.md`); one model, one attack, one round; the oracle compiler is easier than the product's compiler; the classifier lane is a keyword stand-in, not a published detector. Quote it only with that date, model and count. It is not a test.
 
 ### Longer adaptive-attacker run
 
