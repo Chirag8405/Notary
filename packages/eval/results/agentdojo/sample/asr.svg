@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" role="img" aria-label="Attack success rate (lower is better)" width="760" height="420">
+<style>text{font-family:system-ui,sans-serif}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19}.ink{fill:#f0efec}.mute{fill:#c3c2b7}.grid{stroke:#34332f}.rule{stroke:#c3c2b7}.s-undefended{fill:#3987e5}.s-classifier{fill:#d95926}.s-notary{fill:#199e70}}</style>
+<rect class="bg" width="760" height="420" fill="#fcfcfb"/>
+<text class="ink" fill="#0b0b0b" x="56.0" y="26.0" font-size="16" text-anchor="start">Attack success rate (lower is better)</text>
+<text class="mute" fill="#52514e" x="56.0" y="44.0" font-size="12" text-anchor="start">SAMPLE, not a result. AgentDojo v1.2.2, scripted agent, 2026-10-21, escalations: reject</text>
+<rect class="s-undefended" x="56" y="54" width="10" height="10" rx="2" fill="#2a78d6"/><text class="mute" fill="#52514e" x="71.0" y="63.0" font-size="11" text-anchor="start">Undefended</text>
+<rect class="s-classifier" x="286" y="54" width="10" height="10" rx="2" fill="#eb6834"/><text class="mute" fill="#52514e" x="301.0" y="63.0" font-size="11" text-anchor="start">Classifier-only (keyword stand-in)</text>
+<rect class="s-notary" x="516" y="54" width="10" height="10" rx="2" fill="#1baf7a"/><text class="mute" fill="#52514e" x="531.0" y="63.0" font-size="11" text-anchor="start">NOTARY</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="356.0" y2="356.0"/><text class="mute" fill="#52514e" x="48.0" y="360.0" font-size="11" text-anchor="end">0%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="293.0" y2="293.0"/><text class="mute" fill="#52514e" x="48.0" y="297.0" font-size="11" text-anchor="end">25%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="230.0" y2="230.0"/><text class="mute" fill="#52514e" x="48.0" y="234.0" font-size="11" text-anchor="end">50%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="167.0" y2="167.0"/><text class="mute" fill="#52514e" x="48.0" y="171.0" font-size="11" text-anchor="end">75%</text>
+<line class="grid" stroke="#e3e2de" x1="56" x2="744" y1="104.0" y2="104.0"/><text class="mute" fill="#52514e" x="48.0" y="108.0" font-size="11" text-anchor="end">100%</text>
+<path class="s-undefended" d="M99.7,356.0 V108.0 Q99.7,104.0 103.7,104.0 H141.7 Q145.7,104.0 145.7,108.0 V356.0 Z" fill="#2a78d6"><title>Undefended: 100.0% (249/249)</title></path>
+<line class="rule" x1="122.7" x2="122.7" y1="107.8" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="122.7" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<path class="s-classifier" d="M147.7,356.0 V108.0 Q147.7,104.0 151.7,104.0 H189.7 Q193.7,104.0 193.7,108.0 V356.0 Z" fill="#eb6834"><title>Classifier-only (keyword stand-in): 100.0% (249/249)</title></path>
+<line class="rule" x1="170.7" x2="170.7" y1="107.8" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="170.7" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<line class="rule" x1="218.7" x2="218.7" y1="356.0" y2="352.2" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="218.7" y="347.2" font-size="11" text-anchor="middle">0%</text>
+<text class="mute" fill="#52514e" x="170.7" y="376.0" font-size="12" text-anchor="middle">all suites</text>
+<path class="s-undefended" d="M329.0,356.0 V108.0 Q329.0,104.0 333.0,104.0 H371.0 Q375.0,104.0 375.0,108.0 V356.0 Z" fill="#2a78d6"><title>Undefended: 100.0% (144/144)</title></path>
+<line class="rule" x1="352.0" x2="352.0" y1="110.5" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="352.0" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<path class="s-classifier" d="M377.0,356.0 V108.0 Q377.0,104.0 381.0,104.0 H419.0 Q423.0,104.0 423.0,108.0 V356.0 Z" fill="#eb6834"><title>Classifier-only (keyword stand-in): 100.0% (144/144)</title></path>
+<line class="rule" x1="400.0" x2="400.0" y1="110.5" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="400.0" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<line class="rule" x1="448.0" x2="448.0" y1="356.0" y2="349.5" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="448.0" y="344.5" font-size="11" text-anchor="middle">0%</text>
+<text class="mute" fill="#52514e" x="400.0" y="376.0" font-size="12" text-anchor="middle">banking</text>
+<path class="s-undefended" d="M558.3,356.0 V108.0 Q558.3,104.0 562.3,104.0 H600.3 Q604.3,104.0 604.3,108.0 V356.0 Z" fill="#2a78d6"><title>Undefended: 100.0% (105/105)</title></path>
+<line class="rule" x1="581.3" x2="581.3" y1="112.9" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="581.3" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<path class="s-classifier" d="M606.3,356.0 V108.0 Q606.3,104.0 610.3,104.0 H648.3 Q652.3,104.0 652.3,108.0 V356.0 Z" fill="#eb6834"><title>Classifier-only (keyword stand-in): 100.0% (105/105)</title></path>
+<line class="rule" x1="629.3" x2="629.3" y1="112.9" y2="104.0" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="629.3" y="99.0" font-size="11" text-anchor="middle">100%</text>
+<line class="rule" x1="677.3" x2="677.3" y1="356.0" y2="347.1" stroke="#52514e" stroke-width="1.5"/><text class="ink" fill="#0b0b0b" x="677.3" y="342.1" font-size="11" text-anchor="middle">0%</text>
+<text class="mute" fill="#52514e" x="629.3" y="376.0" font-size="12" text-anchor="middle">slack</text>
+<text class="mute" fill="#52514e" x="56.0" y="410.0" font-size="10" text-anchor="start">Whiskers: 95% Wilson interval. Bars show the runs counted; errored runs are excluded.</text></svg>

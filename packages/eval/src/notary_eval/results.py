@@ -1,4 +1,8 @@
-"""Result shapes and JSON export for charts. Harness not implemented yet."""
+"""Result shapes and JSON export for charts.
+
+The AgentDojo harness (`notary_eval.dojo_run`, `run_agentdojo`) exports a richer report
+(`AgentDojoReport`) that also carries these shapes, one `EvalResults` per lane.
+"""
 
 from pathlib import Path
 from typing import Annotated
@@ -24,8 +28,3 @@ class EvalResults(NotaryModel):
 def export_results(results: EvalResults, path: Path) -> None:
     """Write results as pretty JSON for the chart tooling."""
     path.write_text(results.model_dump_json(indent=2) + "\n", encoding="utf-8")
-
-
-def run_agentdojo(defence: str, seed: int) -> EvalResults:
-    """Run the AgentDojo suites against a defence. Not implemented yet."""
-    raise NotImplementedError

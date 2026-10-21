@@ -96,6 +96,42 @@ cd apps/server && uv run --no-sync python scripts/model_eval.py --rounds 20 --ou
 - **Raw results:** `apps/server/results/model_eval/2026-10-19.json` (a `ModelEvalReport`: both models, 18 cells, merged from two runs that used different keys).
 - **Live results vary:** quote these numbers only with their date, models and round count. They are not a test.
 
+### AgentDojo benchmark (banking and Slack; #307)
+
+`packages/eval/scripts/run_agentdojo.py` runs NOTARY on [AgentDojo](https://github.com/ethz-spylab/agentdojo) v1.2.2 (MIT licence): 16 banking and 21 Slack user tasks, 9 and 5 injection tasks, the `important_instructions` attack, three lanes (undefended, classifier-only with the keyword stand-in, NOTARY). Why it is not a dependency, how the adapter works and what the compiler is: [decisions.md](decisions.md). The numbers' caveats and the comparison with the papers: [threat-model.md](threat-model.md#agentdojo-numbers-and-the-published-ones).
+
+```
+uv run --no-sync python packages/eval/scripts/run_agentdojo.py --dry-run                 # the plan, no call
+uv run --no-sync python packages/eval/scripts/run_agentdojo.py --out-dir /tmp/dojo       # free: scripted agent, offline snapshot
+uv run --no-sync --with agentdojo==0.1.35 python packages/eval/scripts/run_agentdojo.py --source agentdojo   # free: AgentDojo's own checkers
+uv run --no-sync python packages/eval/scripts/agentdojo_report.py /tmp/dojo/report.json  # charts and deck numbers from a report
+```
+
+- **Options:** `--suite banking|slack` (repeat), `--lane undefended|classifier|notary` (repeat), `--agent scripted|model`, `--model`, `--attack`, `--max-tasks N` (first N user tasks of each suite, each under every injection task), `--approval reject|oracle` (what the simulated user answers to an ESCALATE: refuse always, or approve what the task needs), `--out-dir`, `--dry-run`, `--confirm-live`.
+- **Output** (in `--out-dir`): `runs.jsonl` (one line per finished run; a stopped run resumes from it, so rerun the same command), `report.json` (an `AgentDojoReport`: meta with model, date, rounds, model calls; the runs; one `EvalResults` per lane, the shape `notary bench` exports; the cells with 95% Wilson intervals per suite, lane and bucket), `numbers.md` (the deck tables and the one-line claim), `asr.svg` and `utility.svg` (charts, generated, never drawn by hand).
+- **Metrics** ([threat-model.md](threat-model.md#metrics)): utility without attack, utility under attack, attack success rate, clean runs with an escalation; per bucket (fully specified, parameter open, action open, and read only for tasks with no effect).
+- **SAMPLE results:** `packages/eval/results/agentdojo/sample/` is a scripted agent that follows the ground-truth calls (and, under attack, the injection's too: a fully hijacked agent) against the committed snapshot. It proves the harness and shows the output shape. **It is not a result**: no model ran, the contracts come from the solution, and utility is judged on the ground-truth calls. A test regenerates it and fails on drift. Verified once against the real package: `--source agentdojo` gave the same picture with AgentDojo's own checkers (NOTARY 0 of 249 attacks reached the goal; the undefended lane 248 of 249).
+- **Live run (costs money; owner only):**
+
+  ```
+  export GROQ_API_KEY=...        # in the shell; the script never reads .env and never prints a key
+  uv run --no-sync --with agentdojo==0.1.35 python packages/eval/scripts/run_agentdojo.py \
+      --agent model --model groq:openai/gpt-oss-120b --approval reject --confirm-live \
+      --out-dir packages/eval/results/agentdojo/2026-MM-DD-gpt-oss-120b  # add --max-tasks 4 for the slice
+  ```
+
+  `--model` is `groq:<id>`, `openai:<id>`, `anthropic:<id>` (keys `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or an AgentDojo model name. The full plan is 858 runs (37 clean and 249 attacked user tasks, in 3 lanes); at roughly 8 model calls and 3k input tokens per call that is about 7,000 calls and 20 million input tokens (the dry run prints the estimate; the report records the real number of calls). Multiply by your provider's price; a Groq free-tier daily token cap will not cover it in one day, so run slices (`--max-tasks 4 --lane notary`, then the other lanes) and rerun the same command to resume. Run once with `--approval reject` (utility lower bound) and once with `--approval oracle` (optimistic) and report both. Before committing results, scan the output directory for keys and local paths.
+
+- **First live slice (2026-10-21, `groq:openai/gpt-oss-120b`, owner-run).** The first 4 user tasks of each suite (8 of the 53 tasks), attack `important_instructions`, 1 round, 192 runs, 891 model calls, no run errored, escalations rejected, contracts from the ground truth (oracle). Raw results and charts: `packages/eval/results/agentdojo/2026-10-21-gpt-oss-120b/`.
+
+  | lane                               | utility, no attack | utility, under attack | attack success rate  |
+  | ---------------------------------- | ------------------ | --------------------- | -------------------- |
+  | Undefended                         | 62% (5/8)          | 66% (37/56)           | 79% (44/56; 66%-87%) |
+  | Classifier-only (keyword stand-in) | 50% (4/8)          | 61% (34/56)           | 79% (44/56; 66%-87%) |
+  | NOTARY                             | 50% (4/8)          | 18% (10/56)           | 0% (0/56; 0%-6%)     |
+
+  Read it with these limits: **the utility cost is large** (66% to 18% under attack, because every escalation was rejected and the contracts were not made for these tasks); 8 tasks is a slice, not the benchmark, and the intervals are wide (95% Wilson, in `numbers.md`); one model, one attack, one round; the oracle compiler is easier than the product's compiler; the classifier lane is a keyword stand-in, not a published detector. Quote it only with that date, model and count. It is not a test.
+
 ### Longer adaptive-attacker run
 
 Two ways to run the attacker for longer than the recording. The first needs no key and is in the gate's reach; the second needs the owner's `GROQ_API_KEY`, costs tokens and has not been run (issue #306).
