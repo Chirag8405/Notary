@@ -122,11 +122,20 @@ notary-mcp-proxy [serve] --config CONFIG [--audit-dir DIR] [--control PATH|none]
                  [--approval-timeout SECONDS] [--compile-url URL]
                  [--http HOST:PORT --token-file PATH [--allow-origin ORIGIN]... [--allow-remote-bind]
                   [--tls-terminated] [--auth-max-failures N] [--auth-lockout-seconds S]]
-notary-mcp-proxy check --config CONFIG [--json]
+notary-mcp-proxy check --config CONFIG [--json] [--review | --approve [--yes]] [--approved-file PATH]
 notary-mcp-proxy pending | approve ID | reject ID [--control PATH]
 notary-mcp-proxy hook pre-tool-use --policy PATH
 notary-mcp-proxy hook user-prompt-submit [--control PATH]
 ```
+
+`check --review` prints each tool's name, description and schema from the server's first listing,
+with a hint for instruction-like text (a URL, "ignore previous", "also read", "do not tell the user")
+and whether the tool is new, changed or unchanged against the approved file. `check --approve`
+asks `approve N tool(s)? [y/N]` and then records each tool's hash and the time in
+`CONFIG.approved-tools.json`; without a terminal it refuses unless `--yes` is given. The hints are a
+reviewer aid, not a classifier, and a person must read the descriptions: a server that is hostile
+from its first listing is only caught if the reviewer notices. `serve` does not read the approved
+file; it only pins what the server reports at startup, so run `check --review` after any change.
 
 No subcommand means `serve`. `python -m notary_mcp_proxy` is the same program. In stdio mode, stdout
 carries only MCP messages; every diagnostic goes to stderr.

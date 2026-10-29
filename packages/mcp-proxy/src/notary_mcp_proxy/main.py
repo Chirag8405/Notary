@@ -21,6 +21,7 @@ from notary_core.audit import append
 from notary_core.gateway import make_labeler
 from notary_core.models import RunStarted
 from notary_core.monitor import decide
+from notary_core.pinning import ToolManifest
 from notary_core.resolver import ArgumentResolver
 from notary_mcp_proxy.approvals import ApprovalDesk, printable
 from notary_mcp_proxy.audit_log import AuditWriteError, RunLog, durable_append
@@ -58,6 +59,13 @@ from notary_mcp_proxy.control import (
     find_socket,
     render_pending,
     send,
+)
+from notary_mcp_proxy.first_seen import (
+    approve_rows,
+    load_approved,
+    render_review,
+    review_tools,
+    save_approved,
 )
 from notary_mcp_proxy.gateway import AuditAppend, Gateway
 from notary_mcp_proxy.guard import hook_reason, run_hook
@@ -298,11 +306,33 @@ def _load_config(path: Path) -> ProxyConfig | None:
         return None
 
 
+def _add_review_flags(parser: argparse.ArgumentParser) -> None:
+    """The first-seen review flags of `check`; `--approve` includes `--review`."""
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="show each tool's description and schema and whether it is approved",
+    )
+    parser.add_argument(
+        "--approve",
+        action="store_true",
+        help="review, then record the tools' hashes once confirmed",
+    )
+    parser.add_argument("--yes", action="store_true", help="with --approve: confirm without asking")
+    parser.add_argument(
+        "--approved-file",
+        type=Path,
+        default=None,
+        help="where approvals are kept (default: next to CONFIG)",
+    )
+
+
 def check_main(argv: Sequence[str]) -> int:
     """`check --config CONFIG [--json]`: exit 0 clean, 1 an error finding, 2 could not check."""
     parser = argparse.ArgumentParser(prog="notary-mcp-proxy check")
     parser.add_argument("--config", type=Path, required=True, help="proxy config (JSON)")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    _add_review_flags(parser)
     args = parser.parse_args(argv)
     config_path: Path = args.config
     config = _load_config(config_path)
@@ -335,7 +365,38 @@ def check_main(argv: Sequence[str]) -> int:
     print(report.model_dump_json(indent=2) if args.json else render_report(report), end="")
     if args.json:
         print()
+    if args.review or args.approve:
+        approved_path: Path = args.approved_file or config_path.with_suffix(".approved-tools.json")
+        status = _review_tools(manifests, approved_path, approve=args.approve, assume_yes=args.yes)
+        if status != 0:
+            return status
     return 0 if report.ok else 1
+
+
+def _review_tools(
+    manifests: Sequence[ToolManifest], approved_path: Path, *, approve: bool, assume_yes: bool
+) -> int:
+    """Show the first-seen review; with `approve`, record it after a confirmation."""
+    try:
+        approved = load_approved(approved_path)
+    except (OSError, ValueError) as failure:
+        _log(f"cannot read {approved_path.name}: {type(failure).__name__}")
+        return 2
+    rows = review_tools(manifests, approved)
+    print(render_review(rows), end="")
+    pending = [row for row in rows if row.state != "unchanged"]
+    if not approve or not pending:
+        return 0
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            _log("approval needs a person at a terminal; pass --yes to confirm without asking")
+            return 1
+        if input(f"approve {len(pending)} tool(s)? [y/N] ").strip().lower() not in ("y", "yes"):
+            _log("not approved; nothing written")
+            return 1
+    save_approved(approved_path, approve_rows(rows, approved))
+    _log(f"approved {len(pending)} tool(s) in {approved_path.name}")
+    return 0
 
 
 def _start_clients(
