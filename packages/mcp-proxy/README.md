@@ -92,7 +92,14 @@ claude mcp add --scope project notary-bank -- \
 
 `--scope project` writes `./.mcp.json` (without it the entry goes to your user-level Claude Code config).
 `uv run --directory` makes the repo the proxy's working directory, so the relative `--config` and
-`--audit-dir` resolve inside it. Start a session that sees only the proxy:
+`--audit-dir` resolve inside it.
+
+Install the guard hook before the first session: it is what keeps the agent from running
+`notary-mcp-proxy approve` itself from a shell. Copy the `PreToolUse` block of
+`examples/claude/settings.example.json` into your project's `.claude/settings.json` (see "Hooks for
+Claude Code"). Approvals over the control socket also need a one-time code that only the proxy's
+stderr shows, but the code is not a substitute for the guard (see "Approving an escalation").
+Start a session that sees only the proxy:
 
 ```bash
 claude --strict-mcp-config --mcp-config .mcp.json --tools ""
@@ -123,7 +130,7 @@ notary-mcp-proxy [serve] --config CONFIG [--audit-dir DIR] [--control PATH|none]
                  [--http HOST:PORT --token-file PATH [--allow-origin ORIGIN]... [--allow-remote-bind]
                   [--tls-terminated] [--auth-max-failures N] [--auth-lockout-seconds S]]
 notary-mcp-proxy check --config CONFIG [--json] [--review | --approve [--yes]] [--approved-file PATH]
-notary-mcp-proxy pending | approve ID | reject ID [--control PATH]
+notary-mcp-proxy pending | approve ID [--code CODE] | reject ID [--control PATH]
 notary-mcp-proxy hook pre-tool-use --policy PATH
 notary-mcp-proxy hook user-prompt-submit [--control PATH]
 ```
@@ -428,8 +435,11 @@ An ESCALATE keeps the `tools/call` open while the user answers on a channel the 
 The first answer wins; no answer within `--approval-timeout` is a rejection.
 
 - **Control socket and CLI.** The proxy prints the card to stderr (id, tool, one row per parameter from the
-  labels, approvals left). From any terminal: `notary-mcp-proxy pending`, `approve e1`, `reject e1`
-  (`--control PATH` when more than one socket exists). Approving writes the card's values to the ledger as
+  labels, approvals left) and, under it, a one-time `approval code`. From any terminal: `notary-mcp-proxy pending`,
+  `approve e1 --code CODE`, `reject e1` (`--control PATH` when more than one socket exists; `approve`
+  asks for the code when `--code` is left out and there is a terminal). `pending` and the socket never
+  show the code, a reject needs none, and three wrong codes reject the card. Turn the code off with
+  `"approvals": {"require_code": false}` only where the socket is reached by a channel the user sees. Approving writes the card's values to the ledger as
   user-endorsed entries and decides the same call again, so the monitor still has the last word. The
   socket is mode 0600 in a 0700 directory and checked with `SO_PEERCRED` on Linux.
 - **MCP elicitation.** If the client declares the capability, the proxy asks in the client's own UI
@@ -442,7 +452,9 @@ The first answer wins; no answer within `--approval-timeout` is a rejection.
   as `http://localhost:3000`).
 - Claude Code may stop waiting for a tool before the approval timeout; set `MCP_TOOL_TIMEOUT`
   (milliseconds) above `--approval-timeout`.
-- An agent with a shell can run `notary-mcp-proxy approve e1` itself. Use `--tools ""` or the guard hook.
+- An agent with a shell can no longer approve with `notary-mcp-proxy approve e1` alone: it needs the code
+  from the proxy's stderr. If your host keeps that stderr in a file the agent can read (Claude Code's MCP
+  logs), the code is readable too, so still use `--tools ""` or the guard hook.
 
 ## Hooks for Claude Code
 

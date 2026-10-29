@@ -694,7 +694,10 @@ def test_bank_demo_one_approve_one_reject_and_the_payment_check(
     session.send(tool_call(2, "add_contact", {"name": "Alpha Consulting"}))
     hint = session.wait_for_line("approve with")
     assert str(socket_path) in hint
-    assert main(["approve", "e1", "--control", str(socket_path)]) == 0
+    code = session.wait_for_line("approval code for e1: ").split(": ")[-1].strip()
+    # the socket refuses an approval without the code the proxy printed on its stderr
+    assert main(["approve", "e1", "--control", str(socket_path)]) == 1
+    assert main(["approve", "e1", "--code", code, "--control", str(socket_path)]) == 0
     approved = session.result(2)
     assert approved["isError"] is False
     assert "added contact Alpha Consulting" in json.dumps(approved)

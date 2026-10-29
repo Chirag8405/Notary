@@ -10,7 +10,8 @@ CLI. The guard hook (`notary-mcp-proxy hook pre-tool-use`) denies the shell for 
 Protocol: one JSON object per line, one answer per line.
 
     {"op": "pending"}                                  -> {"pending": [{...}, ...]}
-    {"op": "approve" | "reject", "endorsement_id": ..} -> {"ok": true} | {"ok": false, "error": ..}
+    {"op": "approve" | "reject", "endorsement_id": .., "code": ..}
+                                                       -> {"ok": true} | {"ok": false, "error": ..}
 
     {"op": "user_prompt", "prompt": ".."}              -> {"ok": true, "value_id": "request.<n>"}
                                                           | {"ok": false, "error": ..}
@@ -49,6 +50,7 @@ CONNECTION_TIMEOUT = 10.0
 CLIENT_TIMEOUT = 5.0
 ERR_UNKNOWN = "unknown or already decided endorsement"
 ERR_REQUEST = "bad request"
+ERR_CODE = "the approval code is missing or wrong"
 MAX_PROMPT = 8192
 """Longest prompt, in characters. The JSON line stays under `MAX_LINE` even when every character
 is escaped (6 bytes). A longer prompt is refused whole, never cut."""
@@ -202,9 +204,13 @@ class ControlServer:
             if endorsement_id is None:
                 return {"ok": False, "error": ERR_REQUEST}
             choice: Choice = "approve" if op == "approve" else "reject"
-            if self._desk.decide(endorsement_id, choice):
+            code = request.get("code")
+            if code is not None and not isinstance(code, str):
+                return {"ok": False, "error": ERR_REQUEST}
+            result = self._desk.decide_with_code(endorsement_id, choice, code)
+            if result == "ok":
                 return {"ok": True}
-            return {"ok": False, "error": ERR_UNKNOWN}
+            return {"ok": False, "error": ERR_CODE if result == "code" else ERR_UNKNOWN}
         if op == "user_prompt":
             return self._user_prompt(request)
         return {"ok": False, "error": ERR_REQUEST}

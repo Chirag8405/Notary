@@ -442,11 +442,12 @@ class ProxyServer:
             card_text=text,
             remaining_approvals=card.remaining_approvals,
         )
-        desk.open(pending)
+        code = desk.open(pending)
+        code_line = "" if code is None else f"\napproval code for {endorsement_id}: {code}"
         diagnostic(
             f"{endorsement_id}: {call.tool} (call {call.call_id}) waits for the user "
             f"({card.remaining_approvals} approval(s) left, {desk.timeout_seconds:g} s)\n"
-            f"{text}\n{self._control_hint.replace('{id}', endorsement_id)}".rstrip()
+            f"{text}\n{self._control_hint.replace('{id}', endorsement_id)}{code_line}".rstrip()
         )
         elicitation = None
         ask = self._ask

@@ -13,6 +13,9 @@ The clock is injected (`time.monotonic` by default) and the wait is a condition 
 short slices, so tests advance a fake clock instead of sleeping.
 """
 
+import base64
+import hmac
+import secrets
 import threading
 import time
 import unicodedata
@@ -25,6 +28,8 @@ from pydantic import Field
 from notary_core.models import NotaryModel
 
 Choice = Literal["approve", "reject"]
+CodeResult = Literal["ok", "unknown", "code"]
+"""`decide_with_code`: recorded, no such open card, or the code was missing or wrong."""
 Cause = Literal["user", "timeout", "cancelled", "closed"]
 """Why a wait ended: the user answered, the deadline passed, the agent cancelled the call, or the
 agent's input ended."""
@@ -33,6 +38,10 @@ POLL_SECONDS = 0.1
 """How often a waiting call looks at the clock, the cancel flag and the end of input."""
 PATIENCE = 30.0
 """Only a failing test waits this long (`wait_for_open`)."""
+CODE_BYTES = 5
+"""Entropy of an approval code (40 bits, shown as 8 base32 characters)."""
+MAX_BAD_CODES = 3
+"""Wrong codes a card takes before it is rejected: a guess cannot be repeated until it fits."""
 
 
 class Pending(NotaryModel):
@@ -57,6 +66,8 @@ class _Entry:
     deadline: float
     choice: Choice | None = None
     closed: bool = False
+    code: str | None = None
+    bad_codes: int = 0
 
 
 def printable(text: str) -> str:
@@ -74,6 +85,17 @@ def printable(text: str) -> str:
     return "".join(out)
 
 
+def _code_matches(expected: str | None, given: str | None) -> bool:
+    """True when no code is required, or the given one equals it (case and spaces ignored)."""
+    if expected is None:
+        return True
+    return given is not None and hmac.compare_digest(given.strip().upper(), expected)
+
+
+def _random_code() -> str:
+    return base64.b32encode(secrets.token_bytes(CODE_BYTES)).decode("ascii")
+
+
 class ApprovalDesk:
     def __init__(
         self,
@@ -81,12 +103,16 @@ class ApprovalDesk:
         timeout_seconds: float,
         clock: Callable[[], float] = time.monotonic,
         poll_seconds: float = POLL_SECONDS,
+        require_code: bool = False,
+        new_code: Callable[[], str] | None = None,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("the approval timeout must be positive")
         self._timeout = timeout_seconds
         self._clock = clock
         self._poll = poll_seconds
+        self._require_code = require_code
+        self._new_code = new_code or _random_code
         self._cond = threading.Condition()
         self._entries: dict[str, _Entry] = {}
         self._opened = 0
@@ -95,16 +121,23 @@ class ApprovalDesk:
     def timeout_seconds(self) -> float:
         return self._timeout
 
-    def open(self, pending: Pending) -> None:
-        """Start waiting for the user on this card; the deadline starts now."""
+    def open(self, pending: Pending) -> str | None:
+        """Start waiting for the user on this card; the deadline starts now.
+
+        Returns the one-time approval code the control socket will ask for, or None when codes
+        are off. The code is never part of `pending()` or the card: the caller shows it only on
+        the user's own channel.
+        """
         with self._cond:
             if pending.endorsement_id in self._entries:
                 raise ValueError("endorsement already open")
+            code = self._new_code() if self._require_code else None
             self._entries[pending.endorsement_id] = _Entry(
-                pending=pending, deadline=self._clock() + self._timeout
+                pending=pending, deadline=self._clock() + self._timeout, code=code
             )
             self._opened += 1
             self._cond.notify_all()
+            return code
 
     def wait(self, endorsement_id: str, cancelled: Callable[[], bool]) -> Choice:
         """The user's choice; "reject" on timeout or cancel. The entry is closed on return."""
@@ -153,6 +186,24 @@ class ApprovalDesk:
             entry.choice = choice
             self._cond.notify_all()
             return True
+
+    def decide_with_code(self, endorsement_id: str, choice: Choice, code: str | None) -> CodeResult:
+        """The control socket's `decide`: an approval must carry the card's one-time code.
+
+        A reject needs no code (it is always safe). A wrong or missing code approves nothing and
+        counts; the card is rejected at the `MAX_BAD_CODES`-th, so the code cannot be guessed.
+        """
+        with self._cond:
+            entry = self._entries.get(endorsement_id)
+            if entry is None or entry.closed or entry.choice is not None:
+                return "unknown"
+            if choice == "approve" and not _code_matches(entry.code, code):
+                entry.bad_codes += 1
+                if entry.bad_codes >= MAX_BAD_CODES and self._clock() < entry.deadline:
+                    entry.choice = "reject"
+                    self._cond.notify_all()
+                return "code"
+            return "ok" if self.decide(endorsement_id, choice) else "unknown"
 
     def pending(self) -> tuple[Pending, ...]:
         """The cards still open for a decision, oldest first."""

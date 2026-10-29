@@ -21,6 +21,7 @@ from notary_core.models import SessionState, UserAuthoredSource
 from notary_core.policy.sensitive_params import param_policy
 from notary_mcp_proxy.config import (
     PUBLIC,
+    ApprovalSettings,
     LedgerSpec,
     ParamSpec,
     ProxyConfig,
@@ -76,4 +77,6 @@ def proxy_config_for(scenario: Scenario, *, command: Sequence[str]) -> ProxyConf
         egress_hosts=contract.egress_hosts,
         authorized_irreversible=contract.authorized_irreversible,
         ledger=tuple(ledger),
+        # The X-ray card is the user's own screen and cannot show a code yet (docs/threat-model.md).
+        approvals=ApprovalSettings(require_code=False),
     )
