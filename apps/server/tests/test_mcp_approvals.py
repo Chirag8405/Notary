@@ -523,6 +523,8 @@ class ProxyProcess:
 def bank_proxy(directory: Path, audit: Path, control: Path) -> ProxyProcess:
     data = json.loads((BANK / "notary.json").read_text())
     data["server"]["command"] = [sys.executable, str(BANK / "server.py")]
+    # the X-ray card forwards the user's click without a code (it cannot show one yet)
+    data["approvals"] = {"require_code": False}
     config = directory / "notary.json"
     config.write_text(json.dumps(data))
     return ProxyProcess(
