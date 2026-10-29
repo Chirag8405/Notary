@@ -79,6 +79,7 @@ from notary_mcp_proxy.http_server import (
     parse_bind,
     read_token_file,
 )
+from notary_mcp_proxy.jsonrpc import JsonObject
 from notary_mcp_proxy.prompt_hook import MAX_INPUT, forward_prompt
 from notary_mcp_proxy.routing import RoutingError, build_routing
 from notary_mcp_proxy.server import ProxyServer, serve
@@ -599,12 +600,16 @@ def serve_main(argv: Sequence[str]) -> int:
         if control_arg is not None
         else default_path(run_id)
     )
-    desk = None if control_path is None else ApprovalDesk(timeout_seconds=timeout)
+    desk = (
+        None
+        if control_path is None
+        else ApprovalDesk(timeout_seconds=timeout, require_code=config.approvals.require_code)
+    )
     hint = (
         ""
         if control_path is None
         else (
-            "approve with: notary-mcp-proxy approve {id} --control "
+            "approve with: notary-mcp-proxy approve {id} --code CODE --control "
             f"{control_path}   (or reject {{id}})"
         )
     )
@@ -706,6 +711,11 @@ def control_main(op: str, argv: Sequence[str]) -> int:
     parser.add_argument(
         "--control", type=Path, help="the proxy's control socket (default: the only one found)"
     )
+    if op == "approve":
+        parser.add_argument(
+            "--code",
+            help="the approval code the proxy printed for this card (asked for when omitted)",
+        )
     args = parser.parse_args(argv)
     path: Path | None = args.control
     try:
@@ -714,7 +724,14 @@ def control_main(op: str, argv: Sequence[str]) -> int:
             print(render_pending(send(target, {"op": "pending"})))
             return 0
         endorsement_id: str = args.endorsement_id
-        answer = send(target, {"op": op, "endorsement_id": endorsement_id})
+        message: JsonObject = {"op": op, "endorsement_id": endorsement_id}
+        if op == "approve":
+            code: str | None = args.code
+            if code is None and sys.stdin.isatty():
+                code = input("approval code (printed by the proxy, empty if none): ").strip()
+            if code:
+                message["code"] = code
+        answer = send(target, message)
     except ControlError as failure:
         _log(printable(str(failure)))
         return 2

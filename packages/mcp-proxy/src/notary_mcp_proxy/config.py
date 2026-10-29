@@ -311,6 +311,11 @@ class ApprovalSettings(ConfigModel):
     elicitation: bool = True
     """Ask the user to approve an escalation in the client's own UI (MCP elicitation) when the
     client declared the capability. The control socket works either way; the first answer wins."""
+    require_code: bool = True
+    """An approval over the control socket must carry the card's one-time code, shown only on the
+    proxy's own stderr, so a process that can reach the socket but cannot read it cannot approve.
+    The client's own UI (elicitation) needs no code. Turn it off only where the socket is reached
+    by a channel the user sees (the X-ray card)."""
 
 
 class ProxyConfig(ConfigModel):
