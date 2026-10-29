@@ -24,6 +24,10 @@ def _tool(description: str = "Read the inbox.") -> ToolManifest:
     return ToolManifest(name="read_inbox", description=description, input_schema="{}")
 
 
+def _answer_no(prompt: str) -> str:
+    return "n"
+
+
 def _bank_config(tmp_path: Path) -> Path:
     data = json.loads((BANK / "notary.json").read_text())
     data["server"]["command"] = [sys.executable, str(BANK / "server.py")]
@@ -77,7 +81,7 @@ def test_approve_without_a_person_or_yes_writes_nothing(
 def test_declined_prompt_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = _bank_config(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+    monkeypatch.setattr("builtins.input", _answer_no)
     assert main(["check", "--config", str(config), "--approve"]) == 1
     assert not config.with_suffix(".approved-tools.json").exists()
 
