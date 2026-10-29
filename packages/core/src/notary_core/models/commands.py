@@ -1,6 +1,6 @@
 """Client -> server command messages (the other half of the server/web contract)."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import ConfigDict, Field
 from pydantic.json_schema import JsonSchemaValue
@@ -13,11 +13,8 @@ Vector = Literal["email", "file", "web", "calendar", "slack", "tool_description"
 def _optional_without_default(schema: JsonSchemaValue) -> None:
     """Leave `code` out of the schema's defaults, so it is an optional key and not one that every
     parsed command gains as `null` (the generated Zod would otherwise add it to each command)."""
-    properties = schema.get("properties")
-    if isinstance(properties, dict):
-        code = properties.get("code")
-        if isinstance(code, dict):
-            code.pop("default", None)
+    properties = cast("dict[str, dict[str, object]]", schema.get("properties", {}))
+    properties.get("code", {}).pop("default", None)
 
 
 class EndorsementDecisionCommand(NotaryModel):
