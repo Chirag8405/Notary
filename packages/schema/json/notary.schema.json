@@ -480,6 +480,17 @@
     "EndorsementDecisionCommand": {
       "additionalProperties": false,
       "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "decision": {
           "enum": [
             "approve",

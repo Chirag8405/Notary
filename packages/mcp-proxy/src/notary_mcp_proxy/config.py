@@ -315,7 +315,7 @@ class ApprovalSettings(ConfigModel):
     """An approval over the control socket must carry the card's one-time code, shown only on the
     proxy's own stderr, so a process that can reach the socket but cannot read it cannot approve.
     The client's own UI (elicitation) needs no code. Turn it off only where the socket is reached
-    by a channel the user sees (the X-ray card)."""
+    by a channel the user sees. The X-ray card asks for the code itself."""
 
 
 class ProxyConfig(ConfigModel):

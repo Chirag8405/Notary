@@ -158,12 +158,19 @@ describe("x-ray mode mcp", () => {
     await screen.findByText(/The proxy holds an escalated call until you answer/);
     expect(screen.queryByRole("button", { name: "Use nearest known value" })).toBeNull();
     expect(socket.sent).toEqual([]);
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    // the proxy's one-time code is typed first: Confirm stays off without it
+    const confirm = await screen.findByRole<HTMLButtonElement>("button", { name: "Confirm" });
+    expect(confirm.disabled).toBe(true);
+    const code = document.querySelector<HTMLInputElement>("[data-approval-code]");
+    expect(code).not.toBeNull();
+    fireEvent.change(must(code, "code field"), { target: { value: "K7Q2M9XA" } });
+    fireEvent.click(confirm);
     expect(socket.sent).toHaveLength(1);
     expect(JSON.parse(must(socket.sent[0], "command"))).toMatchObject({
       type: "endorsement_decision",
       run_id: RUN,
       decision: "approve",
+      code: "K7Q2M9XA",
     });
     // the card is not closed by the click
     expect(document.querySelector("[data-endorsement-id]")?.getAttribute("data-state")).toBe(

@@ -293,6 +293,7 @@ function XRayRun({
           events={stream.events}
           resolveFromEvents={mode !== "golden"}
           allowNearest={!following}
+          askCode={following}
           toolByCallId={toolByCallId}
           onResolvedChange={onResolvedChange}
           onRejectedChange={onRejectedChange}
