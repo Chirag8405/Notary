@@ -140,6 +140,32 @@ def test_approve_and_reject_are_forwarded_to_the_control_socket(
     assert fake.connects == [(control / "a.sock").resolve()]
 
 
+NL = b"\n"
+
+
+def test_the_approval_code_is_forwarded_with_an_approve_and_dropped_from_a_reject(
+    dirs: tuple[Path, Path],
+) -> None:
+    runs, control = dirs
+    announce(runs, str(control / "a.sock"))
+    fake = FakeControl()
+    approver = approvals(dirs, fake)
+    with_code = command("approve").model_copy(update={"code": "K7Q2M9XA"})
+    assert handle(approver, with_code) is None
+    assert handle(approver, with_code.model_copy(update={"decision": "reject"})) is None
+    fake.join()
+    assert fake.received == [
+        json.dumps({"op": "approve", "endorsement_id": "e1", "code": "K7Q2M9XA"}).encode() + NL,
+        json.dumps({"op": "reject", "endorsement_id": "e1"}).encode() + NL,
+    ]
+
+
+def test_a_code_longer_than_the_limit_is_not_a_command() -> None:
+    too_long = json.loads(frame("approve")) | {"code": "A" * 65}
+    with pytest.raises(ValueError, match="code"):
+        EndorsementDecisionCommand.model_validate_json(json.dumps(too_long))
+
+
 def test_use_nearest_is_rejected_with_a_fixed_reason_and_nothing_is_forwarded(
     dirs: tuple[Path, Path],
 ) -> None:
@@ -485,9 +511,10 @@ class ProxyProcess:
         self._lines: queue.Queue[bytes] = queue.Queue()
         self._answers: dict[object, JsonObject] = {}
         stdout, stderr = self._process.stdout, self._process.stderr
+        self._errors: queue.Queue[bytes] = queue.Queue()
         self._pumps = [
             threading.Thread(target=self._pump, args=(stdout,), daemon=True),
-            threading.Thread(target=stderr.read, daemon=True),
+            threading.Thread(target=self._pump_errors, args=(stderr,), daemon=True),
         ]
         for pump in self._pumps:
             pump.start()
@@ -496,6 +523,18 @@ class ProxyProcess:
         for raw in iter(stream.readline, b""):
             self._lines.put(raw)
         self._lines.put(b"")
+
+    def _pump_errors(self, stream: IO[bytes]) -> None:
+        for raw in iter(stream.readline, b""):
+            self._errors.put(raw)
+
+    def approval_code(self, endorsement_id: str) -> str:
+        """The one-time code the proxy printed on stderr for this card (what the user reads)."""
+        marker = f"approval code for {endorsement_id}: "
+        while True:
+            line = self._errors.get(timeout=PATIENCE).decode("utf-8")
+            if marker in line:
+                return line.split(marker, 1)[1].strip()
 
     def send(self, request_id: int, method: str, params: dict[str, object]) -> None:
         message = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
@@ -523,8 +562,6 @@ class ProxyProcess:
 def bank_proxy(directory: Path, audit: Path, control: Path) -> ProxyProcess:
     data = json.loads((BANK / "notary.json").read_text())
     data["server"]["command"] = [sys.executable, str(BANK / "server.py")]
-    # the X-ray card forwards the user's click without a code (it cannot show one yet)
-    data["approvals"] = {"require_code": False}
     config = directory / "notary.json"
     config.write_text(json.dumps(data))
     return ProxyProcess(
@@ -582,16 +619,15 @@ def test_the_card_decides_a_real_proxy_escalation(
             assert isinstance(card, EndorsementRequested)
             # nothing has run: the call is waiting for the user
             assert not [e for e in seen if e.type == "effect_executed"]
-            ws.send_text(
-                json.dumps(
-                    {
-                        "type": "endorsement_decision",
-                        "run_id": run_id,
-                        "endorsement_id": card.endorsement.endorsement_id,
-                        "decision": choice,
-                    }
-                )
-            )
+            decision: dict[str, object] = {
+                "type": "endorsement_decision",
+                "run_id": run_id,
+                "endorsement_id": card.endorsement.endorsement_id,
+                "decision": choice,
+            }
+            if choice == "approve":  # the user types what the proxy printed in its own terminal
+                decision["code"] = proxy.approval_code(card.endorsement.endorsement_id)
+            ws.send_text(json.dumps(decision))
             answer = proxy.result(2)
             if choice == "approve":
                 # the card resolves from the stream: a second decision, then the effect

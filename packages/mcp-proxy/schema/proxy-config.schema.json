@@ -12,7 +12,7 @@
         },
         "require_code": {
           "default": true,
-          "description": "An approval over the control socket must carry the card's one-time code, shown only on the\nproxy's own stderr, so a process that can reach the socket but cannot read it cannot approve.\nThe client's own UI (elicitation) needs no code. Turn it off only where the socket is reached\nby a channel the user sees (the X-ray card).",
+          "description": "An approval over the control socket must carry the card's one-time code, shown only on the\nproxy's own stderr, so a process that can reach the socket but cannot read it cannot approve.\nThe client's own UI (elicitation) needs no code. Turn it off only where the socket is reached\nby a channel the user sees. The X-ray card asks for the code itself.",
           "title": "Require Code",
           "type": "boolean"
         }

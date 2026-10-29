@@ -439,7 +439,7 @@ The first answer wins; no answer within `--approval-timeout` is a rejection.
   `approve e1 --code CODE`, `reject e1` (`--control PATH` when more than one socket exists; `approve`
   asks for the code when `--code` is left out and there is a terminal). `pending` and the socket never
   show the code, a reject needs none, and three wrong codes reject the card. Turn the code off with
-  `"approvals": {"require_code": false}` only where the socket is reached by a channel the user sees. Approving writes the card's values to the ledger as
+  `"approvals": {"require_code": false}` only where the socket is reached by a channel the user sees (the X-ray card asks for the code itself, so it does not need this). Approving writes the card's values to the ledger as
   user-endorsed entries and decides the same call again, so the monitor still has the last word. The
   socket is mode 0600 in a 0700 directory and checked with `SO_PEERCRED` on Linux.
 - **MCP elicitation.** If the client declares the capability, the proxy asks in the client's own UI

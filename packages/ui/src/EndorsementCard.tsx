@@ -1,5 +1,5 @@
 import type { DiffRow, Endorsement } from "@notary/schema";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { highlightDiff } from "./diff-highlight";
 import type { Segment } from "./diff-highlight";
@@ -20,7 +20,7 @@ export interface EndorsementCardProps {
   /** The approvals left in the run's budget; null while unknown. */
   remainingApprovals: number | null;
   state: CardState;
-  onDecide: (decision: "approve" | "reject" | "use_nearest") => void;
+  onDecide: (decision: "approve" | "reject" | "use_nearest", code?: string) => void;
   /** The tool the call wants to run, for the title; the call id is used when it is missing. */
   toolName?: string;
   /** A message to show when the last attempt failed. */
@@ -30,6 +30,12 @@ export interface EndorsementCardProps {
    * no such path, such as one of the MCP proxy: the button is not shown at all.
    */
   allowNearest?: boolean;
+  /**
+   * Whether Confirm needs the one-time code the MCP proxy printed in its own terminal (default
+   * false). The field is shown and Confirm stays off until something is typed; the code goes to
+   * `onDecide` with the approval and is not kept.
+   */
+  askCode?: boolean;
 }
 
 const BUTTON =
@@ -130,14 +136,17 @@ export function EndorsementCard({
   toolName,
   error,
   allowNearest = true,
+  askCode = false,
 }: EndorsementCardProps) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const [code, setCode] = useState("");
   useEffect(() => {
     heading.current?.focus();
   }, []);
 
   const exhausted = remainingApprovals === 0;
   const disabled = state !== "pending" || exhausted;
+  const codeMissing = askCode && code.trim() === "";
   const stateText = STATE_TEXT[state];
   // Offered only when the ledger has a value to propose for every parameter on the card.
   const canUseNearest =
@@ -215,14 +224,33 @@ export function EndorsementCard({
           {error}
         </p>
       )}
+      {askCode && state !== "conflict" ? (
+        <label className="block space-y-1">
+          <span className={LABEL}>Approval code (shown in the proxy&apos;s terminal)</span>
+          <input
+            type="text"
+            data-approval-code
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={64}
+            value={code}
+            disabled={disabled}
+            onChange={(event) => {
+              setCode(event.target.value);
+            }}
+            className="block h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-sm"
+          />
+        </label>
+      ) : null}
       {state === "conflict" ? null : (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || codeMissing}
             className={CONFIRM_BUTTON}
             onClick={() => {
-              onDecide("approve");
+              if (askCode) onDecide("approve", code.trim());
+              else onDecide("approve");
             }}
           >
             Confirm

@@ -2,20 +2,36 @@
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
+from pydantic.json_schema import JsonSchemaValue
 
 from notary_core.models.labels import Lane, NotaryModel
 
 Vector = Literal["email", "file", "web", "calendar", "slack", "tool_description"]
 
 
+def _optional_without_default(schema: JsonSchemaValue) -> None:
+    """Leave `code` out of the schema's defaults, so it is an optional key and not one that every
+    parsed command gains as `null` (the generated Zod would otherwise add it to each command)."""
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        code = properties.get("code")
+        if isinstance(code, dict):
+            code.pop("default", None)
+
+
 class EndorsementDecisionCommand(NotaryModel):
+    model_config = ConfigDict(json_schema_extra=_optional_without_default)
+
     type: Literal["endorsement_decision"]
     run_id: str
     endorsement_id: str
     decision: Literal["approve", "reject", "use_nearest"]
     """`use_nearest` rejects the proposed value and proposes the call again with the nearest known
     ledger value of every parameter on the card; nothing is written to the ledger."""
+    code: str | None = Field(default=None, max_length=64)
+    """MCP proxy runs only: the one-time approval code the proxy printed for this card, typed by
+    the user. The server forwards it to the proxy and never stores or logs it."""
 
 
 class HijackedToolCallCommand(NotaryModel):

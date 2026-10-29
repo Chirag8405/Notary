@@ -172,6 +172,8 @@ def test_attack_case_category_must_match_id() -> None:
 
 COMMANDS = [
     {"type": "endorsement_decision", "run_id": "r", "endorsement_id": "e", "decision": "approve"},
+    {"type": "endorsement_decision", "run_id": "r", "endorsement_id": "e", "decision": "approve",
+     "code": "K7Q2M9XA"},
     {"type": "hijacked_tool_call", "run_id": "r", "call_id": "c", "tool": "t", "args": {"a": "b"}},
     {"type": "poison_world", "scenario": "s", "vector": "email", "payload": "p", "task": "t",
      "lanes": ["notary"]},
@@ -185,7 +187,7 @@ def test_commands_parse_and_round_trip(raw: dict[str, object]) -> None:
 
     adapter: TypeAdapter[Command] = TypeAdapter(Command)
     parsed = adapter.validate_json(json.dumps(raw))
-    assert json.loads(adapter.dump_json(parsed)) == raw
+    assert json.loads(adapter.dump_json(parsed, exclude_none=True)) == raw
 
 
 def test_command_rejects_unknown_type_and_extra_fields() -> None:

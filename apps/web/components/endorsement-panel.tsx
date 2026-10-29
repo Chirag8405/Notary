@@ -32,6 +32,8 @@ export interface EndorsementPanelProps {
   onRejectedChange?: (rejected: ReadonlySet<string>) => void;
   /** False for an MCP proxy run, which has no "nearest known value" path (default true). */
   allowNearest?: boolean;
+  /** True for an MCP proxy run: Confirm asks for the proxy's one-time approval code (default false). */
+  askCode?: boolean;
 }
 
 interface Click {
@@ -72,6 +74,7 @@ export function EndorsementPanel({
   onResolvedChange,
   onRejectedChange,
   allowNearest = true,
+  askCode = false,
 }: EndorsementPanelProps) {
   const [clicks, setClicks] = useState<ReadonlyMap<string, Click>>(() => new Map());
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(() => new Map());
@@ -113,7 +116,7 @@ export function EndorsementPanel({
     onRejectedRef.current?.(new Set(rejectedKey === "" ? [] : rejectedKey.split("\n")));
   }, [rejectedKey]);
 
-  const decide = (endorsementId: string, decision: Decision) => {
+  const decide = (endorsementId: string, decision: Decision, code?: string) => {
     const card = shown.find((item) => item.id === endorsementId);
     if (card?.state !== "pending") return;
     if (clicked.current.has(endorsementId)) return;
@@ -124,6 +127,7 @@ export function EndorsementPanel({
         run_id: runId,
         endorsement_id: endorsementId,
         decision,
+        ...(decision === "approve" && code !== undefined && code !== "" ? { code } : {}),
       });
       sendRef.current(command);
     } catch (error) {
@@ -154,8 +158,9 @@ export function EndorsementPanel({
             state={state}
             error={errors.get(id) ?? null}
             allowNearest={allowNearest}
-            onDecide={(decision) => {
-              decide(id, decision);
+            askCode={askCode}
+            onDecide={(decision, code) => {
+              decide(id, decision, code);
             }}
             {...(tool === undefined ? {} : { toolName: tool })}
           />

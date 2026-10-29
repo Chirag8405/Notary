@@ -322,6 +322,7 @@ summary: string
 type: "run_finished"
 }
 export interface EndorsementDecisionCommand {
+code?: (string | null)
 decision: ("approve" | "reject" | "use_nearest")
 endorsement_id: string
 run_id: string

@@ -313,9 +313,11 @@ class McpApprovals:
     (the directory the proxy's `--control` sockets live in). Anything else is refused and nothing
     is connected to.
 
-    `forward` blocks on a socket, so the app runs the handler off the event loop. It only forwards
-    `approve` and `reject` and never resolves a card or reports success to the page: a card closes
-    when the chain shows the proxy's second `decision_made` or a block. `use_nearest` is refused,
+    `forward` blocks on a socket, so the app runs the handler off the event loop. An approval
+    carries the one-time code the user typed from the proxy's own terminal; it is passed on and
+    never kept. It only forwards `approve` and `reject` and never resolves a card or reports
+    success to the page: a card closes when the chain shows the proxy's second `decision_made` or
+    a block. `use_nearest` is refused,
     the proxy has no such path. A refusal by the proxy (`ok: false`: unknown or already decided id)
     or an unreachable socket is a `CommandRejected` with a fixed reason; the proxy's own text is
     never relayed.
@@ -345,7 +347,7 @@ class McpApprovals:
                 )
             if command.decision == "use_nearest":
                 raise CommandRejected(CLOSE_UNSUPPORTED_COMMAND, REASON_NOT_SUPPORTED)
-            self.forward(command.run_id, command.endorsement_id, command.decision)
+            self.forward(command.run_id, command.endorsement_id, command.decision, command.code)
 
         return handle
 
@@ -374,7 +376,9 @@ class McpApprovals:
             return None
         return resolved
 
-    def forward(self, run_id: str, endorsement_id: str, decision: str) -> None:
+    def forward(
+        self, run_id: str, endorsement_id: str, decision: str, code: str | None = None
+    ) -> None:
         """Send `approve` or `reject` to the run's control socket (blocking).
 
         Raises `CommandRejected` when the socket is not acceptable or cannot be reached, or when
@@ -388,6 +392,8 @@ class McpApprovals:
         if target is None:
             raise CommandRejected(CLOSE_COMMAND_CONFLICT, REASON_NOT_DELIVERED)
         message = {"op": decision, "endorsement_id": endorsement_id}
+        if code is not None and decision == "approve":
+            message["code"] = code
         try:
             connection = self._connect(target)
             try:
