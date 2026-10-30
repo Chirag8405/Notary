@@ -321,6 +321,33 @@ class Gateway:
                 endorsement_id=None,
                 error=gone,
             )
+        # The hash is what the backend reports now, never the agent's claim.
+        proposal = self._proposal(
+            call, lambda: observed_hash(self._backend.list_tools(), call.tool)
+        )
+        if proposal is None:
+            return self._halted_outcome(call.call_id)
+        return self._decide(call, proposal)
+
+    def judge(self, call: RawCall, manifest_hash: str) -> Decision | None:
+        """Decide a read the proxy performs itself (a resource, a prompt) and log the decision.
+
+        The call is labeled, proposed and decided exactly like a tool call (`call_proposed`, then
+        `decision_made`, both appended before the caller does anything), but nothing is executed
+        here and the session does not change: the caller reads only when the verdict is ALLOW.
+        An ESCALATE opens no card (there is nothing to approve a read with), so the caller treats
+        it like a BLOCK. `manifest_hash` is the one the contract pins for the synthetic tool.
+        Returns None when the gateway is halted or an append failed: nothing may be read.
+        """
+        if self._halted is not None:
+            return None
+        proposal = self._proposal(call, lambda: manifest_hash)
+        if proposal is None:
+            return None
+        return self._verdict(proposal)
+
+    def _proposal(self, call: RawCall, manifest_hash: Callable[[], str]) -> ToolCallProposal | None:
+        """Label the arguments and append `call_proposed`; None when an append failed."""
         if call.call_id in self._seen_calls:
             raise ValueError("duplicate call id")
         self._seen_calls.add(call.call_id)
@@ -335,13 +362,12 @@ class Gateway:
                 store=self._store.as_mapping(),
             )
             if not self._add_value(value):
-                return self._halted_outcome(call.call_id)
+                return None
             refs[param] = value.ref
-        # The hash is what the backend reports now, never the agent's claim.
         proposal = ToolCallProposal(
             call_id=call.call_id,
             tool=call.tool,
-            manifest_hash=observed_hash(self._backend.list_tools(), call.tool),
+            manifest_hash=manifest_hash(),
             args=refs,
         )
         proposed = self.emit(
@@ -349,9 +375,7 @@ class Gateway:
                 type="call_proposed", run_id=run, lane=lane, seq=seq, proposal=proposal
             )
         )
-        if not proposed:
-            return self._halted_outcome(call.call_id)
-        return self._decide(call, proposal)
+        return proposal if proposed else None
 
     def _add_value(self, value: ResolvedValue) -> bool:
         """Announce and store a value; it joins the store only after its event is appended."""
@@ -441,8 +465,8 @@ class Gateway:
             refs.append(value.ref)
         return tuple(refs)
 
-    def _decide(self, call: RawCall, proposal: ToolCallProposal) -> MediationOutcome:
-        """Ask the monitor, append the decision FIRST, then act on it."""
+    def _verdict(self, proposal: ToolCallProposal) -> Decision | None:
+        """The monitor's decision, appended to the chain; None when the append failed."""
         decision = self._monitor(
             self._contract, proposal, self._store.as_mapping(), self._ledger, self._session
         )
@@ -456,7 +480,12 @@ class Gateway:
                 decision=decision,
             )
         )
-        if not decided:
+        return decision if decided else None
+
+    def _decide(self, call: RawCall, proposal: ToolCallProposal) -> MediationOutcome:
+        """Ask the monitor, append the decision FIRST, then act on it."""
+        decision = self._verdict(proposal)
+        if decision is None:
             return self._halted_outcome(call.call_id)
         if decision.verdict == "BLOCK":
             return self._outcome(call.call_id, "blocked", decision)

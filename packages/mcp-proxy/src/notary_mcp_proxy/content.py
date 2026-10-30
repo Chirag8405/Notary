@@ -9,20 +9,27 @@ the capability is not declared and `resources/*` / `prompts/*` answer method-not
   `name`, `title`, `description` of a listing entry) is first labeled and logged through
   `Gateway.label_content` under the source `resource:<server>`, then rebuilt from the store, so
   the agent receives exactly the logged texts. Only a bounded `mimeType` token and an integer
-  `size` pass through unlabeled; everything else the server sent is dropped. A read has no effect,
-  so it is not judged by the monitor and does not count against the budget.
+  `size` pass through unlabeled; everything else the server sent is dropped. A read changes
+  nothing, so it does not count against the budget, but the URI is a string the agent chose and
+  the server receives: the part after the allowed prefix (the prefix is the config's) is judged by
+  the monitor as a call of the synthetic tool `resources/read` (`Gateway.judge`, decision logged
+  before the server is contacted).
 - Prompts. The allowed prompts' definitions (name, title, description, arguments) are pinned at
   startup and `prompts/list` shows the pinned ones. `prompts/get` re-lists the owning server and
   refuses a prompt whose definition changed since (A10, a rug pull) before it asks for the prompt.
   The messages it returns are labeled and logged under `prompt:<server>`. The arguments of a get
   come from the agent, so they are never labeled as user-authored: they only name declared
-  arguments with string values and go to the server.
+  arguments with string values and go to the server, after the monitor has judged them as a call
+  of the synthetic tool `prompts/get`.
+- A decision other than ALLOW refuses the read with the failing checks (constant text). An
+  ESCALATE is refused too: there is no card for a read.
 - Not forwarded: subscriptions (`subscribe: false`), `list_changed` and `updated` notifications
   (the agent's view stays the pinned one).
 
 The Gateway is not thread-safe: `handle` runs on the worker thread that owns it.
 """
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -32,17 +39,21 @@ from pydantic import JsonValue
 
 from notary_core.canon import sha256_hex
 from notary_core.gateway import ToolResultField
+from notary_core.models import Decision
 from notary_mcp_proxy.backend import schema_text
 from notary_mcp_proxy.client import McpClient, ServerError, diagnostic, quoted
 from notary_mcp_proxy.config import (
+    PROMPT_GET_TOOL,
     PUBLIC,
+    RESOURCE_READ_TOOL,
     PromptPolicy,
     ProxyConfig,
     ResourcePolicy,
+    content_manifest_hash,
     prompt_source,
     resource_source,
 )
-from notary_mcp_proxy.gateway import Gateway
+from notary_mcp_proxy.gateway import Gateway, RawCall
 from notary_mcp_proxy.jsonrpc import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -83,6 +94,7 @@ ERR_UNKNOWN_PROMPT = "unknown prompt"
 ERR_PROMPT_CHANGED = "NOTARY refused the prompt: its definition changed since startup"
 ERR_PROMPT_UNCHECKED = "NOTARY refused the prompt: its definition could not be checked"
 ERR_BAD_CONTENT = "the server sent content NOTARY cannot label; nothing was returned"
+ERR_REFUSED = "NOTARY refused the read"
 
 
 class ContentError(Exception):
@@ -159,6 +171,11 @@ def _argument_names(definition: JsonObject) -> frozenset[str]:
         for item in as_list(definition.get("arguments")) or []
     ]
     return frozenset(name for name in names if name is not None)
+
+
+def _failing(decision: Decision) -> str:
+    """`check: CODE` for every check that did not pass (constant strings of the monitor)."""
+    return "; ".join(f"{r.check}: {r.code}" for r in decision.reasons if r.outcome != "pass")
 
 
 def _field(name: str, text: str) -> ToolResultField:
@@ -285,6 +302,24 @@ class ContentProxy:
             texts[ref.id[len(record_id) + 1 :]] = value.text
         return texts
 
+    def _allow(self, tool: str, args: dict[str, str]) -> None:
+        """Have the monitor judge the read; raise `ContentError` unless it says ALLOW.
+
+        The decision is in the audit chain before the server is contacted. The failing checks are
+        constant text (`check: CODE`), never the URI or an argument.
+        """
+        call = RawCall(
+            call_id=self._next("read" if tool == RESOURCE_READ_TOOL else "get"),
+            tool=tool,
+            args=args,
+        )
+        decision = self._gateway.judge(call, content_manifest_hash(tool))
+        if decision is None:
+            raise ContentError(INTERNAL_ERROR, ERR_HALTED)
+        if decision.verdict != "ALLOW":
+            diagnostic(f"{tool} refused: {_failing(decision)}")
+            raise ContentError(INTERNAL_ERROR, f"{ERR_REFUSED}: {_failing(decision)}")
+
     # -- resources -------------------------------------------------------------------------------
 
     def _owner(self, uri: str) -> str | None:
@@ -365,6 +400,9 @@ class ContentProxy:
             diagnostic(f"resources/read refused: {quoted(uri)} is outside the allow list")
             raise ContentError(RESOURCE_NOT_FOUND, ERR_NOT_ALLOWED)
         policy = self._resources[server]
+        # The prefix is the config's, trusted; the monitor judges what the agent chose after it.
+        prefix = max((p for p in policy.allow if uri.startswith(p)), key=len)
+        self._allow(RESOURCE_READ_TOOL, {"server": server, "uri": uri[len(prefix) :]})
         try:
             answer = self._clients[server].request("resources/read", {"uri": uri})
         except ServerError as failure:
@@ -409,6 +447,14 @@ class ContentProxy:
         if pin is None:
             raise ContentError(INVALID_PARAMS, ERR_UNKNOWN_PROMPT)
         given = self._prompt_arguments(pin, params.get("arguments"))
+        self._allow(
+            PROMPT_GET_TOOL,
+            {
+                "server": pin.server,
+                "name": name,
+                "arguments": json.dumps(given, sort_keys=True, separators=(",", ":")),
+            },
+        )
         try:
             current = self._listed(pin.server).get(name)
         except ServerError as failure:

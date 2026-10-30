@@ -377,8 +377,11 @@ against a server that is poisoned from the start: review the descriptions `check
   (`resources/*` and `prompts/*` are method-not-found). Per server, `"resources": {"allow": ["file:///docs/"]}`
   exposes only URIs under those prefixes (a read outside, or with a `..` segment, is refused without
   contacting the server) and `"prompts": {"allow": ["summarize"]}` pins the named prompts at startup. The
-  content is labeled untrusted and logged first; a prompt whose definition changed is refused. Resource
-  subscriptions and list-changed notifications are not forwarded.
+  content is labeled untrusted and logged first; a prompt whose definition changed is refused. Each
+  read is also judged by the monitor, as a call of the synthetic tool `resources/read` or `prompts/get`:
+  a URI or prompt argument that carries something the server may not read, or a URL that is not on
+  `egress_hosts`, is refused with the failing check, and the decision is logged before the server is
+  contacted. Resource subscriptions and list-changed notifications are not forwarded.
 
 ## Verdict texts
 

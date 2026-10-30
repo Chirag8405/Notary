@@ -35,6 +35,7 @@ from notary_core.contract import widening_reasons
 from notary_core.models import IntentContract, NotaryModel
 from notary_core.pinning import ToolManifest
 from notary_mcp_proxy.client import diagnostic, quoted
+from notary_mcp_proxy.config import CONTENT_TOOLS
 
 COMPILE_TIMEOUT = 15.0
 """Seconds for the whole request (connect, send, answer). A compile is one LLM call, normally a few
@@ -208,10 +209,18 @@ def narrow(
     unchanged: tools added, a manifest hash that differs from the one pinned at startup, a marker
     relaxed, a budget raised, a host or an authorization added are all reasons to refuse.
     """
+    # The compiler only knows the server's tools. The synthetic tools of a resource read and a
+    # prompt get are the config's own, unchanged, so a compiled contract keeps them.
+    kept = tuple(
+        scope
+        for scope in config_contract.allowed_tools
+        if scope.tool in CONTENT_TOOLS and all(c.tool != scope.tool for c in compiled.allowed_tools)
+    )
     candidate = compiled.model_copy(
         update={
             "contract_id": config_contract.contract_id,
             "user_intent": config_contract.user_intent,
+            "allowed_tools": (*compiled.allowed_tools, *kept),
         }
     )
     reasons = widening_reasons(config_contract, candidate)

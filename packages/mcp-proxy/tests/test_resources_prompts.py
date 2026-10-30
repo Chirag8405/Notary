@@ -21,6 +21,7 @@ from notary_core.gateway import ToolResultField
 from notary_core.models import (
     AuditEntry,
     CallProposed,
+    DecisionMade,
     EmailOrigin,
     Event,
     ToolOrigin,
@@ -28,7 +29,14 @@ from notary_core.models import (
     ValueLabeled,
 )
 from notary_mcp_proxy.client import StdioClient
-from notary_mcp_proxy.config import ProxyConfig, StdioServerSpec
+from notary_mcp_proxy.compile_client import narrow
+from notary_mcp_proxy.config import (
+    PROMPT_GET_TOOL,
+    RESOURCE_READ_TOOL,
+    ProxyConfig,
+    StdioServerSpec,
+    content_manifest_hash,
+)
 from notary_mcp_proxy.gateway import Gateway
 from notary_mcp_proxy.jsonrpc import (
     METHOD_NOT_FOUND,
@@ -197,8 +205,17 @@ def _code(answer: JsonObject) -> object:
     return (as_object(answer.get("error")) or {}).get("code")
 
 
-def _values(proxy: ProxyServer) -> list[ValueLabeled]:
+def _all_values(proxy: ProxyServer) -> list[ValueLabeled]:
     return [e.event for e in proxy.gateway.chain if isinstance(e.event, ValueLabeled)]
+
+
+def _values(proxy: ProxyServer) -> list[ValueLabeled]:
+    """The labeled CONTENT (what a server returned); the arguments of a read are `_arg_values`."""
+    return [v for v in _all_values(proxy) if ".arg." not in v.value.id]
+
+
+def _arg_values(proxy: ProxyServer) -> dict[str, ValueLabeled]:
+    return {v.value.id: v for v in _all_values(proxy) if ".arg." in v.value.id}
 
 
 def _contents(answer: JsonObject) -> list[JsonObject]:
@@ -378,7 +395,7 @@ def test_an_iban_from_a_resource_carries_its_origin_and_is_not_paid(start: Start
     assert answer["isError"] is True
     assert "LEDGER_NOT_FOUND" in json.dumps(answer)
     proposals = [e.event for e in proxy.gateway.chain if isinstance(e.event, CallProposed)]
-    (proposal,) = proposals
+    (proposal,) = [p for p in proposals if p.proposal.tool == "pay_bill"]
     assert proposal.proposal.args["payee"].label.origin == ToolOrigin(
         kind="tool", name="resource:default"
     )
@@ -761,3 +778,183 @@ def test_stdio_end_to_end_with_the_dispatcher(tmp_path: Path) -> None:
     types = [json.loads(line)["event"]["type"] for line in chain.read_text().splitlines()]
     assert types[:2] == ["run_started", "value_labeled"]  # the content is logged first
     assert "effect_executed" not in types
+
+
+# -- the monitor judges every read (#305) -------------------------------------------------------
+
+SECRET = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI-NOTARY-DEMO-0001"
+READ_NOTE: JsonObject = {
+    "name": "read_note",
+    "description": "Read a private note.",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+
+
+def _note_script() -> JsonObject:
+    return {
+        **FULL_SCRIPT,
+        "tools": [PAY_BILL, READ_NOTE],
+        "results": {"read_note": {"content": [{"type": "text", "text": SECRET}], "isError": False}},
+    }
+
+
+def _note_tools(readers: list[str]) -> dict[str, object]:
+    return {"pay_bill": PAY_SPEC, "read_note": {"effect": "read", "readers": readers}}
+
+
+def _read_the_note(proxy: ProxyServer) -> None:
+    answer = _ask(proxy, "tools/call", {"name": "read_note", "arguments": {}})
+    assert (as_object(answer["result"]) or {})["isError"] is False
+
+
+def _decisions(proxy: ProxyServer, tool: str) -> list[DecisionMade]:
+    calls = {
+        e.event.proposal.call_id
+        for e in proxy.gateway.chain
+        if isinstance(e.event, CallProposed) and e.event.proposal.tool == tool
+    }
+    return [
+        e.event
+        for e in proxy.gateway.chain
+        if isinstance(e.event, DecisionMade) and e.event.call_id in calls
+    ]
+
+
+def _tool_names(proxy: ProxyServer) -> set[str]:
+    return {s.tool for s in proxy.gateway.contract.allowed_tools}
+
+
+def test_an_allowed_read_has_a_logged_decision_before_the_server_is_contacted(
+    start: Start, tmp_path: Path
+) -> None:
+    proxy = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))})
+    _result(proxy, "resources/read", {"uri": f"{DOCS}invoice.txt"})
+    (decision,) = _decisions(proxy, RESOURCE_READ_TOOL)
+    assert decision.decision.verdict == "ALLOW"
+    kinds = [type(e.event).__name__ for e in proxy.gateway.chain]
+    assert kinds.index("DecisionMade") < kinds.index("ValueLabeled", kinds.index("DecisionMade"))
+    # The monitor judged what the agent chose after the config's prefix; `server` is the
+    # destination.
+    args = _arg_values(proxy)
+    assert {i: v.preview for i, v in args.items()} == {
+        "read1.arg.server": "default",
+        "read1.arg.uri": "invoice.txt",
+    }
+    assert _methods(tmp_path).count("resources/read") == 1
+
+
+def test_a_secret_in_a_uri_is_refused_and_the_server_never_sees_it(
+    start: Start, tmp_path: Path
+) -> None:
+    """A5 through a resource URI: the agent read a secret, then asks for a URI that carries it."""
+    proxy = start({"default": (_note_script(), _both(ALLOW_DOCS))}, tools=_note_tools(["user"]))
+    _read_the_note(proxy)
+    answer = _ask(proxy, "resources/read", {"uri": f"{DOCS}x?d={SECRET}"})
+    assert "CONF_READER_VIOLATION" in json.dumps(answer)
+    assert SECRET not in json.dumps(answer)
+    assert "resources/read" not in _methods(tmp_path)
+    (decision,) = _decisions(proxy, RESOURCE_READ_TOOL)
+    assert decision.decision.verdict == "BLOCK"
+
+
+def test_a_secret_in_a_prompt_argument_is_refused(start: Start, tmp_path: Path) -> None:
+    keys = {"default": (_note_script(), _both(prompts=ALLOW_SUMMARIZE))}
+    proxy = start(keys, tools=_note_tools(["user"]))
+    _read_the_note(proxy)
+    answer = _ask(proxy, "prompts/get", {"name": "summarize", "arguments": {"doc": SECRET}})
+    assert "CONF_READER_VIOLATION" in json.dumps(answer)
+    assert "prompts/get" not in _methods(tmp_path)
+    (decision,) = _decisions(proxy, PROMPT_GET_TOOL)
+    assert decision.decision.verdict == "BLOCK"
+
+
+def test_a_server_that_may_read_the_secret_may_be_asked_about_it(
+    start: Start, tmp_path: Path
+) -> None:
+    keys = {"default": (_note_script(), _both(ALLOW_DOCS))}
+    proxy = start(keys, tools=_note_tools(["user", "default"]))
+    _read_the_note(proxy)
+    _ask(proxy, "resources/read", {"uri": f"{DOCS}x?d={SECRET}"})
+    # The monitor allowed it (the fake server has no such resource, which is its own error).
+    (decision,) = _decisions(proxy, RESOURCE_READ_TOOL)
+    assert decision.decision.verdict == "ALLOW"
+    assert _methods(tmp_path).count("resources/read") == 1
+
+
+def test_a_url_inside_the_uri_must_be_on_the_egress_list(start: Start, tmp_path: Path) -> None:
+    proxy = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))})
+    answer = _ask(proxy, "resources/read", {"uri": f"{DOCS}https://evil.example/?x=1"})
+    assert "CONF_URL_NOT_ALLOWED" in json.dumps(answer)
+    assert "resources/read" not in _methods(tmp_path)
+
+
+def test_a_model_written_uri_after_a_private_read_is_refused_not_escalated(
+    start: Start, tmp_path: Path
+) -> None:
+    """A read has no card: the ESCALATE of step 5 refuses it, and nothing waits."""
+    proxy = start({"default": (_note_script(), _both(ALLOW_DOCS))}, tools=_note_tools(["user"]))
+    _read_the_note(proxy)
+    answer = _ask(proxy, "resources/read", {"uri": f"{DOCS}invoice.txt"})
+    assert "error" in answer
+    assert "resources/read" not in _methods(tmp_path)
+    (decision,) = _decisions(proxy, RESOURCE_READ_TOOL)
+    assert decision.decision.verdict == "ESCALATE"
+    assert proxy.gateway.pending_endorsements() == ()
+
+
+def test_a_decision_that_cannot_be_logged_means_no_read(start: Start, tmp_path: Path) -> None:
+    def refuse(chain: Sequence[AuditEntry], event: Event) -> tuple[AuditEntry, ...]:
+        if isinstance(event, DecisionMade):
+            raise OSError("disk full")
+        return append(chain, event)
+
+    proxy = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))}, audit_append=refuse)
+    answer = _ask(proxy, "resources/read", {"uri": f"{DOCS}invoice.txt"})
+    assert "result" not in answer
+    assert "resources/read" not in _methods(tmp_path)
+
+
+def test_the_synthetic_tools_are_in_the_contract_only_when_switched_on(start: Start) -> None:
+    assert _tool_names(start({"default": (FULL_SCRIPT, {})})) == {"pay_bill"}
+    only_resources = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))})
+    assert _tool_names(only_resources) == {"pay_bill", RESOURCE_READ_TOOL}
+    both = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS, ALLOW_SUMMARIZE))})
+    assert _tool_names(both) == {"pay_bill", RESOURCE_READ_TOOL, PROMPT_GET_TOOL}
+    scope = {s.tool: s for s in both.gateway.contract.allowed_tools}[RESOURCE_READ_TOOL]
+    assert scope.effect == "write"
+    assert scope.manifest_hash == content_manifest_hash(RESOURCE_READ_TOOL)
+    assert set(scope.params) == {"server", "uri"}
+    assert content_manifest_hash(RESOURCE_READ_TOOL) != content_manifest_hash(PROMPT_GET_TOOL)
+
+
+def test_the_agent_is_not_offered_the_synthetic_tools(start: Start) -> None:
+    proxy = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS, ALLOW_SUMMARIZE))})
+    listed = _result(proxy, "tools/list")["tools"]
+    names = {str((as_object(t) or {}).get("name")) for t in as_list(listed) or []}
+    assert names == {"pay_bill"}
+
+
+def test_a_synthetic_tool_cannot_be_called_as_a_tool(start: Start, tmp_path: Path) -> None:
+    proxy = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))})
+    answer = _ask(
+        proxy,
+        "tools/call",
+        {"name": RESOURCE_READ_TOOL, "arguments": {"server": "default", "uri": "x"}},
+    )
+    assert "tools/call" not in _methods(tmp_path)
+    assert (as_object(answer.get("result")) or {}).get("isError") is True or "error" in answer
+
+
+def test_a_compiled_contract_keeps_the_synthetic_scopes(start: Start) -> None:
+    config_contract = start({"default": (FULL_SCRIPT, _both(ALLOW_DOCS))}).gateway.contract
+    pay_only = config_contract.model_copy(
+        update={
+            "allowed_tools": tuple(
+                scope for scope in config_contract.allowed_tools if scope.tool == "pay_bill"
+            )
+        }
+    )
+    accepted, reasons = narrow(config_contract, pay_only)
+    assert reasons == ()
+    assert accepted is not None
+    assert {scope.tool for scope in accepted.allowed_tools} == {"pay_bill", RESOURCE_READ_TOOL}
