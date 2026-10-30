@@ -8,6 +8,7 @@ The config stands in for the Intent Compiler: the user writes the contract by ha
 hashes are not written; they are pinned from what the server reports at startup.
 """
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
@@ -48,6 +49,7 @@ from notary_core.policy.sensitive_params import (
     ParamKind,
     ParamPolicy,
     PolicyTable,
+    ToolPolicy,
     make_tool_policy,
 )
 from notary_core.units import canonicalize
@@ -448,6 +450,80 @@ def routes(config: ProxyConfig) -> Mapping[str, tuple[str, str]]:
     }
 
 
+RESOURCE_READ_TOOL = "resources/read"
+PROMPT_GET_TOOL = "prompts/get"
+CONTENT_TOOLS: tuple[str, ...] = (RESOURCE_READ_TOOL, PROMPT_GET_TOOL)
+"""The two synthetic tools a resource read and a prompt get are judged as (docs/decisions.md,
+"Resource reads and prompt gets"). MCP tool names may not hold a `/`, so no server tool can have
+one of these names."""
+
+_CONTENT_DESCRIPTIONS = {
+    RESOURCE_READ_TOOL: "Read a resource of an MCP server by its URI.",
+    PROMPT_GET_TOOL: "Get a prompt of an MCP server with its arguments.",
+}
+_CONTENT_PARAMS: dict[str, tuple[str, ...]] = {
+    RESOURCE_READ_TOOL: ("server", "uri"),
+    PROMPT_GET_TOOL: ("server", "name", "arguments"),
+}
+
+
+def content_manifest(tool: str) -> ToolManifest:
+    """The fixed manifest of a synthetic tool; its hash is pinned in the contract."""
+    schema = {
+        "type": "object",
+        "properties": {name: {"type": "string"} for name in _CONTENT_PARAMS[tool]},
+        "required": list(_CONTENT_PARAMS[tool]),
+    }
+    return ToolManifest(
+        name=tool,
+        description=_CONTENT_DESCRIPTIONS[tool],
+        input_schema=json.dumps(schema, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def content_manifest_hash(tool: str) -> str:
+    return manifest_hash(content_manifest(tool))
+
+
+def content_scopes(config: ProxyConfig) -> tuple[ToolScope, ...]:
+    """The scopes of the synthetic tools: one for each feature some server switches on.
+
+    The effect class is `write`: a URI or a prompt argument is a string the agent chooses and a
+    server receives, an outbound channel, and `read` would skip steps 2 to 6.
+    """
+    free = FreeMarker(kind="free")
+    switched_on = {
+        RESOURCE_READ_TOOL: any(spec.resources for spec in config.servers.values()),
+        PROMPT_GET_TOOL: any(spec.prompts for spec in config.servers.values()),
+    }
+    return tuple(
+        ToolScope(
+            tool=tool,
+            params=dict.fromkeys(_CONTENT_PARAMS[tool], free),
+            manifest_hash=content_manifest_hash(tool),
+            effect="write",
+        )
+        for tool in CONTENT_TOOLS
+        if switched_on[tool]
+    )
+
+
+def _content_policy() -> dict[str, ToolPolicy]:
+    """Policy rows of the synthetic tools. `server` is the destination of the read: data the
+    agent put in the URI or the arguments may only reach a server that may read it. The kinds
+    are `other`, never `payload`, so a read does not spend egress bytes."""
+    free = FreeMarker(kind="free")
+    server = ParamPolicy(unit="identifier", floor=free, kind="destination")
+    text = ParamPolicy(unit=None, floor=free, kind="other")
+    name = ParamPolicy(unit="identifier", floor=free, kind="identifier")
+    return {
+        RESOURCE_READ_TOOL: make_tool_policy("write", {"server": server, "uri": text}),
+        PROMPT_GET_TOOL: make_tool_policy(
+            "write", {"server": server, "name": name, "arguments": text}
+        ),
+    }
+
+
 def build_policy(config: ProxyConfig) -> PolicyTable:
     """`DEFAULT_POLICY` plus a row for every config tool it does not know.
 
@@ -456,7 +532,7 @@ def build_policy(config: ProxyConfig) -> PolicyTable:
     loosen it.
     """
     free = FreeMarker(kind="free")
-    rows = dict(DEFAULT_POLICY)
+    rows = {**DEFAULT_POLICY, **_content_policy()}
     for tool, spec in config.tools.items():
         if tool in rows:
             continue
@@ -483,6 +559,7 @@ def build_contract(config: ProxyConfig, pinned: Sequence[ToolManifest]) -> Inten
         )
         for tool, spec in sorted(config.tools.items())
     )
+    scopes = tuple(sorted((*scopes, *content_scopes(config)), key=lambda scope: scope.tool))
     return IntentContract(
         contract_id="mcp-proxy",
         user_intent=config.user_intent,

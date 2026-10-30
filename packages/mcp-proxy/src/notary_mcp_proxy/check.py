@@ -253,7 +253,9 @@ def _content_findings(config: ProxyConfig, prompts: Mapping[str, Sequence[str]])
                     detail=(
                         f"{where}resources under {', '.join(spec.resources.allow)} are listed and "
                         "readable; their content is labeled and logged, always untrusted, "
-                        f"readers {', '.join(spec.resources.readers)}"
+                        f"readers {', '.join(spec.resources.readers)}; each read is judged by "
+                        "the monitor as resources/read (what the agent adds after the prefix "
+                        "may reach only a server that may read it)"
                     ),
                 )
             )
@@ -267,7 +269,9 @@ def _content_findings(config: ProxyConfig, prompts: Mapping[str, Sequence[str]])
                 param=None,
                 detail=(
                     f"{where}prompts {', '.join(spec.prompts.allow)} are listed and gettable; "
-                    "their definitions are pinned at startup and their messages are labeled"
+                    "their definitions are pinned at startup and their messages are labeled; "
+                    "each get is judged by the monitor as prompts/get (the arguments may reach "
+                    "only a server that may read them)"
                 ),
             )
         )
