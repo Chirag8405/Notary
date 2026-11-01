@@ -15,6 +15,7 @@ stderr only and never reaches the agent.
 import contextlib
 import json
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -180,8 +181,12 @@ class StdioClient(McpClient):
         """Per request; may be changed between requests."""
         self.on_notification = on_notification
         self._clock = clock
+        # Resolve the program through PATH first: on Windows `npx` is `npx.cmd`, which `Popen`
+        # does not find by the bare name. A name not on PATH is left as it is and fails as before.
+        argv = list(command)
+        argv[0] = shutil.which(argv[0]) or argv[0]
         self._process = subprocess.Popen(
-            list(command), stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=cwd
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=cwd
         )
         stdin, stdout = self._process.stdin, self._process.stdout
         if stdin is None or stdout is None:

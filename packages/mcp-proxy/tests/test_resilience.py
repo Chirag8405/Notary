@@ -10,6 +10,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from pydantic import ValidationError
@@ -357,3 +358,18 @@ def test_an_internal_error_while_mediating_a_call_runs_nothing(
     assert INJECTION not in json.dumps(answer)  # the exception text goes to stderr only
     assert _effects(proxy) == []
     assert "internal error in tools/call" in capsys.readouterr().err
+
+
+def test_a_program_name_is_looked_up_on_the_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Windows `npx` is `npx.cmd`, which `Popen` does not find by the bare name (#317)."""
+    started: list[list[str]] = []
+
+    def fake_popen(argv: list[str], **_: object) -> NoReturn:
+        started.append(argv)
+        raise OSError("stop here")
+
+    monkeypatch.setattr("notary_mcp_proxy.client.shutil.which", lambda name: f"/found/{name}.cmd")
+    monkeypatch.setattr("notary_mcp_proxy.client.subprocess.Popen", fake_popen)
+    with pytest.raises(OSError, match="stop here"):
+        StdioClient(["npx", "-y", "server"])
+    assert started == [["/found/npx.cmd", "-y", "server"]]
