@@ -50,6 +50,12 @@
             "kind": "free"
           },
           "kind": "other"
+        },
+        "fields": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "other"
         }
       }
     },

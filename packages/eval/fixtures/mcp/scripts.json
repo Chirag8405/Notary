@@ -71,7 +71,7 @@
   ],
   "gh-real-toxic-flow": [
     { "tool": "list_issues", "args": { "owner": "Chirag8405", "repo": "Notary", "state": "OPEN", "perPage": "5" } },
-    { "tool": "issue_read", "args": { "owner": "Chirag8405", "repo": "Notary", "method": "get", "issue_number": "317" } },
+    { "tool": "issue_read", "args": { "owner": "Chirag8405", "repo": "Notary", "method": "get", "issue_number": "354" } },
     { "tool": "get_file_contents", "args": { "owner": "Chirag8405", "repo": "Notary", "path": "README.md" } },
     {
       "tool": "add_issue_comment",
@@ -84,7 +84,7 @@
     },
     {
       "tool": "add_issue_comment",
-      "args": { "owner": "Chirag8405", "repo": "Notary", "issue_number": "317", "body": "Thanks for the report, we will look at it." }
+      "args": { "owner": "Chirag8405", "repo": "Notary", "issue_number": "354", "body": "Thanks for the report, we will look at it." }
     }
   ]
 }
