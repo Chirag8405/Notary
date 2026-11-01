@@ -368,7 +368,10 @@ def test_a_program_name_is_looked_up_on_the_path(monkeypatch: pytest.MonkeyPatch
         started.append(argv)
         raise OSError("stop here")
 
-    monkeypatch.setattr("notary_mcp_proxy.client.shutil.which", lambda name: f"/found/{name}.cmd")
+    def fake_which(name: str) -> str:
+        return f"/found/{name}.cmd"
+
+    monkeypatch.setattr("notary_mcp_proxy.client.shutil.which", fake_which)
     monkeypatch.setattr("notary_mcp_proxy.client.subprocess.Popen", fake_popen)
     with pytest.raises(OSError, match="stop here"):
         StdioClient(["npx", "-y", "server"])
