@@ -325,7 +325,7 @@ def test_filesystem_benign_status_is_written_through_the_proxy() -> None:
 def test_the_logging_tee_forwards_every_line_and_logs_only_the_tool_calls(tmp_path: Path) -> None:
     echo = "import sys; [print(line, end='', flush=True) for line in sys.stdin]"
     log = tmp_path / "calls.jsonl"
-    lines = [
+    lines: list[dict[str, object]] = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {
             "jsonrpc": "2.0",
