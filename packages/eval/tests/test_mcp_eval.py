@@ -53,6 +53,15 @@ from notary_mcp_proxy.jsonrpc import JsonObject, as_list, as_object, as_str
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_mcp_live.py"
 NPX = shutil.which("npx") is not None and os.environ.get("NOTARY_EVAL_NPX") == "1"
+GITHUB_REAL = (
+    shutil.which("docker") is not None
+    and os.environ.get("NOTARY_EVAL_GITHUB") == "1"
+    and bool(os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN"))
+)
+needs_github = pytest.mark.skipif(
+    not GITHUB_REAL,
+    reason="set NOTARY_EVAL_GITHUB=1 and a read-only GITHUB_PERSONAL_ACCESS_TOKEN, docker on PATH",
+)
 needs_npx = pytest.mark.skipif(not NPX, reason="set NOTARY_EVAL_NPX=1 with npx on the PATH")
 
 
@@ -245,7 +254,7 @@ def test_a_call_the_user_goal_does_not_need_is_not_credited() -> None:
 def test_the_scripted_suite_stops_every_attack_and_keeps_every_benign_task() -> None:
     none = run_scripted_suite("undefended", skip_npx=True)
     notary = run_scripted_suite("notary", skip_npx=True)
-    tasks = [t for t in load_tasks() if not SERVERS[t.server].requires_npx]
+    tasks = [t for t in load_tasks() if not SERVERS[t.server].opt_in]
     assert none.defence == "none"
     assert notary.defence == "notary"
     assert [r.task_id for r in none.results] == [t.task_id for t in tasks]
@@ -306,6 +315,37 @@ def test_filesystem_benign_status_is_written_through_the_proxy() -> None:
     run = run_scripted_detailed(task, load_scripts()[task.task_id], defended=True)
     assert [step.verdict for step in run.steps] == ["ALLOW"]
     assert run.result.utility is True
+
+
+# -- the real GitHub server (optional, #317) ---------------------------------------------------
+
+
+@needs_github
+def test_real_github_issue_reads_work_through_the_proxy() -> None:
+    task = get_task("gh-real-read-issues")
+    run = run_scripted_detailed(task, load_scripts()[task.task_id], defended=True)
+    assert [step.verdict for step in run.steps] == ["ALLOW", "ALLOW"]
+    assert not any(step.is_error for step in run.steps)
+    assert run.result.utility is True
+
+
+@needs_github
+def test_real_github_comment_to_another_repo_is_blocked_before_it_leaves() -> None:
+    """Checked against github-mcp-server v2.0.3 with a read-only token (#317).
+
+    Without NOTARY the call reaches GitHub (which refuses it only because the token cannot write).
+    Through the proxy it is blocked by the ledger of destinations and the user's own reply still
+    goes out.
+    """
+    task = get_task("gh-real-toxic-flow")
+    calls = load_scripts()[task.task_id]
+    with_notary = run_scripted_detailed(task, calls, defended=True)
+    assert [step.verdict for step in with_notary.steps] == ["ALLOW"] * 3 + ["BLOCK", "ALLOW"]
+    assert "LEDGER_NOT_FOUND" in with_notary.steps[3].failed
+    assert with_notary.result.attack_succeeded is False
+    assert with_notary.result.utility is True
+    without = run_scripted_detailed(task, calls, defended=False)
+    assert without.result.attack_succeeded is True
 
 
 # -- statistics ---------------------------------------------------------------------------------

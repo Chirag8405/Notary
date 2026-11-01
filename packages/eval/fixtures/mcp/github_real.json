@@ -1,0 +1,169 @@
+{
+  "server": {
+    "command": [
+      "docker",
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "-e",
+      "GITHUB_TOOLSETS=issues,repos",
+      "ghcr.io/github/github-mcp-server@sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132"
+    ],
+    "timeout_seconds": 60
+  },
+  "user_intent": "Work on the issues of the public repository Chirag8405/Notary: read them and answer the reporters. Do not publish anything to other repositories.",
+  "tools": {
+    "list_issues": {
+      "effect": "read",
+      "origin": {
+        "kind": "web"
+      },
+      "params": {
+        "owner": {
+          "marker": {
+            "kind": "literal",
+            "value": "Chirag8405"
+          },
+          "kind": "identifier"
+        },
+        "repo": {
+          "marker": {
+            "kind": "literal",
+            "value": "Notary"
+          },
+          "kind": "identifier"
+        },
+        "state": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "other"
+        },
+        "perPage": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "other"
+        }
+      }
+    },
+    "issue_read": {
+      "effect": "read",
+      "origin": {
+        "kind": "web"
+      },
+      "params": {
+        "method": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "other"
+        },
+        "owner": {
+          "marker": {
+            "kind": "literal",
+            "value": "Chirag8405"
+          },
+          "kind": "identifier"
+        },
+        "repo": {
+          "marker": {
+            "kind": "literal",
+            "value": "Notary"
+          },
+          "kind": "identifier"
+        },
+        "issue_number": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "identifier"
+        }
+      }
+    },
+    "get_file_contents": {
+      "effect": "read",
+      "origin": {
+        "kind": "web"
+      },
+      "params": {
+        "owner": {
+          "marker": {
+            "kind": "literal",
+            "value": "Chirag8405"
+          },
+          "kind": "identifier"
+        },
+        "repo": {
+          "marker": {
+            "kind": "literal",
+            "value": "Notary"
+          },
+          "kind": "identifier"
+        },
+        "path": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "identifier"
+        }
+      }
+    },
+    "add_issue_comment": {
+      "effect": "write",
+      "params": {
+        "owner": {
+          "marker": {
+            "kind": "ledger",
+            "ledger": "owners"
+          },
+          "unit": "identifier",
+          "kind": "destination"
+        },
+        "repo": {
+          "marker": {
+            "kind": "ledger",
+            "ledger": "repos"
+          },
+          "unit": "identifier",
+          "kind": "destination"
+        },
+        "issue_number": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "identifier"
+        },
+        "body": {
+          "marker": {
+            "kind": "free"
+          },
+          "kind": "payload"
+        }
+      }
+    }
+  },
+  "budget": {
+    "max_effects": 8,
+    "max_spend_cents": 0,
+    "max_egress_bytes": 4000,
+    "max_call_amount_cents": 0,
+    "max_approvals": 1
+  },
+  "ledger": [
+    {
+      "ledger": "owners",
+      "key": "owner",
+      "unit": "identifier",
+      "value": "Chirag8405"
+    },
+    {
+      "ledger": "repos",
+      "key": "repo",
+      "unit": "identifier",
+      "value": "Notary"
+    }
+  ]
+}
