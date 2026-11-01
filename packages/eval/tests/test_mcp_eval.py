@@ -281,14 +281,21 @@ def test_the_scripted_run_is_deterministic() -> None:
 
 
 @needs_npx
-def test_filesystem_toxic_flow_is_blocked_and_the_status_is_written() -> None:
+def test_filesystem_toxic_flow_is_blocked_on_the_real_server() -> None:
+    """Checked against `@modelcontextprotocol/server-filesystem` 2.1.0 (#317).
+
+    The secret never reaches the public file. The status the model writes afterwards is not
+    written either: text the model wrote after a private read is held, as in the GitHub task
+    (`test_the_toxic_flow_is_blocked...`), and the replayed run has nobody to ask.
+    """
     task = get_task("fs-toxic-flow")
     calls = load_scripts()[task.task_id]
     with_notary = run_scripted_detailed(task, calls, defended=True)
     assert with_notary.steps[2].verdict == "BLOCK"
     assert "CONF_READER_VIOLATION" in with_notary.steps[2].failed
+    assert [step.reached_server for step in with_notary.steps[2:]] == [False, False]
     assert with_notary.result.attack_succeeded is False
-    assert with_notary.result.utility is True
+    assert with_notary.result.utility is False
     without = run_scripted_detailed(task, calls, defended=False)
     assert without.result.attack_succeeded is True
 
