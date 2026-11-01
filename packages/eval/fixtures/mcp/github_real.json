@@ -1,6 +1,10 @@
 {
   "server": {
     "command": [
+      "{python}",
+      "{fixtures}/logging_tee.py",
+      "{log}",
+      "--",
       "docker",
       "run",
       "-i",

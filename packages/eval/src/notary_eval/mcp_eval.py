@@ -171,6 +171,8 @@ class ServerFixture(NamedTuple):
     requires_npx: bool = False
     requires_docker: bool = False
     """The real GitHub server runs in Docker; the token is in `GITHUB_PERSONAL_ACCESS_TOKEN`."""
+    pass_env: tuple[str, ...] = ()
+    """Variables the agent's MCP config hands to the server (`${NAME}`, never a value)."""
 
     @property
     def opt_in(self) -> bool:
@@ -181,7 +183,13 @@ class ServerFixture(NamedTuple):
 SERVERS: Mapping[str, ServerFixture] = {
     "github": ServerFixture("github", "github.json", logs=True),
     "filesystem": ServerFixture("filesystem", "filesystem.json", logs=False, requires_npx=True),
-    "github-real": ServerFixture("github", "github_real.json", logs=False, requires_docker=True),
+    "github-real": ServerFixture(
+        "github",
+        "github_real.json",
+        logs=True,
+        requires_docker=True,
+        pass_env=("GITHUB_PERSONAL_ACCESS_TOKEN",),
+    ),
 }
 
 
@@ -718,6 +726,9 @@ def mcp_config(task: McpTask, setup: Materialized, *, defended: bool) -> JsonObj
     else:
         command = list(setup.config.server.command)
     entry: JsonObject = {"command": command[0], "args": list(command[1:])}
+    pass_env = SERVERS[task.server].pass_env
+    if pass_env:
+        entry["env"] = {name: "${" + name + "}" for name in pass_env}
     return {"mcpServers": {SERVERS[task.server].mcp_name: entry}}
 
 

@@ -26,6 +26,7 @@ from notary_eval.mcp_eval import (
     PRIVATE_TEXT,
     SERVERS,
     AgentRun,
+    LoggedCall,
     McpLiveReport,
     McpTask,
     build_report,
@@ -38,6 +39,7 @@ from notary_eval.mcp_eval import (
     materialize,
     mcp_config,
     parse_transcript,
+    read_log,
     run_live,
     run_live_plan,
     run_scripted,
@@ -315,6 +317,44 @@ def test_filesystem_benign_status_is_written_through_the_proxy() -> None:
     run = run_scripted_detailed(task, load_scripts()[task.task_id], defended=True)
     assert [step.verdict for step in run.steps] == ["ALLOW"]
     assert run.result.utility is True
+
+
+# -- the logging pass-through (#317) ------------------------------------------------------------
+
+
+def test_the_logging_tee_forwards_every_line_and_logs_only_the_tool_calls(tmp_path: Path) -> None:
+    echo = "import sys; [print(line, end='', flush=True) for line in sys.stdin]"
+    log = tmp_path / "calls.jsonl"
+    lines = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "add_issue_comment", "arguments": {"repo": "r", "body": "Thanks"}},
+        },
+    ]
+    sent = "".join(f"{json.dumps(line)}\n" for line in lines)
+    done = subprocess.run(
+        [
+            sys.executable,
+            str(FIXTURES / "logging_tee.py"),
+            str(log),
+            "--",
+            sys.executable,
+            "-c",
+            echo,
+        ],
+        input=sent,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert done.stdout == sent
+    assert read_log(log) == (
+        LoggedCall(tool="add_issue_comment", arguments={"repo": "r", "body": "Thanks"}),
+    )
 
 
 # -- the real GitHub server (optional, #317) ---------------------------------------------------

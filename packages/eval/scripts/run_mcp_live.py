@@ -80,10 +80,13 @@ def claude_version(executable: str) -> str | None:
 
 
 def select_tasks(task_ids: Sequence[str] | None) -> tuple[McpTask, ...]:
-    """The tasks to run: the ones named, else every task whose server logs its own calls."""
+    """The tasks to run: the ones named, else every task whose server logs its own calls and needs
+    nothing extra (the real GitHub server needs Docker and a token, so it is named on purpose)."""
     tasks = load_tasks()
     if not task_ids:
-        return tuple(task for task in tasks if SERVERS[task.server].logs)
+        return tuple(
+            task for task in tasks if SERVERS[task.server].logs and not SERVERS[task.server].opt_in
+        )
     by_id = {task.task_id: task for task in tasks}
     unknown = [name for name in task_ids if name not in by_id]
     if unknown:
