@@ -17,6 +17,14 @@ services:
     envVars:
       - key: PORT
         value: "8000" # the port the Dockerfile CMD listens on
+      # Take the client address from X-Forwarded-For so every visitor has their own rate-limit
+      # budget. uvicorn trusts proxy headers by default and reads this list. Only private ranges
+      # (Render's proxy is inside its network; no visitor connects from one), never `*`. uvicorn
+      # reads the header from the right and stops at the first address it does not trust, so a fake
+      # address a visitor puts in front is ignored. If the peer is not in these ranges the header is
+      # ignored and all visitors share one budget: safe, just not fair.
+      - key: FORWARDED_ALLOW_IPS
+        value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7"
       - key: NOTARY_WEB_ORIGINS
         sync: false # set in the dashboard: the Vercel URL, e.g. https://notary-web.vercel.app
       - key: GROQ_API_KEY
