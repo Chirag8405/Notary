@@ -48,9 +48,17 @@ export function openRun(baseUrl: string, scenario: string, options: RunOptions =
     wake?.();
   };
 
+  // Once `run_finished` has arrived the run is over. A proxy can drop the connection afterwards
+  // without the server's close frame (Render's does, about 20 s later: code 1006), and that must
+  // not turn a finished run into an error. A close with a code of the server's own (4xxx) still
+  // does, and so does any drop before `run_finished`.
+  let finished = false;
+
   socket.addEventListener("message", (message: MessageEvent<unknown>) => {
     try {
-      push(parseEvent(String(message.data)));
+      const event = parseEvent(String(message.data));
+      if (event.type === "run_finished") finished = true;
+      push(event);
     } catch (error) {
       push(error instanceof Error ? error : new Error(String(error)));
       socket.close();
@@ -58,13 +66,13 @@ export function openRun(baseUrl: string, scenario: string, options: RunOptions =
   });
   socket.addEventListener("close", (closed: CloseEvent) => {
     push(
-      closed.code === 1000 || closed.code === 1005
+      closed.code === 1000 || closed.code === 1005 || (finished && closed.code === 1006)
         ? "done"
         : new StreamClosedError(closed.code, closed.reason),
     );
   });
   socket.addEventListener("error", () => {
-    push(new StreamClosedError(1006, "connection error"));
+    if (!finished) push(new StreamClosedError(1006, "connection error"));
   });
 
   let closed = false;
