@@ -8,6 +8,13 @@ NOTARY assumes the agent's LLM is fully hijacked, then makes sure nothing the at
 
 > **Status:** under active development. The monitor, gateway, agent runner, server event stream, Trust X-ray UI, judge playground and MCP proxy are implemented. The AgentDojo benchmark harness is still a stub (`NotImplementedError`). [`docs/phase.md`](docs/phase.md) tracks each item.
 
+## Live demo
+
+- [Trust X-ray](https://notary-murex.vercel.app/x-ray): the same poisoned-bill attack against three defences, with every decision and its reasons.
+- [Judge playground](https://notary-murex.vercel.app/playground): play the hijacked agent yourself, or run the attack library.
+
+The server runs on a free Render plan that sleeps when idle, so the first load after a pause can take up to a minute. To run it yourself, see [Getting started](#getting-started).
+
 ## How it works
 
 1. **Freeze the intent.** The user's request is compiled into an `IntentContract`: the allowed tools, a marker for each sensitive parameter, and an effect budget. The compiler never sees fetched content.
