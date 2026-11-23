@@ -4,7 +4,7 @@ import ipaddress
 import json
 import os
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -242,6 +242,7 @@ def create_app(
     mcp_runs_dir: Path | None = None,
     mcp_approvals: McpApprovals | None = None,
     mcp_compile: McpCompileService | None = None,
+    web_origins: Sequence[str] = WEB_ORIGINS,
 ) -> FastAPI:
     """`limits` are the per-client rate limits of the playground POSTs (#242). `build_app` always
     passes them; without them (the default here) nothing is limited, which is what most tests
@@ -250,7 +251,9 @@ def create_app(
     (`NOTARY_MCP_APPROVALS=1`) lets the endorsement card approve or reject an MCP proxy
     escalation; without it, or for a client that is not local, a command on an `mcp` socket
     closes it `4422`. `mcp_compile` (`NOTARY_MCP_COMPILE=1`) serves `POST /mcp/compile` to the MCP
-    proxy; without it the route answers 404, and to a caller that is not local, 403."""
+    proxy; without it the route answers 404, and to a caller that is not local, 403. `web_origins`
+    are the pages CORS lets call the server (`NOTARY_WEB_ORIGINS`); they do not change
+    `is_local_client`, which only hears the local X-ray page."""
     attach_redaction()  # a session id in a request path must never reach a log
     run_sources = default_sources() if sources is None else sources
     command_router = CommandRouter() if router is None else router
@@ -263,7 +266,7 @@ def create_app(
     app = FastAPI(title="NOTARY server", version="0.0.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=WEB_ORIGINS,
+        allow_origins=list(web_origins),
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )

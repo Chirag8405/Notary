@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from pydantic import Field
@@ -111,6 +112,11 @@ class Settings(NotaryModel):
     in a run's `control.json` outside it is refused. Unset: `.notary/mcp-control` of the server's
     working directory, which is the proxy's default when both start from the repo root."""
 
+    web_origins: tuple[str, ...] = ("http://localhost:3000",)
+    """The web pages a browser may call the server from (CORS; `NOTARY_WEB_ORIGINS`, comma
+    separated). Setting it replaces the default, it does not add to it. It does not widen who may
+    approve an MCP escalation: that stays a loopback peer on the local X-ray page."""
+
     cassette_dir: Path | None = None
     """The directory `cassette` mode and the arena read cassettes from (`NOTARY_CASSETTE_DIR`).
     Unset: the committed scripted set. Point it at a real-model set to replay that one."""
@@ -122,7 +128,8 @@ class Settings(NotaryModel):
         `NOTARY_HIJACKED_SESSIONS_PER_CLIENT`, `NOTARY_START_LIMIT`, `NOTARY_CALL_LIMIT`,
         `NOTARY_RUN_LIMIT`, `NOTARY_LIMIT_WINDOW`), `NOTARY_MCP_RUNS_DIR` (empty is unset),
         `NOTARY_MCP_APPROVALS` and `NOTARY_MCP_COMPILE` (only `1` turns them on) and
-        `NOTARY_MCP_CONTROL_DIR` and `NOTARY_CASSETTE_DIR` (empty is unset).
+        `NOTARY_MCP_CONTROL_DIR` and `NOTARY_CASSETTE_DIR` (empty is unset) and
+        `NOTARY_WEB_ORIGINS` (comma separated origins, empty is unset).
 
         An invalid number raises `ValueError` (at startup, not at the first request).
         """
@@ -149,6 +156,9 @@ class Settings(NotaryModel):
         mcp_control_dir = environ.get("NOTARY_MCP_CONTROL_DIR")
         if mcp_control_dir:
             values["mcp_control_dir"] = Path(mcp_control_dir)
+        web_origins = environ.get("NOTARY_WEB_ORIGINS")
+        if web_origins and web_origins.strip():
+            values["web_origins"] = _parse_origins(web_origins)
         cassette_dir = environ.get("NOTARY_CASSETTE_DIR")
         if cassette_dir:
             values["cassette_dir"] = Path(cassette_dir)
@@ -169,6 +179,30 @@ _LIMIT_VARIABLES: tuple[tuple[str, str, Callable[[str], float]], ...] = (
     ("NOTARY_LIMIT_WINDOW", "limit_window_seconds", float),
 )
 """Environment name, `Settings` field and parser of each limit."""
+
+
+def _parse_origins(raw: str) -> tuple[str, ...]:
+    """`https://a.example, https://b.example/` -> the origins, trailing slashes dropped.
+
+    An origin is a scheme and a host (and port), nothing else: a wildcard, a path or another scheme
+    is a startup error, because a typo here would silently open or close the CORS door."""
+    origins: list[str] = []
+    for part in raw.split(","):
+        origin = part.strip().rstrip("/")
+        if not origin:
+            continue
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.hostname
+            or any((parsed.path, parsed.query, parsed.fragment, parsed.username))
+        ):
+            raise ValueError(f"NOTARY_WEB_ORIGINS has an invalid origin: {origin!r}")
+        if origin not in origins:
+            origins.append(origin)
+    if not origins:
+        raise ValueError("NOTARY_WEB_ORIGINS has no origin")
+    return tuple(origins)
 
 
 def _number[N: (int, float)](name: str, raw: str, parse: Callable[[str], N]) -> N:
@@ -392,6 +426,7 @@ def build_app(
         anchors=anchors,
         attacker_llm=arena_attackers(settings.cassette_dir),
         arena_max_rounds=settings.arena_max_rounds,
+        web_origins=settings.web_origins,
         broker=broker,
         hijacked=HijackedSessions(
             clock=clock,
