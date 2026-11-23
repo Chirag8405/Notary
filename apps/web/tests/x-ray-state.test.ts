@@ -116,7 +116,7 @@ describe("describeStreamError", () => {
   it("names each failure in words [I6]", () => {
     const url = "http://localhost:8000";
     expect(describeStreamError(1006, "x", url)).toBe(
-      "Could not reach the server at http://localhost:8000. Start the server and press Run again.",
+      "Could not reach the server at http://localhost:8000. It may be waking up from idle: wait a minute and press Run again (or start the server if it is not running).",
     );
     expect(describeStreamError(4404, "x", url)).toBe("Unknown scenario.");
     expect(describeStreamError(4501, "x", url)).toBe("This mode is not available on the server.");
