@@ -1,9 +1,13 @@
 """`render.yaml`: the proxy trust list behind the per-client rate limits."""
 
+import asyncio
 import re
+from collections.abc import MutableMapping
 from pathlib import Path
+from typing import cast
 
 import pytest
+from uvicorn._types import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 BLUEPRINT = Path(__file__).resolve().parents[3] / "render.yaml"
@@ -16,23 +20,22 @@ def _trusted() -> str:
     return match.group(1)
 
 
-def _client_seen(forwarded_for: str, peer: str = PROXY) -> str | None:
-    seen: list[str | None] = []
+def _client_seen(forwarded_for: str, peer: str = PROXY) -> str:
+    seen: list[str] = []
 
-    async def app(scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
-        client = scope.get("client")
-        seen.append(client[0] if client else None)
+    async def app(scope: MutableMapping[str, object], receive: object, send: object) -> None:
+        seen.append(cast(tuple[str, int], scope["client"])[0])
 
-    middleware = ProxyHeadersMiddleware(app, trusted_hosts=_trusted())  # type: ignore[arg-type]
-    scope = {
-        "type": "http",
-        "client": (peer, 1234),
-        "headers": [(b"x-forwarded-for", forwarded_for.encode())],
-    }
-
-    import asyncio
-
-    asyncio.run(middleware(scope, None, None))  # type: ignore[arg-type]
+    middleware = ProxyHeadersMiddleware(cast(ASGI3Application, app), trusted_hosts=_trusted())
+    scope = cast(
+        Scope,
+        {
+            "type": "http",
+            "client": (peer, 1234),
+            "headers": [(b"x-forwarded-for", forwarded_for.encode())],
+        },
+    )
+    asyncio.run(middleware(scope, cast(ASGIReceiveCallable, None), cast(ASGISendCallable, None)))
     return seen[0]
 
 
