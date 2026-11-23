@@ -17,8 +17,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function opened(props: Partial<XRayViewProps> = {}, rest: Partial<RestState> = {}) {
-  const sockets = socketFactory();
+async function opened(
+  props: Partial<XRayViewProps> = {},
+  rest: Partial<RestState> = {},
+  socketOptions: Parameters<typeof socketFactory>[0] = {},
+) {
+  const sockets = socketFactory(socketOptions);
   stubRest({ modes: ["cassette", "golden", "live"], anchor: "missing", ...rest });
   const utils = render(
     <XRayView apiUrl={API} scenario="poisoned_bill" webSocket={sockets.factory} {...props} />,
@@ -133,7 +137,8 @@ describe("x-ray page unavailable mode", () => {
   });
 
   it("offers cassette when a live run fails to connect [I6]", async () => {
-    const page = await opened({ mode: "live" });
+    // The connection is lost mid-run: the stream stops at the card, before `run_finished`.
+    const page = await opened({ mode: "live" }, {}, { stopAtCard: true });
     act(() => {
       must(page.sockets[0], "socket").closeWith(1006, "");
     });

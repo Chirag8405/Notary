@@ -402,13 +402,31 @@ describe("x-ray page anchor and errors", () => {
   });
 
   it("explains an unreachable server [I6]", async () => {
-    const page = await opened();
+    // The connection is lost mid-run: the stream stops at the card, before `run_finished`.
+    const page = await opened({}, {}, { stopAtCard: true });
     act(() => {
       must(page.sockets[0], "socket").closeWith(1006, "");
     });
     expect((await screen.findByRole("alert")).textContent).toBe(
       `Could not reach the server at ${API}. Start the server and press Run again.`,
     );
+  });
+});
+
+describe("x-ray page after the run finished", () => {
+  it("does not report a dropped connection as an error [I6]", async () => {
+    // A proxy can drop the socket after `run_finished` without the server's close frame (1006).
+    const page = await opened();
+    act(() => {
+      must(page.sockets[0], "socket").closeWith(1006, "");
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(row("c2").getAttribute("data-verdict")).toBe("ESCALATE");
   });
 });
 

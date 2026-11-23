@@ -66,6 +66,44 @@ describe("openRun events", () => {
     expect((error as StreamClosedError).code).toBe(4404);
   });
 
+  it("a dropped connection after run_finished ends the run without an error [I6]", async () => {
+    const { factory, sockets } = rig();
+    const session = openRun(BASE, "poisoned_bill", { webSocket: factory });
+    const socket = firstSocket(sockets);
+    socket.open();
+    for (const message of goldenMessages()) socket.message(message);
+    socket.dispatchEvent(new Event("error"));
+    socket.finish(1006);
+    const types = await collect(session);
+    expect(types).toHaveLength(12);
+    expect(types.at(-1)).toBe("run_finished");
+  });
+
+  it("a dropped connection before run_finished is still an error [I6]", async () => {
+    const { factory, sockets } = rig();
+    const session = openRun(BASE, "poisoned_bill", { webSocket: factory });
+    const socket = firstSocket(sockets);
+    socket.open();
+    const [first] = goldenMessages();
+    socket.message(first ?? "");
+    socket.finish(1006);
+    const error = await collect(session).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(StreamClosedError);
+    expect((error as StreamClosedError).code).toBe(1006);
+  });
+
+  it("a close with a server code after run_finished is still an error [I6]", async () => {
+    const { factory, sockets } = rig();
+    const session = openRun(BASE, "poisoned_bill", { webSocket: factory });
+    const socket = firstSocket(sockets);
+    socket.open();
+    for (const message of goldenMessages()) socket.message(message);
+    socket.finish(4503, "audit chain failed verification");
+    const error = await collect(session).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(StreamClosedError);
+    expect((error as StreamClosedError).code).toBe(4503);
+  });
+
   it("still behaves like streamRun did [I6]", async () => {
     const { factory, sockets } = rig();
     const seen: string[] = [];
