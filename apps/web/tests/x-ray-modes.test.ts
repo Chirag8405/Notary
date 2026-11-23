@@ -229,7 +229,7 @@ describe("streamProblem", () => {
       ).toBe(true);
     }
     expect(streamProblem({ closeCode: 1006, message: "x", apiUrl: api, mode: "live" }).text).toBe(
-      "Could not reach the server at http://localhost:8000. Start the server and press Run again.",
+      "Could not reach the server at http://localhost:8000. It may be waking up from idle: wait a minute and press Run again (or start the server if it is not running).",
     );
   });
 });

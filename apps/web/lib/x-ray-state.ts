@@ -139,7 +139,7 @@ export function describeStreamError(
     message !== undefined && message !== "" ? message : "The connection closed unexpectedly.";
   if (closeCode === undefined) return fallback;
   if (closeCode === 1006) {
-    return `Could not reach the server at ${apiUrl}. Start the server and press Run again.`;
+    return `Could not reach the server at ${apiUrl}. It may be waking up from idle: wait a minute and press Run again (or start the server if it is not running).`;
   }
   switch (describeClose(closeCode)) {
     case "unknown_scenario":

@@ -143,7 +143,7 @@ describe("x-ray page unavailable mode", () => {
       must(page.sockets[0], "socket").closeWith(1006, "");
     });
     expect((await screen.findByRole("alert")).textContent).toBe(
-      `Could not reach the server at ${API}. Start the server and press Run again.`,
+      `Could not reach the server at ${API}. It may be waking up from idle: wait a minute and press Run again (or start the server if it is not running).`,
     );
     expect(screen.getByRole("button", { name: "Use cassette instead" })).toBeTruthy();
   });
