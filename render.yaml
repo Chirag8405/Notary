@@ -7,8 +7,11 @@ services:
     runtime: docker
     dockerfilePath: ./apps/server/Dockerfile
     dockerContext: .
-    plan: starter # the free plan sleeps when idle and drops every in-memory session
-    numInstances: 1 # never scale out: a second instance has no such session or card
+    # The free plan sleeps after ~15 minutes idle (the next request takes up to a minute) and every
+    # sleep or restart drops the in-memory sessions. Open the site a couple of minutes before a demo.
+    # For no sleeping use `plan: starter`. Never scale out: a second instance has no such session
+    # or card (a free service always runs one).
+    plan: free
     healthCheckPath: /health
     # No dockerCommand: the Dockerfile CMD (one worker, --ws websockets) is the one a test pins.
     envVars:
