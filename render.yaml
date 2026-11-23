@@ -1,0 +1,20 @@
+# Render Blueprint for the NOTARY server (the web app goes on Vercel, see docs/demo.md).
+# Deploy notes: docs/demo.md#deploy-notes. The server keeps sessions, endorsement cards and rate
+# limits in process memory, so it must stay ONE instance with ONE worker.
+services:
+  - type: web
+    name: notary-server
+    runtime: docker
+    dockerfilePath: ./apps/server/Dockerfile
+    dockerContext: .
+    plan: starter # the free plan sleeps when idle and drops every in-memory session
+    numInstances: 1 # never scale out: a second instance has no such session or card
+    healthCheckPath: /health
+    # No dockerCommand: the Dockerfile CMD (one worker, --ws websockets) is the one a test pins.
+    envVars:
+      - key: PORT
+        value: "8000" # the port the Dockerfile CMD listens on
+      - key: NOTARY_WEB_ORIGINS
+        sync: false # set in the dashboard: the Vercel URL, e.g. https://notary-web.vercel.app
+      - key: GROQ_API_KEY
+        sync: false # optional: only `mode=live` needs it; cassette replay needs no key

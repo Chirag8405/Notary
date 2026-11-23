@@ -404,6 +404,7 @@ def test_live_mode_needs_a_key() -> None:
         "NOTARY_MCP_COMPILE",
         "NOTARY_MCP_CONTROL_DIR",
         "NOTARY_CASSETTE_DIR",
+        "NOTARY_WEB_ORIGINS",
     }
     client = TestClient(build_app(settings, event_delay=0))
     events, closed = replay(client, POISONED, "notary", mode="live")
